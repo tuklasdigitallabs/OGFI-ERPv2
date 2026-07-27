@@ -642,6 +642,13 @@ keeps child, graph, routing, audit, and notification writes atomic; replay,
 composite child-parent scope integrity, and executable PostgreSQL evidence
 remain open.
 
+Purchase Order amendment requests now lock and re-read the scoped parent before
+snapshotting, create the preallocated amendment child before graph work, and
+claim the parent `ISSUED → AMENDMENT_PENDING` state before routing. Existing
+stable conflict feedback remains `PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT`;
+durable replay, brand invariants, sibling decision locks, and PostgreSQL race
+evidence remain separate gates.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

@@ -193,7 +193,7 @@ const requiredCapabilityDiscoveryFacts = {
       lock: "Shared company barrier, then parent PurchaseOrder row, lines/receipt/conflicting-child state, and sealed rule.",
       compareAndSet: "Parent ISSUED to AMENDMENT_PENDING plus one new PENDING_APPROVAL amendment in the same transaction.",
     },
-    stableErrors: errors("APPROVAL_RULE_NOT_CONFIGURED", "PURCHASE_ORDER_AMENDMENT_STATE_CHANGED"),
+    stableErrors: errors("APPROVAL_RULE_NOT_CONFIGURED", "PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT"),
     idempotency: "Duplicate amendments fail closed unless a future request hash proves the identical parent snapshot and proposal.",
   },
   WastageReport: {
@@ -507,7 +507,7 @@ const currentTransactionFacts = {
   QuotationRecommendation: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks the recommendation, quotation-request, and linked Purchase Request lineage inside the transaction, re-reads the authoritative recommendation, and claims DRAFT with exact scoped version/status/lineage predicates; durable replay identity remains absent." },
   PurchaseOrder: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks PurchaseOrder then recommendation→quotation-request→Purchase Request lineage, re-reads authoritative status and scope, and claims DRAFT before graph creation with exact scoped linkage predicates; durable replay identity remains absent." },
   PurchaseOrderBalanceClosure: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Parent PurchaseOrder is locked and revalidated; the closure child is now created before the approval graph in the same transaction, but has no request-hash replay contract or durable child intent identity." },
-  PurchaseOrderAmendment: { lock: "ABSENT", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Parent PurchaseOrder is read and revalidated, then an ISSUED-to-AMENDMENT_PENDING updateMany compare-and-set is attempted; no explicit parent row lock is observed and child replay is not request-hash bound." },
+  PurchaseOrderAmendment: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks and re-reads the scoped PurchaseOrder before snapshotting, creates the amendment child before graph work, and claims ISSUED-to-AMENDMENT_PENDING before routing with exact parent scope/status predicates; durable replay identity remains absent." },
   WastageReport: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "No explicit source row lock; status updateMany admits DRAFT/RETURNED after graph construction." },
   StockAdjustment: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "No explicit source row lock; status updateMany admits DRAFT/SUBMITTED/RETURNED after graph construction." },
   FinanceCloseRun: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Run row is explicitly locked and version increments, but pending-action snapshot update is not an expected-version compare-and-set." },

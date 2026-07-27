@@ -92,7 +92,7 @@ describe("purchase order lifecycle rules", () => {
             ? "const closure = await tx.purchaseOrderBalanceClosure.create"
             : "const amendment = await tx.purchaseOrderAmendment.create"
       );
-      if (functionName === "submitPurchaseOrderForApproval" || functionName === "requestPurchaseOrderBalanceClosure") {
+      if (functionName === "submitPurchaseOrderForApproval" || functionName === "requestPurchaseOrderBalanceClosure" || functionName === "requestPurchaseOrderAmendment") {
         expect(claimOrChildAt).toBeLessThan(
           action.indexOf("assertAnyEligibleApprovalActorForStep(tx")
         );
@@ -125,6 +125,22 @@ describe("purchase order lifecycle rules", () => {
     );
     expect(submit.indexOf("const updated = await tx.purchaseOrder.updateMany")).toBeLessThan(
       submit.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
+  });
+
+  test("PO amendment locks the parent and claims it before graph work", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const start = source.indexOf("export async function requestPurchaseOrderAmendment");
+    const end = source.indexOf("\nexport async function ", start + 1);
+    const amendment = source.slice(start, end === -1 ? undefined : end);
+    expect(amendment).toContain('FROM "PurchaseOrder"');
+    expect(amendment).toContain("FOR UPDATE");
+    expect(amendment).toContain("const order = currentOrder");
+    expect(amendment.indexOf("const amendment = await tx.purchaseOrderAmendment.create")).toBeLessThan(
+      amendment.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
+    expect(amendment.indexOf("const updatedOrder = await tx.purchaseOrder.updateMany")).toBeLessThan(
+      amendment.indexOf("const approvalInstance = await tx.approvalInstance.create")
     );
   });
 

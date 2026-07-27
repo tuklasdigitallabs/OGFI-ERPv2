@@ -2326,7 +2326,7 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
     supplierNoticeUnavailableReason,
   );
 
-  const order = await prisma.purchaseOrder.findFirst({
+  const initialOrder = await prisma.purchaseOrder.findFirst({
     where: {
       id: values.id,
       tenantId: session.context.tenantId,
@@ -2360,23 +2360,23 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
     },
   });
 
-  if (!order) {
+  if (!initialOrder) {
     throw new Error("PURCHASE_ORDER_NOT_FOUND");
   }
-  assertAuthorizedLocation(session, order.deliveryLocationId);
+  assertAuthorizedLocation(session, initialOrder.deliveryLocationId);
 
-  const lineSnapshot = buildPurchaseOrderClosureLineSnapshot(order.lines);
+  const lineSnapshot = buildPurchaseOrderClosureLineSnapshot(initialOrder.lines);
   const outstandingQty = lineSnapshot.reduce(
     (total, line) => total + line.remainingQty,
     0,
   );
   assertPurchaseOrderCanRequestBalanceClosure({
-    status: order.status,
+    status: initialOrder.status,
     outstandingQty,
-    draftReceiptCount: order.goodsReceipts.filter(
+    draftReceiptCount: initialOrder.goodsReceipts.filter(
       (receipt) => receipt.status !== "POSTED",
     ).length,
-    pendingClosureCount: order.balanceClosures.length,
+    pendingClosureCount: initialOrder.balanceClosures.length,
   });
 
   await withApprovalProducerTransaction({
@@ -2386,7 +2386,7 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
   }, async (tx) => {
     // Serialize competing closure requests on the authoritative PO row before
     // evaluating pending closures and creating the approval child record.
-    await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${order.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} AND "deliveryLocationId" = ${session.context.locationId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${initialOrder.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} AND "deliveryLocationId" = ${session.context.locationId} FOR UPDATE`;
 
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
@@ -2409,12 +2409,14 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
 
     const currentOrder = await tx.purchaseOrder.findFirst({
       where: {
-        id: order.id,
+        id: initialOrder.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         deliveryLocationId: session.context.locationId,
       },
       include: {
+        purchaseRequest: true,
+        quotationRecommendation: true,
         lines: {
           orderBy: { lineNumber: "asc" },
           include: { uom: true },
@@ -2625,7 +2627,7 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
   );
   const proposedLines = parsePurchaseOrderAmendmentLines(values.proposedLines);
 
-  const order = await prisma.purchaseOrder.findFirst({
+  const initialOrder = await prisma.purchaseOrder.findFirst({
     where: {
       id: values.id,
       tenantId: session.context.tenantId,
@@ -2654,21 +2656,21 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
     },
   });
 
-  if (!order) {
+  if (!initialOrder) {
     throw new Error("PURCHASE_ORDER_NOT_FOUND");
   }
-  assertAuthorizedLocation(session, order.deliveryLocationId);
+  assertAuthorizedLocation(session, initialOrder.deliveryLocationId);
 
-  const receivedQty = order.lines.reduce(
+  const receivedQty = initialOrder.lines.reduce(
     (total, line) => total + Number(line.receivedQty),
     0,
   );
   assertPurchaseOrderCanRequestAmendment({
-    status: order.status,
+    status: initialOrder.status,
     receivedQty,
-    receiptCount: order.goodsReceipts.length,
-    pendingClosureCount: order.balanceClosures.length,
-    pendingAmendmentCount: order.amendments.length,
+    receiptCount: initialOrder.goodsReceipts.length,
+    pendingClosureCount: initialOrder.balanceClosures.length,
+    pendingAmendmentCount: initialOrder.amendments.length,
   });
 
   await withApprovalProducerTransaction({
@@ -2676,6 +2678,15 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
     companyId: session.context.companyId,
     documentType: "PurchaseOrderAmendment",
   }, async (tx) => {
+    await tx.$queryRaw`
+      SELECT id
+        FROM "PurchaseOrder"
+      WHERE id = ${initialOrder.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "deliveryLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE
+    `;
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -2695,12 +2706,14 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
 
     const currentOrder = await tx.purchaseOrder.findFirst({
       where: {
-        id: order.id,
+        id: initialOrder.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         deliveryLocationId: session.context.locationId,
       },
       include: {
+        purchaseRequest: true,
+        quotationRecommendation: true,
         lines: {
           orderBy: { lineNumber: "asc" },
           include: { uom: true },
@@ -2767,6 +2780,36 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
     }));
     const firstRoutedStep = routedSteps[0];
     if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+
+    const order = currentOrder;
+    const amendment = await tx.purchaseOrderAmendment.create({
+      data: {
+        id: amendmentId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: order.id,
+        requestedByUserId: session.user.id,
+        reason: values.reason,
+        supplierNoticeReference,
+        supplierNoticeUnavailableReason,
+        beforeSnapshot,
+        proposedSnapshot,
+      },
+    });
+
+    const updatedOrder = await tx.purchaseOrder.updateMany({
+      where: {
+        id: initialOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: order.deliveryLocationId,
+        status: "ISSUED",
+      },
+      data: { status: "AMENDMENT_PENDING" },
+    });
+    if (updatedOrder.count !== 1) {
+      throw new Error("PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT");
+    }
 
     const approvalInstance = await tx.approvalInstance.create({
       data: {
@@ -2835,37 +2878,6 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
         ? { actorUserId: firstRoutedStep.userId }
         : {})
     });
-
-    const amendment = await tx.purchaseOrderAmendment.create({
-      data: {
-        id: amendmentId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        purchaseOrderId: order.id,
-        requestedByUserId: session.user.id,
-        reason: values.reason,
-        supplierNoticeReference,
-        supplierNoticeUnavailableReason,
-        beforeSnapshot,
-        proposedSnapshot,
-      },
-    });
-
-    const updatedOrder = await tx.purchaseOrder.updateMany({
-      where: {
-        id: order.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        deliveryLocationId: session.context.locationId,
-        status: "ISSUED",
-      },
-      data: {
-        status: "AMENDMENT_PENDING",
-      },
-    });
-    if (updatedOrder.count !== 1) {
-      throw new Error("PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT");
-    }
 
     await tx.auditEvent.create({
       data: {
