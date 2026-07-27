@@ -2270,7 +2270,8 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "POSTED",
-        reversedAt: null
+        reversedAt: null,
+        updatedAt: authoritativeReceipt.updatedAt
       },
       data: { status: "REVERSING" }
     });
