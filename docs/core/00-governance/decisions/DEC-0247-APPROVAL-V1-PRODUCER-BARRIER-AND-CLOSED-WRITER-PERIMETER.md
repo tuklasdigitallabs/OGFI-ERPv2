@@ -777,6 +777,13 @@ evidence, exact replay/rollback proofs, and the complete all-18 plus
 decision/terminal/cancellation/tooling perimeter are satisfied. C4 changes no
 user-visible behavior; the routing flag remains false.
 
+External-gate recheck on July 27, 2026 found the repository clean at `e24ea51`,
+`DISPOSABLE_DATABASE_ADMIN_URL` unavailable, and DEC-0246 item 19 still open
+pending human authority/dual-control confirmation. C4 therefore remains
+dormant and receives no production-readiness credit; the shortest safe UAT route
+is to close the remaining writer perimeter and then execute the disposable-
+PostgreSQL, ACL, rollback, and browser/UAT evidence gates as one controlled pass.
+
 The producer-fact updates required a successor contract binding: C1 version
 `dec-0247-c1.private-binary-observer-sql.2` with digest
 `f460803ba04366045f9633f3baf208e6e3bbbca19b1b45efce84ba274b4c7cbe`, C2
