@@ -979,6 +979,10 @@ Security and Architecture accepted only the bounded manual Stock Adjustment reco
 
 Architecture and Security accepted only the child-terminal return/reject writer. It locks the graph, closure child, and scoped partially received parent, then CASes the child without mutating PO status/lines, receipts, commitments, inventory, AP, payment, or supplier communication. Final balance-closure approval remains outside this decision pending partial budget-commitment semantics. PostgreSQL contention, rollback, ACL, replay, and no-parent-mutation evidence remain open.
 
+### Purchase Order amendment terminal correction (July 27, 2026)
+
+Architecture and Security accepted only the amendment child-terminal return/reject writer. It locks the graph, amendment child, lines/receipts, and parent PO, then restores `AMENDMENT_PENDING → ISSUED` with child/parent CAS. Proposal values, commercial fields, commitments, receipts, inventory, AP, payment, and supplier communication remain untouched. PostgreSQL contention, rollback, ACL, replay, and zero-commercial-mutation evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

@@ -10864,8 +10864,8 @@ async function closePurchaseOrderBalanceClosureWithDecision(
     if (!lockedClosure || lockedClosure.status !== "PENDING_APPROVAL" || lockedClosure.purchaseOrderId !== order.id) {
       throw new Error("PURCHASE_ORDER_CLOSURE_NOT_PENDING_APPROVAL");
     }
-    const lockedOrderRows = await tx.$queryRaw<Array<{ id: string; deliveryLocationId: string; status: string }>>`
-      SELECT po.id, po."deliveryLocationId", po.status
+    const lockedOrderRows = await tx.$queryRaw<Array<{ id: string; deliveryLocationId: string; status: string; updatedAt: Date }>>`
+      SELECT po.id, po."deliveryLocationId", po.status, po."updatedAt"
         FROM "PurchaseOrder" po
        WHERE po.id = ${lockedClosure.purchaseOrderId}::uuid
          AND po."tenantId" = ${session.context.tenantId}::uuid
@@ -10950,6 +10950,100 @@ async function closePurchaseOrderAmendmentWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseOrderAmendment"
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status,
+             ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "PurchaseOrderAmendment" || lockedApproval.documentId !== amendment.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id
+        FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
+    const lockedAmendmentRows = await tx.$queryRaw<Array<{
+      id: string;
+      purchaseOrderId: string;
+      status: string;
+      updatedAt: Date;
+    }>>`
+      SELECT amendment.id, amendment."purchaseOrderId", amendment.status,
+             amendment."updatedAt"
+        FROM "PurchaseOrderAmendment" amendment
+       WHERE amendment.id = ${amendment.id}::uuid
+         AND amendment."tenantId" = ${session.context.tenantId}::uuid
+         AND amendment."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF amendment
+    `;
+    const lockedAmendment = lockedAmendmentRows[0];
+    if (!lockedAmendment || lockedAmendment.status !== "PENDING_APPROVAL" || lockedAmendment.purchaseOrderId !== order.id) {
+      throw new Error("PURCHASE_ORDER_AMENDMENT_NOT_PENDING_APPROVAL");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT line.id
+        FROM "PurchaseOrderLine" line
+       WHERE line."purchaseOrderId" = ${lockedAmendment.purchaseOrderId}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY line."lineNumber" ASC, line.id ASC
+       FOR UPDATE OF line
+    `;
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT receipt.id
+        FROM "GoodsReceipt" receipt
+       WHERE receipt."purchaseOrderId" = ${lockedAmendment.purchaseOrderId}::uuid
+         AND receipt."tenantId" = ${session.context.tenantId}::uuid
+         AND receipt."companyId" = ${session.context.companyId}::uuid
+       ORDER BY receipt.id ASC
+       FOR UPDATE OF receipt
+    `;
+    const lockedOrderRows = await tx.$queryRaw<Array<{ id: string; deliveryLocationId: string; status: string; updatedAt: Date }>>`
+      SELECT po.id, po."deliveryLocationId", po.status, po."updatedAt"
+        FROM "PurchaseOrder" po
+       WHERE po.id = ${lockedAmendment.purchaseOrderId}::uuid
+         AND po."tenantId" = ${session.context.tenantId}::uuid
+         AND po."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF po
+    `;
+    const lockedOrder = lockedOrderRows[0];
+    if (!lockedOrder || lockedOrder.deliveryLocationId !== order.deliveryLocationId || lockedOrder.status !== "AMENDMENT_PENDING") {
+      throw new Error("PURCHASE_ORDER_NOT_PENDING_AMENDMENT");
+    }
+    const currentOrder = await tx.purchaseOrder.findFirst({
+      where: {
+        id: lockedOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: lockedOrder.deliveryLocationId
+      },
+      include: {
+        lines: { select: { receivedQty: true, cancelledQty: true } },
+        goodsReceipts: { select: { id: true } }
+      }
+    });
+    if (!currentOrder || currentOrder.goodsReceipts.length > 0 || currentOrder.lines.some((line) => Number(line.receivedQty) !== 0 || Number(line.cancelledQty) !== 0)) {
+      throw new Error("PURCHASE_ORDER_AMENDMENT_RECEIVING_CONFLICT");
+    }
     const decision = await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -10975,7 +11069,9 @@ async function closePurchaseOrderAmendmentWithDecision(
         id: amendment.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        purchaseOrderId: lockedAmendment.purchaseOrderId,
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedAmendment.updatedAt
       },
       data: {
         status,
@@ -10992,7 +11088,8 @@ async function closePurchaseOrderAmendmentWithDecision(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         deliveryLocationId: order.deliveryLocationId,
-        status: "AMENDMENT_PENDING"
+        status: "AMENDMENT_PENDING",
+        updatedAt: lockedOrder.updatedAt
       },
       data: {
         status: "ISSUED"

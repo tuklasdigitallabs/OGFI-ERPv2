@@ -640,6 +640,22 @@ describe("multi-step approval advancement", () => {
     expect(source).not.toContain('status: "CLOSED"');
   });
 
+  test("PO amendment terminal decisions lock graph, child, lines, receipts, and parent CAS", () => {
+    const source = extractFunctionSource(
+      serviceSource,
+      "closePurchaseOrderAmendmentWithDecision"
+    );
+    expect(source).toContain('documentType: "PurchaseOrderAmendment"');
+    expect(source).toContain('FOR UPDATE OF ai');
+    expect(source).toContain('FOR UPDATE OF amendment');
+    expect(source).toContain('FOR UPDATE OF line');
+    expect(source).toContain('FOR UPDATE OF receipt');
+    expect(source).toContain('FOR UPDATE OF po');
+    expect(source).toContain("updatedAt: lockedAmendment.updatedAt");
+    expect(source).toContain("updatedAt: lockedOrder.updatedAt");
+    expect(source).not.toContain("purchaseOrderLine.update");
+  });
+
   test.each([
     [
       "approvePurchaseRequest",
