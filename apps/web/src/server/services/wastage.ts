@@ -766,6 +766,50 @@ async function lockPendingWastageApproval(
   return approvals[0] ?? null;
 }
 
+async function lockWastageSourceForCancellation(
+  tx: TransactionClient,
+  session: SessionContext,
+  reportId: string
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    inventoryLocationId: string;
+    status: string;
+    updatedAt: Date;
+  }>>`
+    SELECT report.id, report."inventoryLocationId", report.status, report."updatedAt"
+      FROM "WastageReport" report
+     WHERE report.id = ${reportId}::uuid
+       AND report."tenantId" = ${session.context.tenantId}::uuid
+       AND report."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF report
+  `;
+  const source = rows[0];
+  if (!source) throw new Error("WASTAGE_REPORT_NOT_FOUND");
+  const inventoryRows = await tx.$queryRaw<Array<{ id: string; locationId: string }>>`
+    SELECT inventoryLocation.id, inventoryLocation."locationId"
+      FROM "InventoryLocation" inventoryLocation
+     WHERE inventoryLocation.id = ${source.inventoryLocationId}::uuid
+       AND inventoryLocation."tenantId" = ${session.context.tenantId}::uuid
+       AND inventoryLocation."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE OF inventoryLocation
+  `;
+  const inventoryLocation = inventoryRows[0];
+  if (!inventoryLocation) throw new Error("WASTAGE_REPORT_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${inventoryLocation.locationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WASTAGE_REPORT_NOT_FOUND");
+  await assertAuthorizedLocation(session, inventoryLocation.locationId);
+  return source;
+}
+
 function requiredFormValues(formData: FormData, name: string) {
   return formData
     .getAll(name)
@@ -1653,7 +1697,18 @@ export async function cancelWastageReport(formData: FormData) {
   }
   assertWastageCanCancel(report.status);
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "WastageReport"
+    },
+    async (tx) => {
+    const lockedSource = await lockWastageSourceForCancellation(
+      tx,
+      session,
+      report.id
+    );
     const principal = await lockWastageCancellationPrincipal(tx, session);
     const approval = await lockPendingWastageApproval(
       tx,
@@ -1662,7 +1717,7 @@ export async function cancelWastageReport(formData: FormData) {
     );
     await assertFreshWastageCancellationAuthority(tx, session, principal);
 
-    if (report.status === "PENDING_APPROVAL" && !approval) {
+    if (lockedSource.status === "PENDING_APPROVAL" && !approval) {
       throw new Error("WASTAGE_NOT_CANCELLABLE");
     }
 
@@ -1697,7 +1752,9 @@ export async function cancelWastageReport(formData: FormData) {
         id: report.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: report.status,
+        status: lockedSource.status,
+        updatedAt: lockedSource.updatedAt,
+        inventoryLocationId: lockedSource.inventoryLocationId,
         inventoryLocation: {
           locationId: session.context.locationId
         }
@@ -1720,16 +1777,17 @@ export async function cancelWastageReport(formData: FormData) {
         eventType: "wastage_report.cancelled",
         entityType: "WastageReport",
         entityId: report.id,
-        beforeData: { status: report.status },
+        beforeData: { status: lockedSource.status },
         afterData: { status: "CANCELLED" },
         metadata: {
           approvalInstanceId: approval?.id ?? null,
           cancellationReason: values.cancellationReason,
-          nonPostingApproval: report.status === "PENDING_APPROVAL"
+          nonPostingApproval: lockedSource.status === "PENDING_APPROVAL"
         }
       }
     });
-  });
+    }
+  );
 }
 
 export async function postWastageReport(formData: FormData) {

@@ -557,6 +557,15 @@ describe("multi-step approval advancement", () => {
     expect(serviceSource).toContain('version: lockedSource.source.version');
   });
 
+  test("wastage terminal decisions lock source scope and CAS before graph closure", () => {
+    expect(serviceSource).toContain("lockWastageApprovalSource");
+    expect(serviceSource).toContain('documentType: "WastageReport"');
+    expect(serviceSource).toContain('FOR UPDATE OF report');
+    expect(serviceSource).toContain('FOR SHARE OF inventoryLocation');
+    expect(serviceSource).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(serviceSource).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
+  });
+
   test.each([
     [
       "approvePurchaseRequest",

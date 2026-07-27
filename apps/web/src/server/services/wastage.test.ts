@@ -136,6 +136,18 @@ describe("wastage foundation rules", () => {
     expect(source).toContain('source: "wastage-approval-submission"');
   });
 
+  test("wastage cancellation locks source before pending approval graph", () => {
+    const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
+    const start = source.indexOf("export async function cancelWastageReport");
+    const action = source.slice(start, source.indexOf("\nexport async function postWastageReport", start));
+    expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("lockWastageSourceForCancellation");
+    expect(action.indexOf("lockWastageSourceForCancellation")).toBeLessThan(
+      action.indexOf("lockPendingWastageApproval")
+    );
+    expect(action).toContain("updatedAt: lockedSource.updatedAt");
+  });
+
   test("service read gate allows every wastage action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
 

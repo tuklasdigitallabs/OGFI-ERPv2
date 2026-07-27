@@ -3046,6 +3046,59 @@ async function findActionableWastageApproval(
   return { approval, step, report };
 }
 
+async function lockWastageApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { id: string; expectedUpdatedAt: Date }
+) {
+  const reportRows = await tx.$queryRaw<Array<{
+    id: string;
+    inventoryLocationId: string;
+    reportedByUserId: string;
+    status: string;
+    updatedAt: Date;
+  }>>`
+    SELECT report.id,
+           report."inventoryLocationId",
+           report."reportedByUserId",
+           report.status,
+           report."updatedAt"
+      FROM "WastageReport" report
+     WHERE report.id = ${input.id}::uuid
+       AND report."tenantId" = ${session.context.tenantId}::uuid
+       AND report."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF report
+  `;
+  const source = reportRows[0];
+  if (!source || source.status !== "PENDING_APPROVAL" || source.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    throw new Error("WASTAGE_NOT_PENDING_APPROVAL");
+  }
+  const inventoryRows = await tx.$queryRaw<Array<{ id: string; locationId: string }>>`
+    SELECT inventoryLocation.id, inventoryLocation."locationId"
+      FROM "InventoryLocation" inventoryLocation
+     WHERE inventoryLocation.id = ${source.inventoryLocationId}::uuid
+       AND inventoryLocation."tenantId" = ${session.context.tenantId}::uuid
+       AND inventoryLocation."companyId" = ${session.context.companyId}::uuid
+       AND inventoryLocation.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF inventoryLocation
+  `;
+  const inventoryLocation = inventoryRows[0];
+  if (!inventoryLocation) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${inventoryLocation.locationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  await assertApprovalScope(session, inventoryLocation.locationId);
+  assertNotSelfApproval(source.reportedByUserId, session.user.id);
+  return { source, inventoryLocation, locationId: inventoryLocation.locationId };
+}
+
 async function findActionableStockAdjustmentApproval(
   session: SessionContext,
   approvalInstanceId: string
@@ -10585,6 +10638,39 @@ async function closeWastageReportWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "WastageReport",
+    });
+    const lockedSource = await lockWastageApprovalSource(tx, session, {
+      id: report.id,
+      expectedUpdatedAt: report.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "WastageReport" || lockedApproval.documentId !== report.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     const decision = await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -10610,7 +10696,9 @@ async function closeWastageReportWithDecision(
         id: report.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedSource.source.updatedAt,
+        inventoryLocationId: lockedSource.source.inventoryLocationId
       },
       data: {
         status,

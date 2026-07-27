@@ -906,6 +906,15 @@ No Purchase Order, supplier selection, receiving, inventory, payment, or journal
 mutation is introduced. Final recommendation approval, replay, PostgreSQL/ACL
 evidence, DEC-0246 authority, and activation remain open.
 
+The next bounded non-posting inventory decision increment hardens Wastage
+terminal return/reject and normalizes cancellation together. Both paths now use
+barrier → WastageReport → InventoryLocation/Location → approval graph order,
+with source `updatedAt`/scope CAS and terminal graph cleanup before audit and
+notification. Approval, return, reject, and cancel do not post or mutate
+inventory movements or balances; only the separate post action may do so.
+Wastage posting/reversal, replay, PostgreSQL/ACL evidence, DEC-0246 authority,
+and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
