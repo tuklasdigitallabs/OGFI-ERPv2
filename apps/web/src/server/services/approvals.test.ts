@@ -566,6 +566,15 @@ describe("multi-step approval advancement", () => {
     expect(serviceSource).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
   });
 
+  test("wastage approval locks source scope and final source CAS", () => {
+    const source = extractFunctionSource(serviceSource, "approveWastageReport");
+    expect(source).toContain("lockWastageApprovalSource");
+    expect(source).toContain('documentType: "WastageReport"');
+    expect(source).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(source).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
+    expect(source).toContain("nonPostingApproval");
+  });
+
   test("quotation recommendation approval locks lineage and final source CAS", () => {
     const source = extractFunctionSource(serviceSource, "approveQuotationRecommendation");
     expect(source).toContain("lockQuotationRecommendationApprovalSource");
