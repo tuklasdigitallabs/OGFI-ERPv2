@@ -346,6 +346,16 @@ describeGuardContract("DEC-0049 append-only PostgreSQL guards", () => {
         await transaction.$executeRawUnsafe(
           'ALTER TABLE public."AuthorizationDenialBucket" DISABLE TRIGGER "AuthorizationDenialBucket_no_remove_trg"',
         );
+        // AuditEvent is also referenced by the durable approval-backfill run
+        // graph. Its empty append-only children participate in TRUNCATE CASCADE,
+        // so disable their guards only inside this deliberately rolled-back
+        // owner probe as well.
+        await transaction.$executeRawUnsafe(
+          'ALTER TABLE public."ApprovalRoutingBackfillBatch" DISABLE TRIGGER "ApprovalRoutingBackfillBatch_truncate_guard_trg"',
+        );
+        await transaction.$executeRawUnsafe(
+          'ALTER TABLE public."ApprovalRoutingBackfillBlockerObservation" DISABLE TRIGGER "ApprovalRoutingBackfillBlocker_truncate_guard_trg"',
+        );
         await transaction.$executeRawUnsafe(
           'TRUNCATE TABLE public."AuditEvent" CASCADE',
         );

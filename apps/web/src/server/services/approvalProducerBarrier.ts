@@ -12,7 +12,7 @@ export async function withApprovalProducerTransaction<T>(
   action: (tx: TransactionClient) => Promise<T>,
 ) {
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`
+    await tx.$executeRaw`
       SELECT public.acquire_approval_routing_producer_barrier_shared(
         ${input.tenantId}::uuid,
         ${input.companyId}::uuid,

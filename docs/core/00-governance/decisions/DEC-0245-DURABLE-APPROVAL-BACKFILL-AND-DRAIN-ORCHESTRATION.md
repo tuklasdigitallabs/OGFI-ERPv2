@@ -502,11 +502,18 @@ The following remain open and cannot be inferred from local source completion:
   worker test passes; and role-tool coverage passes 8/8. The full root suite passes
   1,484 web tests with 307 skipped and one todo across 140 passing and 11 skipped
   files. Root lint and typecheck, the isolated production build, secret review,
-  and release-tool self-tests pass. Nine orchestration PostgreSQL specifications
-  are authored but skipped. The disposable approval-routing runner was attempted
-  and failed closed with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`, so no
-  PostgreSQL execution credit is claimed. Production execution and activation
-  remain NO-GO.
+  and release-tool self-tests pass. Subsequent C1 PostgreSQL 17 rehearsal found
+  and corrected a parser defect in this never-production-approved migration by
+  parenthesizing the `CASE` expression used with `IS DISTINCT FROM`. A fresh
+  disposable database now applies all 138 migrations; static orchestration
+  coverage passes 8/8, role tools 9/9, and append-only guards 17/17. Exact
+  migration SHA-256 is
+  `67bea42b59cc058ed452efbcbda6fc4e5b37419154f196f0a7a550ce74c79167`.
+  This is migration-rehearsal credit only. The broad orchestration suite remains
+  NO-GO because the separately governed `DEC-0246` maintenance authority is
+  intentionally absent; populated predecessor, authority, lease/fence, atomic
+  page, true dry-run, STOP/recovery, redeploy, drift, hosted, and restore evidence
+  remain mandatory. Production execution and activation remain NO-GO.
 
 ## Supersession
 

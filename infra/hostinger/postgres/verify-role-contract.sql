@@ -19,6 +19,7 @@ DECLARE
   migrator_oid oid;
   runtime_oid oid;
   public_schema_oid oid;
+  approval_shadow_schema_oid oid;
 BEGIN
   IF current_database() <> database_name THEN RAISE EXCEPTION 'Unexpected database identity'; END IF;
   IF verification_mode = 'runtime' THEN
@@ -59,9 +60,15 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Database ownership is unsafe'; END IF;
   PERFORM 1 FROM pg_namespace WHERE nspname = 'public' AND nspowner = owner_oid;
   IF NOT FOUND THEN RAISE EXCEPTION 'public schema ownership is unsafe'; END IF;
+  SELECT oid INTO approval_shadow_schema_oid
+  FROM pg_namespace
+  WHERE nspname = 'approval_shadow' AND nspowner = owner_oid;
+  IF approval_shadow_schema_oid IS NULL THEN
+    RAISE EXCEPTION 'Mandatory approval_shadow schema is absent or not owner-owned';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM pg_namespace n
-    WHERE n.nspname NOT IN ('public', 'pg_catalog', 'information_schema')
+    WHERE n.nspname NOT IN ('public', 'approval_shadow', 'pg_catalog', 'information_schema')
       AND n.nspname NOT LIKE 'pg_toast%'
       AND n.nspname NOT LIKE 'pg_temp_%'
       AND NOT (
@@ -70,6 +77,168 @@ BEGIN
       )
   ) THEN
     RAISE EXCEPTION 'Unexpected application schema exists';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_class WHERE relnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_type WHERE typnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_operator WHERE oprnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_opclass WHERE opcnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_opfamily WHERE opfnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_collation WHERE collnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_conversion WHERE connamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_statistic_ext WHERE stxnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_ts_config WHERE cfgnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_ts_dict WHERE dictnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_ts_parser WHERE prsnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_ts_template WHERE tmplnamespace = approval_shadow_schema_oid
+    UNION ALL
+    SELECT 1 FROM pg_extension WHERE extnamespace = approval_shadow_schema_oid
+  ) THEN
+    RAISE EXCEPTION 'approval_shadow contains a non-routine object';
+  END IF;
+
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = approval_shadow_schema_oid) <> 18
+     OR EXISTS (
+       SELECT expected_name
+       FROM unnest(ARRAY[
+         'observe_purchase_request_v1',
+         'observe_quotation_recommendation_v1',
+         'observe_purchase_order_v1',
+         'observe_purchase_order_balance_closure_v1',
+         'observe_purchase_order_amendment_v1',
+         'observe_wastage_report_v1',
+         'observe_stock_adjustment_v1',
+         'observe_finance_close_run_v1',
+         'observe_budget_revision_v1',
+         'observe_expense_request_v1',
+         'observe_cash_advance_request_v1',
+         'observe_petty_cash_request_v1',
+         'observe_payment_request_v1',
+         'observe_payment_release_v1',
+         'observe_employee_leave_request_v1',
+         'observe_employee_overtime_record_v1',
+         'observe_workforce_schedule_v1',
+         'observe_attendance_import_batch_v1'
+       ]::text[]) AS expected(expected_name)
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM pg_proc p
+         WHERE p.pronamespace = approval_shadow_schema_oid
+           AND p.proname = expected.expected_name
+       )
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM pg_proc p
+       WHERE p.pronamespace = approval_shadow_schema_oid
+         AND p.proname <> ALL (ARRAY[
+           'observe_purchase_request_v1',
+           'observe_quotation_recommendation_v1',
+           'observe_purchase_order_v1',
+           'observe_purchase_order_balance_closure_v1',
+           'observe_purchase_order_amendment_v1',
+           'observe_wastage_report_v1',
+           'observe_stock_adjustment_v1',
+           'observe_finance_close_run_v1',
+           'observe_budget_revision_v1',
+           'observe_expense_request_v1',
+           'observe_cash_advance_request_v1',
+           'observe_petty_cash_request_v1',
+           'observe_payment_request_v1',
+           'observe_payment_release_v1',
+           'observe_employee_leave_request_v1',
+           'observe_employee_overtime_record_v1',
+           'observe_workforce_schedule_v1',
+           'observe_attendance_import_batch_v1'
+         ]::text[])
+     ) THEN
+    RAISE EXCEPTION 'approval_shadow routine set is not the exact reviewed 18-family contract';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    WHERE p.pronamespace = approval_shadow_schema_oid
+      AND (
+        p.prokind <> 'f'
+        OR p.pronargs <> 3
+        OR p.proargtypes[0] <> 'uuid'::regtype
+        OR p.proargtypes[1] <> 'uuid'::regtype
+        OR p.proargtypes[2] <> 'uuid'::regtype
+        OR p.pronargdefaults <> 0
+        OR p.proargnames IS DISTINCT FROM ARRAY[
+          'p_tenant_id',
+          'p_company_id',
+          'p_approval_instance_id'
+        ]::text[]
+        OR p.proallargtypes IS NOT NULL
+        OR p.proargmodes IS NOT NULL
+        OR p.proretset
+        OR p.prorettype <> 'text'::regtype
+        OR p.proowner <> owner_oid
+        OR p.prosecdef
+        OR p.provolatile <> 's'
+        OR p.proleakproof
+        OR p.proisstrict
+        OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::text[]
+      )
+  ) THEN
+    RAISE EXCEPTION 'approval_shadow observer routine catalog contract is unsafe or incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_namespace n
+    CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) acl
+    WHERE n.oid = approval_shadow_schema_oid
+      AND acl.grantee <> owner_oid
+  )
+     OR EXISTS (
+       SELECT 1
+       FROM pg_proc p
+       CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+       WHERE p.pronamespace = approval_shadow_schema_oid
+         AND acl.grantee <> owner_oid
+     )
+     OR has_schema_privilege(runtime_role, 'approval_shadow', 'USAGE')
+     OR has_schema_privilege(runtime_role, 'approval_shadow', 'CREATE')
+     OR EXISTS (
+       SELECT 1 FROM pg_proc p
+       WHERE p.pronamespace = approval_shadow_schema_oid
+         AND has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+     ) THEN
+    RAISE EXCEPTION 'approval_shadow exposes an effective non-owner privilege';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    WHERE d.defaclrole = owner_oid
+      AND d.defaclnamespace = 0
+      AND d.defaclobjtype = 'f'
+  )
+     OR EXISTS (
+       SELECT 1
+       FROM pg_default_acl d
+       CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+       WHERE d.defaclrole = owner_oid
+         AND d.defaclobjtype = 'f'
+         AND d.defaclnamespace IN (0, approval_shadow_schema_oid)
+         AND acl.grantee <> owner_oid
+     ) THEN
+    RAISE EXCEPTION 'approval_shadow function defaults expose a non-owner privilege';
   END IF;
 
   IF EXISTS (
@@ -131,7 +300,7 @@ BEGIN
         'ea12e58f5dcf9c5025dccf29340ad3fb', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.validate_approval_routing_backfill_run_transition()'::regprocedure,
-        'e3ac21ba2323d21d3734f0b2c11dc678', 'plpgsql', false,
+        '145e152a5e96383bf372239f08155670', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.validate_approval_routing_backfill_batch_commit()'::regprocedure,
         '39bc2b5b61729ac364b5561484876d32', 'plpgsql', false,
@@ -1078,6 +1247,11 @@ BEGIN
         n.nspname = 'public'
         AND p.proname = 'controlled_evidence_canonical_json'
         AND pg_get_function_identity_arguments(p.oid) = 'payload jsonb'
+      )
+      AND NOT (
+        p.oid = to_regprocedure(
+          'public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'
+        )
       )
   ) THEN
     RAISE EXCEPTION 'Runtime or PUBLIC can execute a non-extension public routine';

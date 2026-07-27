@@ -433,11 +433,11 @@ BEGIN
   IF NEW."stoppedAt" IS NOT NULL
     OR NEW."stopAuditEventId" IS NOT NULL
     OR NEW."completedAt" IS NOT NULL
-    OR NEW."status" IS DISTINCT FROM CASE committed_batch."outcome"
+    OR NEW."status" IS DISTINCT FROM (CASE committed_batch."outcome"
       WHEN 'CONTINUE' THEN 'ACTIVE'
       WHEN 'BLOCKED' THEN 'BLOCKED'
       WHEN 'BARRIER_REQUIRED' THEN 'BARRIER_REQUIRED'
-    END
+    END)
   THEN
     RAISE EXCEPTION 'APPROVAL_ROUTING_BACKFILL_BATCH_STATUS_INVALID';
   END IF;

@@ -6,6 +6,7 @@ import {
 } from "@ogfi/database";
 import { beforeAll, describe, expect, test } from "vitest";
 import { withApprovalProducerTransaction } from "../src/server/services/approvalProducerBarrier";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 
@@ -22,7 +23,7 @@ async function enterProducerBarrier(
   tx: TransactionClient,
   input: { tenantId: string; companyId: string; documentType: string },
 ) {
-  await tx.$queryRaw`
+  await tx.$executeRaw`
     SELECT public.acquire_approval_routing_producer_barrier_shared(
       ${input.tenantId}::uuid,
       ${input.companyId}::uuid,
@@ -35,14 +36,14 @@ async function currentAdvisoryLocks(tx: TransactionClient) {
   return tx.$queryRaw<Array<{ mode: string; lockKey: string }>>`
     SELECT mode,
            CASE
-             WHEN classid::numeric * 4294967296::numeric + objid::numeric
+             WHEN classid::bigint::numeric * 4294967296::numeric + objid::bigint::numeric
                     >= 9223372036854775808::numeric
                THEN (
-                 classid::numeric * 4294967296::numeric + objid::numeric
+                 classid::bigint::numeric * 4294967296::numeric + objid::bigint::numeric
                  - 18446744073709551616::numeric
                )::bigint::text
              ELSE (
-               classid::numeric * 4294967296::numeric + objid::numeric
+               classid::bigint::numeric * 4294967296::numeric + objid::bigint::numeric
              )::bigint::text
            END AS "lockKey"
       FROM pg_catalog.pg_locks
@@ -88,7 +89,7 @@ describe.skipIf(!runPg).sequential(
           },
         ],
       });
-      await prisma.approvalRule.create({
+      await createSealedApprovalRuleFixture(prisma, {
         data: {
           id: approvalRuleId,
           tenantId,
@@ -166,6 +167,24 @@ describe.skipIf(!runPg).sequential(
         ),
       ).rejects.toThrow(/APPROVAL_ROUTING_PRODUCER_FAMILY_UNSUPPORTED/);
       expect(bodyCalls).toBe(0);
+
+      await expect(
+        withApprovalProducerTransaction(
+          {
+            tenantId: fixture.tenantId,
+            companyId: fixture.companyId,
+            documentType: "PurchaseRequest",
+          },
+          async (tx) => {
+            bodyCalls += 1;
+            expect(await currentAdvisoryLocks(tx)).toEqual([
+              expect.objectContaining({ mode: "ShareLock" }),
+            ]);
+            return "entered";
+          },
+        ),
+      ).resolves.toBe("entered");
+      expect(bodyCalls).toBe(1);
     });
 
     test("ENABLE ALWAYS graph triggers acquire the same shared transaction lock", async () => {
@@ -226,7 +245,7 @@ describe.skipIf(!runPg).sequential(
       });
 
       const holding = holder.$transaction(async (tx) => {
-        await tx.$queryRawUnsafe(
+        await tx.$executeRawUnsafe(
           "SELECT pg_catalog.pg_advisory_xact_lock($1::bigint)",
           lockKey,
         );

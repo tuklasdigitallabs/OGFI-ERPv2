@@ -1,5 +1,12 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-27 — Private Approval-Routing Shadow Observer Rehearsal
+
+- Added 18 private, ungranted, fixed-family structural shadow observers that return only `SHADOW_MATCH` or `SHADOW_NO_MATCH`; they grant no routing, writer, readiness, certification, or activation authority.
+- Fresh PostgreSQL 17 rehearsal applied all 138 migrations and proved all-18 positive/negative scope-family behavior, runtime denial, read-only execution, rollback lineage, append-only guards, and controlled disposable query plans.
+- Corrected two never-production-approved predecessor migration defects exposed by rehearsal: PostgreSQL 17 `CASE` parsing in the approval backfill orchestration guard and a Stock Adjustment header trigger reference to a line-only field. Controlled non-disposable migration histories and checksums must be audited before deployment.
+- The complete Option C writer perimeter, `DEC-0246` maintenance authority, active producer barrier, certification, and normalized-routing activation remain NO-GO. The private checkpoint changes no user-visible workflow, so no knowledge-base, release-note, training, or glossary content changed.
+
 ## 2026-07-24 — Isolated Production Build Verification
 
 - The current candidate completes an isolated Next.js production build through compilation, type validation, static generation, route optimization, and build-trace collection; generated route metadata was restored after verification.

@@ -404,14 +404,14 @@ knowledge-base, release-note, training, or glossary change because C0 is
 non-executable and changes no user-visible behavior. `DEC-0246` human authority
 remains locked and unchanged.
 
-### Current Option C C1-D observer-design-only checkpoint
+### Current Option C C1 private binary-observer SQL checkpoint
 
-The next approved increment is limited to C1-D design evidence. It extends each
-of the exact 18 fixed-family discovery contracts with one approval-instance-bound
-binary shadow-observer design. Every proposed observer has the exact signature
+The implemented C1 private observer increment extends each of the exact 18
+fixed-family discovery contracts with one approval-instance-bound binary shadow
+observer. Every observer has the exact signature
 `(p_tenant_id uuid, p_company_id uuid, p_approval_instance_id uuid)`. Tenant,
 company, and Approval Instance identifiers are bindings, not authority. The
-family is fixed by the observer design, while document identity, source relation,
+family is fixed by the routine, while document identity, source relation,
 and parent lineage are derived from the bound Approval Instance and authoritative
 source facts. No caller-supplied source identifier, source version, proposed
 descriptor, policy input, or candidate payload is accepted.
@@ -422,31 +422,54 @@ missing-source, ambiguous-source, lineage-mismatch, and all other mismatch cases
 collapse to the same negative result. Purchase Order Balance Closure, Purchase
 Order Amendment, and Payment Release use `POST_CHILD_ONLY` observation because
 their child identity must already exist; the other 15 families use
-`POST_SOURCE_ONLY`. The design neither validates routing in TypeScript nor creates
-a second policy engine. Any future implementation remains a private, ungranted,
-security-invoker, stable, non-leakproof, read-only SQL observer with no dynamic
-SQL or lock acquisition, subject to separate database review and execution proof.
+`POST_SOURCE_ONLY`. These routines neither validate routing policy nor create a
+second policy engine. They are private, ungranted, `SECURITY INVOKER`, `STABLE`,
+non-leakproof, read-only SQL observers with `search_path=pg_catalog`,
+public-qualified relations, no dynamic SQL, and no explicit advisory, row, or
+table-lock statement; ordinary PostgreSQL MVCC read locks still apply.
 
-Contract version `dec-0247-c1.dormant-binary-observer-design.1` is bound to
+Contract version `dec-0247-c1.private-binary-observer-sql.1` is bound to
 SHA-256 digest
-`f692d28f5b5244dfaccffb1085ce2584e5588e0f56c79ad730d3d5a492a7f1cd`.
-C1-D adds no SQL routine, migration, role, grant, runtime import, graph or
-provenance write, readiness fact, certification result, or activation behavior.
-Focused contract/drift coverage passes 10/10, focused approval-routing coverage
-passes 84/84, and root typecheck and lint pass. The full root suite passes 1,496
-web tests with 313 skipped and one todo across 142 passing and 12 skipped files,
-48 database-package tests with 18 skipped, and one worker test; the UI package has
-no test files and exits successfully. Independent final Database,
-Security, and QA review returned **GO only for the design-only checkpoint,
-C0/H0/M0/L0**. Database review corrected its initial Low label to L0 for this
-bounded diff; executable SQL and its evidence remain future blocking gates, not
-implemented C1-D behavior. Requested Code Spark and exact GPT-5.4 reviewers were
-unavailable, so the closest permitted GPT-5.6 specialist fallbacks were used
-without relaxing any gate.
+`982d32877fd2e71e87394c73b81b2955c6422f586baa14b7d40dbc939b385a0b`.
+Migration `20260727160000_approval_routing_shadow_observers`, SHA-256
+`bdc1a93e07df6989043c528ac25c4dab532517516e8f0bc9483128570fce9632`,
+creates the private schema and exactly 18 routines but no grant, runtime import,
+graph or provenance write, readiness fact, certification result, or activation
+behavior.
 
-C1 is not complete. No observer SQL may be authored until disposable PostgreSQL
-is available for exact wrong-scope/wrong-family indistinguishability, privilege,
-query-plan, and controlled-volume execution evidence. The complete typed writer
+A fresh disposable PostgreSQL 17 database applied all 138 migrations. The
+shadow-only all-18 seed plus four producer-barrier cases pass 5/5 with nine
+unselected backfill tests skipped; every observer passes a
+positive call and null, random-ID, wrong-tenant, wrong-company, and wrong-family
+negative calls. The ordinary runtime receives SQLSTATE `42501` for all 18.
+Read-only execution and a rolled-back Finance Close lineage-corruption probe pass.
+All 18 single-call `EXPLAIN ANALYZE/BUFFERS` probes complete, followed by
+separate 25-call correlated checks per routine; the slowest single-call
+disposable fixture is 35.690 ms. This is controlled
+non-production volume, not a production performance claim. Static observer,
+orchestration, and stock-lineage coverage passes 13/13; focused manifest/barrier
+coverage passes 13/13; role tools pass 9/9; append-only guards pass 17/17; web and
+database lint/typechecks pass.
+
+Independent Database, Security, and QA reviews return **CONDITIONAL GO for this
+exact private source checkpoint and fresh disposable rehearsal only**. The
+post-review exact PostgreSQL rerun closes QA's temporary High evidence gate.
+Remaining review findings are retained as non-disposable/consumption blockers:
+audit amended predecessor checksums in every controlled database and forward-fix
+any applied history; close unexpected incoming owner/migrator memberships; attest
+the SQL language and normalized bodies of all 18 routines; execute the remaining
+optional-present and child-lineage corruption matrix; and prove populated hosted
+restore/performance behavior. No production deployment or activation approval is
+granted.
+
+C1 is not the complete Option C writer perimeter. Ordinary runtime base approval
+graph DML remains, and no typed writer capability or positive grant exists. The
+broader approval-routing suite remains deliberately outside this checkpoint and
+NO-GO because the separately governed `DEC-0246` maintenance authority has not
+been implemented. Before any non-disposable deployment, operators must audit
+controlled migration history and checksums because this checkpoint corrects two
+never-production-approved predecessor migrations discovered by PostgreSQL 17
+rehearsal. The complete typed writer
 perimeter, removal of runtime base graph/provenance DML, Option B completion,
 `DEC-0246` human authority, certification, activation, Workspace 4, and Phase I
 remain **NO-GO**.
@@ -456,7 +479,7 @@ remain **NO-GO**.
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
 | Implement dormant Option B barrier generations, automatic locks, deferred exact validator, and readiness result | Database and backend owners | Before producer-barrier readiness review | In progress — empty DORMANT generation/provenance schema, all-18 outer shared-lock wrappers, and six graph/provenance shared-lock triggers authored; active validator, provenance writes, exclusive final scan, and readiness result pending |
-| Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | In progress — C0 pins the exact 18 dormant discovery contracts and closed mutation inventory; C1-D pins their fixed-family binary observer designs only. Observer SQL, executable typed capabilities, database routines/grants, and removal of runtime base graph/provenance DML remain pending |
+| Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | In progress — C0 pins the exact 18 dormant discovery contracts and closed mutation inventory; C1 implements the private, ungranted fixed-family binary observer SQL. Executable typed writer capabilities, positive grants, and removal of runtime base graph/provenance DML remain pending |
 | Execute the complete all-18 semantic, race, privilege, deployment, and recovery test matrix | QA, Database, Security, DevOps, and Release | Exact release candidate | Pending |
 | Confirm issuer, key custody, revocation, STOP, and recovery authority required by `DEC-0246` | Authorized human owner | Before production activation or certification execution | Blocked — human decision required |
 | Assess Dunong handoff if a visible retry or maintenance state is introduced | Product and enablement owners | Before user exposure | Not required for dormant implementation |
@@ -479,9 +502,9 @@ remain **NO-GO**.
 - `apps/web/src/server/services/approvalProducerCapabilityManifest.ts` and
   `approvalGraphMutationInventory.ts` — C0 non-executable family contracts,
   canonical/specialized/Finance Close partition, closed runtime/tooling mutation
-  inventory, and C1-D fixed-family binary observer designs.
+  inventory, and C1 private fixed-family binary observer contracts.
 - `apps/web/src/server/services/approvalProducerCapabilityManifest.test.ts` —
-  C0/C1-D digest, transitive test-only boundary, AST/raw-SQL drift, exact-inventory,
+  C0/C1 digest, transitive test-only boundary, AST/raw-SQL drift, exact-inventory,
   observer-input, lifecycle, and no-payload regression gates.
 - Production producer inventory and independent Database, Architecture, Security,
   QA, Product/Operations/Release, and Software Audit deliberation supplied to the

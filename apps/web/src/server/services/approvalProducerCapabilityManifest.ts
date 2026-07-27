@@ -6,7 +6,7 @@ import {
 } from "./approvalRoutingRegistry";
 
 export const APPROVAL_PRODUCER_CAPABILITY_VERSION =
-  "dec-0247-c1.dormant-binary-observer-design.1";
+  "dec-0247-c1.private-binary-observer-sql.1";
 
 export const approvalProducerStableErrors = Object.freeze({
   barrierRetry: "APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY",
@@ -609,6 +609,282 @@ const postChildObserverDocumentTypes = new Set<SupportedApprovalDocumentType>([
 const shadowObserverSignature =
   "(p_tenant_id uuid, p_company_id uuid, p_approval_instance_id uuid)";
 
+type ObserverRelationPredicate = Readonly<{
+  relation: string;
+  binding: string;
+  scope: "EXACT_TENANT_COMPANY" | "EXACT_TENANT";
+}>;
+
+type ObserverPredicateMatrix = Readonly<{
+  approvalInstance: Readonly<{
+    relation: "ApprovalInstance";
+    idBinding: "id = p_approval_instance_id";
+    tenantBinding: "tenantId = p_tenant_id";
+    companyBinding: "companyId = p_company_id";
+    familyBinding: "documentType = fixedDocumentType";
+    sourceBinding: "source.id = ApprovalInstance.documentId";
+  }>;
+  source: Readonly<{
+    relation: string;
+    scope: "EXACT_TENANT_COMPANY";
+    approvalInstanceBacklink: string | null;
+  }>;
+  mandatoryRelations: readonly ObserverRelationPredicate[];
+  optionalRelationAntiMismatch: readonly ObserverRelationPredicate[];
+  presentChildAntiMismatch: readonly ObserverRelationPredicate[];
+  jsonShape: Readonly<{
+    relation: "FinanceCloseRun";
+    objectPath: "configSnapshot.pendingSensitiveApproval";
+    requiredNonEmptyStringKeys: readonly [
+      "approvalAction",
+      "requestedByUserId",
+      "requestedAt",
+    ];
+    validatesAllowedValues: false;
+  }> | null;
+  excludedFacts: readonly [
+    "SOURCE_OR_APPROVAL_STATUS",
+    "APPROVAL_RULE_OR_RULE_STEPS",
+    "APPROVAL_INSTANCE_STEPS",
+    "ROUTING_SCOPE_OR_TARGETS",
+    "PROHIBITED_OR_ELIGIBLE_ACTORS",
+    "DUE_OR_ACTIVATION",
+    "PERMISSION_OR_POLICY",
+    "AMOUNTS_OR_TOTALS",
+    "CHILD_CARDINALITY_OR_COMPLETENESS",
+    "EVIDENCE_SUFFICIENCY_OR_SELECTION",
+    "SNAPSHOT_VALUE_POLICY",
+  ];
+}>;
+
+const exactScope = "EXACT_TENANT_COMPANY" as const;
+const predicate = (relation: string, binding: string): ObserverRelationPredicate => ({
+  relation,
+  binding,
+  scope: exactScope,
+});
+const tenantPredicate = (relation: string, binding: string): ObserverRelationPredicate => ({
+  relation,
+  binding,
+  scope: "EXACT_TENANT",
+});
+const excludedObserverFacts = [
+  "SOURCE_OR_APPROVAL_STATUS",
+  "APPROVAL_RULE_OR_RULE_STEPS",
+  "APPROVAL_INSTANCE_STEPS",
+  "ROUTING_SCOPE_OR_TARGETS",
+  "PROHIBITED_OR_ELIGIBLE_ACTORS",
+  "DUE_OR_ACTIVATION",
+  "PERMISSION_OR_POLICY",
+  "AMOUNTS_OR_TOTALS",
+  "CHILD_CARDINALITY_OR_COMPLETENESS",
+  "EVIDENCE_SUFFICIENCY_OR_SELECTION",
+  "SNAPSHOT_VALUE_POLICY",
+] as const;
+
+const commonApprovalInstancePredicate = {
+  relation: "ApprovalInstance",
+  idBinding: "id = p_approval_instance_id",
+  tenantBinding: "tenantId = p_tenant_id",
+  companyBinding: "companyId = p_company_id",
+  familyBinding: "documentType = fixedDocumentType",
+  sourceBinding: "source.id = ApprovalInstance.documentId",
+} as const;
+
+const sourceBacklinks = {
+  PurchaseRequest: null,
+  QuotationRecommendation: null,
+  PurchaseOrder: null,
+  PurchaseOrderBalanceClosure: null,
+  PurchaseOrderAmendment: null,
+  WastageReport: null,
+  StockAdjustment: null,
+  FinanceCloseRun: null,
+  BudgetRevision: null,
+  ExpenseRequest: "ExpenseRequest.approvalInstanceId = ApprovalInstance.id",
+  CashAdvanceRequest: "CashAdvanceRequest.approvalInstanceId = ApprovalInstance.id",
+  PettyCashRequest: "PettyCashRequest.approvalInstanceId = ApprovalInstance.id",
+  PaymentRequest: "PaymentRequest.approvalInstanceId = ApprovalInstance.id",
+  PaymentRelease: "PaymentRelease.approvalInstanceId = ApprovalInstance.id",
+  EmployeeLeaveRequest: "EmployeeLeaveRequest.approvalInstanceId = ApprovalInstance.id",
+  EmployeeOvertimeRecord: "EmployeeOvertimeRecord.approvalInstanceId = ApprovalInstance.id",
+  WorkforceSchedule: "WorkforceSchedule.approvalInstanceId = ApprovalInstance.id",
+  AttendanceImportBatch: "AttendanceImportBatch.approvalInstanceId = ApprovalInstance.id",
+} as const satisfies Record<SupportedApprovalDocumentType, string | null>;
+
+const observerRelationCatalog = {
+  PurchaseRequest: {
+    mandatory: [predicate("Location", "PurchaseRequest.requestLocationId = Location.id")],
+    optional: [predicate("Brand", "when PurchaseRequest.brandId is present it equals a same-scope Brand.id")],
+    children: [],
+  },
+  QuotationRecommendation: {
+    mandatory: [
+      predicate("QuotationRequest", "QuotationRecommendation.quotationRequestId = QuotationRequest.id"),
+      predicate("PurchaseRequest", "QuotationRequest.purchaseRequestId = PurchaseRequest.id"),
+      predicate("Location", "PurchaseRequest.requestLocationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  PurchaseOrder: {
+    mandatory: [
+      predicate("PurchaseRequest", "PurchaseOrder.purchaseRequestId = PurchaseRequest.id"),
+      predicate("QuotationRecommendation", "PurchaseOrder.quotationRecommendationId = QuotationRecommendation.id"),
+      predicate("QuotationRequest", "PurchaseOrder.quotationRequestId = QuotationRequest.id AND QuotationRecommendation.quotationRequestId = QuotationRequest.id AND QuotationRequest.purchaseRequestId = PurchaseRequest.id"),
+      predicate("Location", "PurchaseRequest.requestLocationId = Location.id"),
+      predicate("Location", "PurchaseOrder.deliveryLocationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  PurchaseOrderBalanceClosure: {
+    mandatory: [
+      predicate("PurchaseOrder", "PurchaseOrderBalanceClosure.purchaseOrderId = PurchaseOrder.id"),
+      predicate("PurchaseRequest", "PurchaseOrder.purchaseRequestId = PurchaseRequest.id"),
+      predicate("QuotationRecommendation", "PurchaseOrder.quotationRecommendationId = QuotationRecommendation.id"),
+      predicate("QuotationRequest", "PurchaseOrder.quotationRequestId = QuotationRequest.id AND QuotationRecommendation.quotationRequestId = QuotationRequest.id AND QuotationRequest.purchaseRequestId = PurchaseRequest.id"),
+      predicate("Location", "PurchaseRequest.requestLocationId = Location.id"),
+      predicate("Location", "PurchaseOrder.deliveryLocationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  PurchaseOrderAmendment: {
+    mandatory: [
+      predicate("PurchaseOrder", "PurchaseOrderAmendment.purchaseOrderId = PurchaseOrder.id"),
+      predicate("PurchaseRequest", "PurchaseOrder.purchaseRequestId = PurchaseRequest.id"),
+      predicate("QuotationRecommendation", "PurchaseOrder.quotationRecommendationId = QuotationRecommendation.id"),
+      predicate("QuotationRequest", "PurchaseOrder.quotationRequestId = QuotationRequest.id AND QuotationRecommendation.quotationRequestId = QuotationRequest.id AND QuotationRequest.purchaseRequestId = PurchaseRequest.id"),
+      predicate("Location", "PurchaseRequest.requestLocationId = Location.id"),
+      predicate("Location", "PurchaseOrder.deliveryLocationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  WastageReport: {
+    mandatory: [
+      predicate("InventoryLocation", "WastageReport.inventoryLocationId = InventoryLocation.id"),
+      predicate("Location", "InventoryLocation.locationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  StockAdjustment: {
+    mandatory: [
+      predicate("InventoryLocation", "StockAdjustment.inventoryLocationId = InventoryLocation.id"),
+      predicate("Location", "InventoryLocation.locationId = Location.id"),
+    ], optional: [], children: [],
+  },
+  FinanceCloseRun: {
+    mandatory: [predicate("Company", "FinanceCloseRun.companyId = Company.id")],
+    optional: [], children: [],
+  },
+  BudgetRevision: {
+    mandatory: [predicate("Budget", "BudgetRevision.budgetId = Budget.id")],
+    optional: [predicate("Location", "when Budget.locationId is present it equals Location.id")],
+    children: [
+      predicate("BudgetLine", "every present BudgetLine.budgetId = Budget.id has exact scope"),
+      predicate("Location", "when a present BudgetLine.locationId is set it equals a same-scope Location.id"),
+    ],
+  },
+  ExpenseRequest: {
+    mandatory: [predicate("Location", "ExpenseRequest.locationId = Location.id")],
+    optional: [],
+    children: [
+      predicate("ExpenseRequestLine", "every present ExpenseRequestLine.expenseRequestId = ExpenseRequest.id has exact scope"),
+      predicate("ExpenseRequestSourceLink", "every present ExpenseRequestSourceLink.expenseRequestId = ExpenseRequest.id has exact scope and any expenseRequestLineId belongs to that ExpenseRequest"),
+    ],
+  },
+  CashAdvanceRequest: {
+    mandatory: [predicate("Location", "CashAdvanceRequest.locationId = Location.id")],
+    optional: [
+      tenantPredicate("User", "when CashAdvanceRequest.beneficiaryUserId is present it equals a same-tenant User.id"),
+      predicate("ExpenseRequest", "when CashAdvanceRequest.expenseRequestId is present it equals a same-scope ExpenseRequest.id"),
+      predicate("PaymentRequest", "when CashAdvanceRequest.paymentRequestId is present it equals a same-scope PaymentRequest.id"),
+      predicate("BudgetCommitment", "when CashAdvanceRequest.budgetCommitmentId is present it equals a same-scope BudgetCommitment.id"),
+      predicate("BankAccount", "when CashAdvanceRequest.intendedBankAccountId is present it equals a same-scope BankAccount.id"),
+    ], children: [],
+  },
+  PettyCashRequest: {
+    mandatory: [
+      predicate("PettyCashFund", "PettyCashRequest.pettyCashFundId = PettyCashFund.id"),
+      predicate("Location", "PettyCashFund.locationId = Location.id"),
+    ],
+    optional: [predicate("Location", "when PettyCashRequest.locationId is present it equals PettyCashFund.locationId")],
+    children: [],
+  },
+  PaymentRequest: {
+    mandatory: [predicate("Location", "PaymentRequest.locationId = Location.id")],
+    optional: [],
+    children: [
+      predicate("PaymentRequestLine", "every present PaymentRequestLine.paymentRequestId = PaymentRequest.id has exact scope and the same locationId"),
+      predicate("ApInvoice", "every present PaymentRequestLine.apInvoiceId equals a same-scope ApInvoice.id"),
+    ],
+  },
+  PaymentRelease: {
+    mandatory: [
+      predicate("PaymentRequest", "PaymentRelease.paymentRequestId = PaymentRequest.id"),
+      predicate("BankAccount", "PaymentRelease.bankAccountId = BankAccount.id"),
+      predicate("Location", "PaymentRelease.locationId = PaymentRequest.locationId AND PaymentRelease.locationId = Location.id"),
+    ],
+    optional: [],
+    children: [
+      predicate("PaymentReleaseAllocation", "every present PaymentReleaseAllocation.paymentReleaseId = PaymentRelease.id has exact scope"),
+      predicate("PaymentRequestLine", "every present PaymentReleaseAllocation.paymentRequestLineId belongs to the same PaymentRequest"),
+      predicate("ApInvoice", "every present PaymentReleaseAllocation.apInvoiceId equals its PaymentRequestLine.apInvoiceId and a same-scope ApInvoice.id"),
+    ],
+  },
+  EmployeeLeaveRequest: {
+    mandatory: [predicate("Employee", "EmployeeLeaveRequest.employeeId = Employee.id")],
+    optional: [predicate("Location", "when EmployeeLeaveRequest.locationId is present it equals a same-scope Location.id")],
+    children: [],
+  },
+  EmployeeOvertimeRecord: {
+    mandatory: [predicate("Employee", "EmployeeOvertimeRecord.employeeId = Employee.id")],
+    optional: [predicate("Location", "when EmployeeOvertimeRecord.locationId is present it equals a same-scope Location.id")],
+    children: [],
+  },
+  WorkforceSchedule: {
+    mandatory: [predicate("Location", "WorkforceSchedule.locationId = Location.id")],
+    optional: [],
+    children: [
+      predicate("WorkforceScheduleLine", "every present WorkforceScheduleLine.workforceScheduleId = WorkforceSchedule.id has exact scope and the same locationId"),
+      predicate("Employee", "when a present WorkforceScheduleLine.employeeId is set it equals a same-scope Employee.id"),
+    ],
+  },
+  AttendanceImportBatch: {
+    mandatory: [predicate("Location", "AttendanceImportBatch.locationId = Location.id")],
+    optional: [],
+    children: [
+      predicate("AttendanceImportLine", "every present AttendanceImportLine.attendanceImportBatchId = AttendanceImportBatch.id has exact scope and the same locationId"),
+      predicate("Employee", "when a present AttendanceImportLine.employeeId is set it equals a same-scope Employee.id"),
+    ],
+  },
+} as const satisfies Record<SupportedApprovalDocumentType, Readonly<{
+  mandatory: readonly ObserverRelationPredicate[];
+  optional: readonly ObserverRelationPredicate[];
+  children: readonly ObserverRelationPredicate[];
+}>>;
+
+const observerPredicateMatrices = Object.fromEntries(
+  supportedApprovalDocumentTypes.map((documentType) => {
+    const relations = observerRelationCatalog[documentType];
+    return [documentType, {
+      approvalInstance: commonApprovalInstancePredicate,
+      source: {
+        relation: requiredCapabilityDiscoveryFacts[documentType].sourceRelation,
+        scope: exactScope,
+        approvalInstanceBacklink: sourceBacklinks[documentType],
+      },
+      mandatoryRelations: relations.mandatory,
+      optionalRelationAntiMismatch: relations.optional,
+      presentChildAntiMismatch: relations.children,
+      jsonShape: documentType === "FinanceCloseRun" ? {
+        relation: "FinanceCloseRun" as const,
+        objectPath: "configSnapshot.pendingSensitiveApproval" as const,
+        requiredNonEmptyStringKeys: [
+          "approvalAction",
+          "requestedByUserId",
+          "requestedAt",
+        ] as const,
+        validatesAllowedValues: false as const,
+      } : null,
+      excludedFacts: excludedObserverFacts,
+    } satisfies ObserverPredicateMatrix];
+  }),
+) as unknown as Record<SupportedApprovalDocumentType, ObserverPredicateMatrix>;
+
 const shadowObserverDesigns = Object.fromEntries(
   supportedApprovalDocumentTypes.map((documentType) => [documentType, {
     contractKind: "DORMANT_BINARY_SHADOW_OBSERVER_DESIGN" as const,
@@ -629,6 +905,7 @@ const shadowObserverDesigns = Object.fromEntries(
         ? "POST_CHILD_ONLY" as const
         : "POST_SOURCE_ONLY" as const,
     },
+    predicateMatrix: observerPredicateMatrices[documentType],
     noMatchSemantics:
       "Absent, wrong-scope, wrong-family, missing-source, ambiguous-source, lineage mismatch, and every other mismatch collapse identically.",
     resultDesign: {
@@ -642,11 +919,13 @@ const shadowObserverDesigns = Object.fromEntries(
       leakproof: false as const,
       exposure: "PRIVATE_UNGRANTED" as const,
       allowsDml: false as const,
-      acquiresLocks: false as const,
+      acquiresExplicitLocks: false as const,
       allowsDynamicSql: false as const,
+      searchPath: ["pg_catalog"] as const,
     },
-    executable: false as const,
-    sqlExists: false as const,
+    sqlExecutable: true as const,
+    runtimeCallable: false as const,
+    sqlExists: true as const,
     grantsAuthority: false as const,
   }]),
 ) as unknown as Record<SupportedApprovalDocumentType, Readonly<{
@@ -662,6 +941,7 @@ const shadowObserverDesigns = Object.fromEntries(
     parentLineage: string;
     lifecycle: "POST_CHILD_ONLY" | "POST_SOURCE_ONLY";
   }>;
+  predicateMatrix: ObserverPredicateMatrix;
   noMatchSemantics: string;
   resultDesign: Readonly<{
     values: readonly ["SHADOW_MATCH", "SHADOW_NO_MATCH"];
@@ -674,11 +954,13 @@ const shadowObserverDesigns = Object.fromEntries(
     leakproof: false;
     exposure: "PRIVATE_UNGRANTED";
     allowsDml: false;
-    acquiresLocks: false;
+    acquiresExplicitLocks: false;
     allowsDynamicSql: false;
+    searchPath: readonly ["pg_catalog"];
   }>;
-  executable: false;
-  sqlExists: false;
+  sqlExecutable: true;
+  runtimeCallable: false;
+  sqlExists: true;
   grantsAuthority: false;
 }>>;
 

@@ -12,7 +12,7 @@ By the end of this module, participants can:
 - Explain which Phase 3 workflows are controlled foundations and which production blockers remain deferred.
 - Navigate Finance Control Center, Bank & Cash, Budget Control, Cash Advances, Petty Cash, Period Close, and Workforce Operations.
 - Create or review source-linked finance and workforce records without expecting AP settlement, bank mutation, payroll computation, or official journal posting unless that exact workflow supports it.
-- Use approval inbox actions while respecting scope, role, and no-self-approval controls.
+- Explain that Approval Inbox actions are a post-activation exercise; while normalized routing is disabled, follow the authoritative source-workflow owner or administrator guidance and retain no-self-approval controls.
 - Record UAT evidence in Release Readiness using the correct Phase 3 workflow-area values.
 - Identify issue labels, evidence gaps, deferred blockers, and readiness items that must be reviewed before go-live.
 
@@ -21,7 +21,7 @@ By the end of this module, participants can:
 1. Open the Finance Control Center and identify the current company, brand, location, user role, and available subworkspaces.
 2. Review Manual Journal, Accounts Payable, Payment Request, Payment Release, Budget Control, Bank & Cash, Cash Advances, Petty Cash, and Period Close cards or lists.
 3. Create or open a controlled finance record, then submit it for approval where the workflow supports approval.
-4. Log in as a different approver and verify the record appears in the approval inbox only when scope and permission allow it.
+4. Log in as a different approver and verify the current Approval Inbox unavailable state. Record this as an activation dependency; do not represent a queue item as available before normalized routing is explicitly enabled.
 5. Approve, return, reject, cancel, reverse, or reopen one test record where the scenario allows, then verify audit history.
 6. Open Bank & Cash and review issue labels for evidence gaps, unmatched statement lines, and reconciliation variance.
 7. Open Workforce Operations and review employee, assignment, leave, overtime, schedule, attendance, training/compliance, report preview, and export areas.

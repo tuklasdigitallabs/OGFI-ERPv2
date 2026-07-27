@@ -21,7 +21,7 @@ By the end of this module, participants can:
 1. Sign in and switch to the assigned branch.
 2. Open `Operations Dashboard` and explain read-only source-record cards.
 3. Create a draft Purchase Request and submit it for approval.
-4. Open `Approval Inbox` as an assigned approver and review a different user's request.
+4. Show the truthful `Approval Inbox` unavailable state. Explain that approvers must follow the source-workflow owner or administrator guidance until normalized routing is explicitly activated; do not simulate or promise an actionable Inbox queue.
 5. Open `Inventory -> Transfers` and create a transfer request for available warehouse stock.
 6. Open a dispatched transfer and receive accepted, rejected, damaged, or short quantities as applicable.
 7. Log a wastage report with reason and evidence reference.

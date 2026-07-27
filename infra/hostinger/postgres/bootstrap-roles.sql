@@ -17,7 +17,9 @@ DECLARE
   runtime_role text := current_setting('ogfi.contract.runtime_role');
   expected_prefix text;
   obj record;
+  grantee_obj record;
   owner_oid oid;
+  approval_shadow_schema_oid oid;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = session_user AND rolsuper) THEN
     RAISE EXCEPTION 'Role bootstrap and legacy/restore ownership adoption require a cluster administrator';
@@ -140,6 +142,147 @@ BEGIN
       ELSE format('ALTER TYPE %I.%I OWNER TO %I', obj.nspname, obj.typname, owner_role)
     END;
   END LOOP;
+
+  -- DEC-0247's shadow observers are private owner-only diagnostics. The
+  -- bootstrap ceremony can run before their migration, so absence is valid;
+  -- after a restore has created the schema, adopt only the exact observer
+  -- signatures and remove every explicit non-owner access path. Reconciliation
+  -- and verification after migration enforce the complete closed set.
+  SELECT oid INTO approval_shadow_schema_oid
+  FROM pg_namespace
+  WHERE nspname = 'approval_shadow';
+  IF approval_shadow_schema_oid IS NOT NULL THEN
+    EXECUTE format('ALTER SCHEMA approval_shadow OWNER TO %I', owner_role);
+
+    FOR obj IN
+      SELECT p.oid, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+      FROM pg_proc p
+      WHERE p.pronamespace = approval_shadow_schema_oid
+        AND p.prokind = 'f'
+        AND p.proname = ANY (ARRAY[
+          'observe_purchase_request_v1',
+          'observe_quotation_recommendation_v1',
+          'observe_purchase_order_v1',
+          'observe_purchase_order_balance_closure_v1',
+          'observe_purchase_order_amendment_v1',
+          'observe_wastage_report_v1',
+          'observe_stock_adjustment_v1',
+          'observe_finance_close_run_v1',
+          'observe_budget_revision_v1',
+          'observe_expense_request_v1',
+          'observe_cash_advance_request_v1',
+          'observe_petty_cash_request_v1',
+          'observe_payment_request_v1',
+          'observe_payment_release_v1',
+          'observe_employee_leave_request_v1',
+          'observe_employee_overtime_record_v1',
+          'observe_workforce_schedule_v1',
+          'observe_attendance_import_batch_v1'
+        ]::text[])
+        AND p.pronargs = 3
+        AND p.proargtypes[0] = 'uuid'::regtype
+        AND p.proargtypes[1] = 'uuid'::regtype
+        AND p.proargtypes[2] = 'uuid'::regtype
+      ORDER BY p.oid
+    LOOP
+      EXECUTE format(
+        'ALTER FUNCTION approval_shadow.%I(%s) OWNER TO %I',
+        obj.proname,
+        obj.args,
+        owner_role
+      );
+    END LOOP;
+
+    REVOKE ALL ON SCHEMA approval_shadow FROM PUBLIC;
+    EXECUTE format('REVOKE ALL ON SCHEMA approval_shadow FROM %I', runtime_role);
+    FOR obj IN
+      SELECT DISTINCT grantee.rolname AS grantee_role
+      FROM pg_namespace n
+      CROSS JOIN LATERAL aclexplode(n.nspacl) acl
+      JOIN pg_roles grantee ON grantee.oid = acl.grantee
+      WHERE n.oid = approval_shadow_schema_oid
+        AND acl.grantee NOT IN (0, owner_oid)
+    LOOP
+      EXECUTE format('REVOKE ALL ON SCHEMA approval_shadow FROM %I', obj.grantee_role);
+    END LOOP;
+
+    FOR obj IN
+      SELECT p.oid, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+      FROM pg_proc p
+      WHERE p.pronamespace = approval_shadow_schema_oid
+      ORDER BY p.oid
+    LOOP
+      EXECUTE format(
+        'REVOKE ALL ON ROUTINE approval_shadow.%I(%s) FROM PUBLIC',
+        obj.proname,
+        obj.args
+      );
+      EXECUTE format(
+        'REVOKE ALL ON ROUTINE approval_shadow.%I(%s) FROM %I',
+        obj.proname,
+        obj.args,
+        runtime_role
+      );
+      FOR grantee_obj IN
+        SELECT DISTINCT grantee.rolname AS grantee_role
+        FROM pg_proc routine
+        CROSS JOIN LATERAL aclexplode(routine.proacl) acl
+        JOIN pg_roles grantee ON grantee.oid = acl.grantee
+        WHERE routine.oid = obj.oid
+          AND acl.grantee NOT IN (0, owner_oid)
+      LOOP
+        EXECUTE format(
+          'REVOKE ALL ON ROUTINE approval_shadow.%I(%s) FROM %I',
+          obj.proname,
+          obj.args,
+          grantee_obj.grantee_role
+        );
+      END LOOP;
+    END LOOP;
+
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON FUNCTIONS FROM PUBLIC',
+      owner_role
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON FUNCTIONS FROM %I',
+      owner_role,
+      runtime_role
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA approval_shadow REVOKE ALL ON FUNCTIONS FROM PUBLIC',
+      owner_role
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA approval_shadow REVOKE ALL ON FUNCTIONS FROM %I',
+      owner_role,
+      runtime_role
+    );
+    FOR obj IN
+      SELECT DISTINCT d.defaclnamespace, grantee.rolname AS grantee_role
+      FROM pg_default_acl d
+      CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+      JOIN pg_roles grantee ON grantee.oid = acl.grantee
+      WHERE d.defaclrole = owner_oid
+        AND d.defaclobjtype = 'f'
+        AND d.defaclnamespace IN (0, approval_shadow_schema_oid)
+        AND acl.grantee NOT IN (0, owner_oid)
+    LOOP
+      IF obj.defaclnamespace = 0 THEN
+        EXECUTE format(
+          'ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON FUNCTIONS FROM %I',
+          owner_role,
+          obj.grantee_role
+        );
+      ELSE
+        EXECUTE format(
+          'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA approval_shadow REVOKE ALL ON FUNCTIONS FROM %I',
+          owner_role,
+          obj.grantee_role
+        );
+      END IF;
+    END LOOP;
+  END IF;
 END
 $bootstrap$;
 

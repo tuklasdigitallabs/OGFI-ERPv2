@@ -625,6 +625,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await prisma.approvalInstance.create({ data: {
       id: approvalInstanceId, tenantId: ids.tenant, companyId: ids.company,
       documentType, documentId, approvalRuleId: ids.rule, status: "PENDING", currentStepOrder: 1,
+      createdAt: transition,
       steps: {
         create: {
           stepOrder: 1,
@@ -726,7 +727,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await addApproval("StockAdjustment", adjustmentId, { dueAt:null,targetMatchMode:"ANY",targets:locTarget,prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}] });
 
     const closeId=id();
-    await prisma.financeCloseRun.create({ data:{ id:closeId,tenantId:ids.tenant,companyId:ids.company,accountingPeriodId:ids.period,publicReference:`AB-CLOSE-${suffix}`,status:"CLOSED",initiatedByUserId:ids.preparer,configSnapshot:{pendingSensitiveApproval:{approvalAction:"LOCK_PERIOD",requestedByUserId:ids.requester,reason:"Breadth period lock"}} } });
+    await prisma.financeCloseRun.create({ data:{ id:closeId,tenantId:ids.tenant,companyId:ids.company,accountingPeriodId:ids.period,publicReference:`AB-CLOSE-${suffix}`,status:"CLOSED",initiatedByUserId:ids.preparer,configSnapshot:{pendingSensitiveApproval:{approvalAction:"LOCK_PERIOD",requestedByUserId:ids.requester,requestedAt:transition.toISOString(),reason:"Breadth period lock"}} } });
     await addApproval("FinanceCloseRun",closeId,{dueAt:null,targetMatchMode:"ANY",targets:[{scopeType:"COMPANY",companyId:ids.company,locationId:null}],prohibited:[{userId:ids.preparer,reasonCode:"INITIATOR"},{userId:ids.requester,reasonCode:"REQUESTER"}].sort((a,b)=>a.userId.localeCompare(b.userId))});
     await prisma.budget.create({data:{id:ids.budget,tenantId:ids.tenant,companyId:ids.company,publicReference:`AB-B-${suffix}`,fiscalYearId:ids.fiscalYear,name:"Breadth Budget",locationId:ids.location,createdByUserId:ids.preparer,lines:{create:{tenantId:ids.tenant,companyId:ids.company,lineNumber:1,code:"L1",name:"Line",locationId:ids.secondLocation,periodStart:new Date("2026-01-01Z"),periodEnd:new Date("2026-12-31Z")}}}});
     const revisionId=id(); await prisma.budgetRevision.create({data:{id:revisionId,budgetId:ids.budget,tenantId:ids.tenant,companyId:ids.company,revisionNumber:1,status:"SUBMITTED",reason:"Breadth",requestedByUserId:ids.requester,requestedAt:transition,effectiveFrom:due,originalSnapshot:{},proposedSnapshot:{}}});
@@ -832,6 +833,23 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       companyId: randomUUID(),
       leaseOwner: applyOptions.leaseOwner,
     })).resolves.toMatchObject({ outcome: "INCOMPATIBLE" });
+  });
+
+  test("seeds structural shadow observer fixtures only", async () => {
+    expect(fixtures).toHaveLength(supportedApprovalDocumentTypes.length);
+    expect(instanceIds).toHaveLength(supportedApprovalDocumentTypes.length);
+    expect(await prisma.approvalRoutingBackfillRun.count({
+      where: { tenantId: ids.tenant, companyId: ids.company },
+    })).toBe(0);
+    expect(await prisma.approvalInstanceStep.count({
+      where: {
+        approvalInstanceId: { in: instanceIds },
+        routingSchemaVersion: 0,
+      },
+    })).toBe(supportedApprovalDocumentTypes.length);
+    expect(await prisma.approvalInstanceStepScopeGroup.count({
+      where: { approvalInstanceStep: { approvalInstanceId: { in: instanceIds } } },
+    })).toBe(0);
   });
 
   test("hydrates an authorized detail for every supported document type", async () => {

@@ -31,6 +31,27 @@ const adversarialCases = [
   ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
 ];
 
+const approvalShadowObservers = [
+  ["PurchaseRequest", "observe_purchase_request_v1"],
+  ["QuotationRecommendation", "observe_quotation_recommendation_v1"],
+  ["PurchaseOrder", "observe_purchase_order_v1"],
+  ["PurchaseOrderBalanceClosure", "observe_purchase_order_balance_closure_v1"],
+  ["PurchaseOrderAmendment", "observe_purchase_order_amendment_v1"],
+  ["WastageReport", "observe_wastage_report_v1"],
+  ["StockAdjustment", "observe_stock_adjustment_v1"],
+  ["FinanceCloseRun", "observe_finance_close_run_v1"],
+  ["BudgetRevision", "observe_budget_revision_v1"],
+  ["ExpenseRequest", "observe_expense_request_v1"],
+  ["CashAdvanceRequest", "observe_cash_advance_request_v1"],
+  ["PettyCashRequest", "observe_petty_cash_request_v1"],
+  ["PaymentRequest", "observe_payment_request_v1"],
+  ["PaymentRelease", "observe_payment_release_v1"],
+  ["EmployeeLeaveRequest", "observe_employee_leave_request_v1"],
+  ["EmployeeOvertimeRecord", "observe_employee_overtime_record_v1"],
+  ["WorkforceSchedule", "observe_workforce_schedule_v1"],
+  ["AttendanceImportBatch", "observe_attendance_import_batch_v1"],
+];
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, "..");
 const roleSqlDir = path.join(workspaceRoot, "infra", "hostinger", "postgres");
@@ -70,6 +91,7 @@ assertSafeDisposableTarget({
 let databaseCreated = false;
 let markerCreated = false;
 let exitCode = 1;
+let shadowFixtureExitCode = null;
 try {
   runPsql(adminUrl, `CREATE DATABASE ${quoteIdentifier(identity.databaseName)}`);
   databaseCreated = true;
@@ -85,6 +107,13 @@ try {
     ["db:seed"],
     controlledSetupEnvironment(migratorUrl, identity),
   );
+  if (suiteName === "approval-routing-shadow") {
+    shadowFixtureExitCode = runChildCommand(
+      command,
+      controlledSetupEnvironment(migratorUrl, identity),
+    );
+    console.log(`APPROVAL_SHADOW_FIXTURE_EXIT=${shadowFixtureExitCode}`);
+  }
   if (suiteName === "controlled-evidence-qualification") {
     installControlledEvidenceQualificationFixture(migratorUrl);
     verifyControlledEvidenceOwnerBoundary(migratorUrl);
@@ -138,22 +167,23 @@ try {
     runSeedRepeatability(runtimeUrl, identity);
   }
 
-  const childInvocation =
-    command[0] === "pnpm"
-      ? pnpmInvocation(command.slice(1))
-      : { executable: command[0], args: command.slice(1) };
-  const child = spawnSync(childInvocation.executable, childInvocation.args, {
-    cwd: workspaceRoot,
-    env: buildRuntimeEnvironment(
-      { ...process.env, ...disposableThrottleEnv },
-      runtimeUrl,
-      identity,
-      adminUrl,
-    ),
-    stdio: "inherit",
-  });
-  if (child.error) throw child.error;
-  exitCode = child.status ?? 1;
+  exitCode = suiteName === "approval-routing-shadow"
+    ? shadowFixtureExitCode ?? 1
+    : runChildCommand(
+        command,
+        buildRuntimeEnvironment(
+          { ...process.env, ...disposableThrottleEnv },
+          runtimeUrl,
+          identity,
+          adminUrl,
+        ),
+      );
+  if (
+    exitCode === 0
+    && (suiteName === "approval-routing-backfill" || suiteName === "approval-routing-shadow")
+  ) {
+    verifyApprovalShadowObservers(migratorUrl, runtimeUrl);
+  }
   if (exitCode === 0 && suiteName === "approval-routing-backfill") {
     verifyApprovalRoutingReplicationRoleGuards(setupUrl);
     verifyApprovalIntegrityOwnerGuards(setupUrl);
@@ -173,6 +203,230 @@ try {
   }
 }
 process.exitCode = exitCode;
+
+function runChildCommand(childCommand, env) {
+  const childInvocation =
+    childCommand[0] === "pnpm"
+      ? pnpmInvocation(childCommand.slice(1))
+      : { executable: childCommand[0], args: childCommand.slice(1) };
+  const child = spawnSync(childInvocation.executable, childInvocation.args, {
+    cwd: workspaceRoot,
+    env,
+    stdio: "inherit",
+  });
+  if (child.error) throw child.error;
+  return child.status ?? 1;
+}
+
+function verifyApprovalShadowObservers(
+  migratorDatabaseUrl,
+  runtimeDatabaseUrl,
+) {
+  const canonicalCreatedAt = "2026-07-22T04:00:00.000Z";
+  const fixtureSelect = (documentType) => `
+    SELECT ai."tenantId", ai."companyId", ai."id", ai."documentId"
+      FROM public."ApprovalInstance" ai
+      JOIN public."Company" company
+        ON company."id" = ai."companyId"
+       AND company."tenantId" = ai."tenantId"
+     WHERE company."legalName" = 'Approval Breadth Company'
+       AND ai."documentType" = ${quoteLiteral(documentType)}
+       AND ai."createdAt" = ${quoteLiteral(canonicalCreatedAt)}::timestamptz`;
+  const observerCall = (routineName, args) => {
+    if (!/^observe_[a-z_]+_v1$/.test(routineName)) {
+      throw new Error(`APPROVAL_SHADOW_ROUTINE_NAME_INVALID:${routineName}`);
+    }
+    return `approval_shadow.${routineName}(${args})`;
+  };
+
+  const probes = approvalShadowObservers.map(
+    ([documentType, routineName], index) => {
+      const [wrongFamily] =
+        approvalShadowObservers[(index + 1) % approvalShadowObservers.length];
+      const call = (args) => observerCall(routineName, args);
+      return `
+        DO $approval_shadow_probe$
+        DECLARE
+          fixture record;
+          wrong_family_fixture record;
+          actual text;
+          fixture_count integer;
+        BEGIN
+          SELECT count(*) INTO fixture_count
+            FROM (${fixtureSelect(documentType)}) canonical_fixture;
+          IF fixture_count <> 1 THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_FIXTURE_CARDINALITY:%:%',
+              ${quoteLiteral(documentType)}, fixture_count;
+          END IF;
+
+          SELECT * INTO STRICT fixture FROM (${fixtureSelect(documentType)}) canonical_fixture;
+          SELECT * INTO STRICT wrong_family_fixture FROM (${fixtureSelect(wrongFamily)}) canonical_fixture;
+
+          SELECT ${call(
+            'fixture."tenantId", fixture."companyId", fixture."id"',
+          )} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_EXPECTED_MATCH:%:%',
+              ${quoteLiteral(documentType)}, actual;
+          END IF;
+
+          SELECT ${call("NULL::uuid, NULL::uuid, NULL::uuid")} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_NULL_INPUT_MATCHED:%', ${quoteLiteral(documentType)};
+          END IF;
+
+          SELECT ${call(
+            'fixture."tenantId", fixture."companyId", gen_random_uuid()',
+          )} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_RANDOM_INSTANCE_MATCHED:%', ${quoteLiteral(documentType)};
+          END IF;
+
+          SELECT ${call(
+            'gen_random_uuid(), fixture."companyId", fixture."id"',
+          )} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_WRONG_TENANT_MATCHED:%', ${quoteLiteral(documentType)};
+          END IF;
+
+          SELECT ${call(
+            'fixture."tenantId", gen_random_uuid(), fixture."id"',
+          )} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_WRONG_COMPANY_MATCHED:%', ${quoteLiteral(documentType)};
+          END IF;
+
+          SELECT ${call(
+            'fixture."tenantId", fixture."companyId", wrong_family_fixture."id"',
+          )} INTO actual;
+          IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+            RAISE EXCEPTION 'APPROVAL_SHADOW_WRONG_FAMILY_MATCHED:%:%',
+              ${quoteLiteral(documentType)}, ${quoteLiteral(wrongFamily)};
+          END IF;
+        END
+        $approval_shadow_probe$;`;
+    },
+  );
+
+  // READ ONLY makes the closed set of positive and negative calls executable
+  // evidence that none of the observer routines can write application data.
+  for (const probe of probes) {
+    runPsql(
+      migratorDatabaseUrl,
+      `BEGIN TRANSACTION READ ONLY;${probe}COMMIT;`,
+    );
+  }
+
+  for (const [, routineName] of approvalShadowObservers) {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `SELECT ${observerCall(
+        routineName,
+        "NULL::uuid, NULL::uuid, NULL::uuid",
+      )}`,
+      "42501",
+    );
+  }
+
+  // Exercise one predicate-specific corruption without weakening constraints or
+  // retaining fixture changes. The post-rollback call proves restoration.
+  const financeFixture = fixtureSelect("FinanceCloseRun");
+  runPsql(
+    migratorDatabaseUrl,
+    `BEGIN;
+     UPDATE public."FinanceCloseRun"
+        SET "configSnapshot" = "configSnapshot" #- '{pendingSensitiveApproval,requestedAt}'
+      WHERE "id" = (SELECT "documentId" FROM (${financeFixture}) fixture);
+     DO $approval_shadow_lineage$
+     DECLARE fixture record; actual text;
+     BEGIN
+       SELECT * INTO STRICT fixture FROM (${financeFixture}) canonical_fixture;
+       SELECT approval_shadow.observe_finance_close_run_v1(
+         fixture."tenantId", fixture."companyId", fixture."id"
+       ) INTO actual;
+       IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN
+         RAISE EXCEPTION 'APPROVAL_SHADOW_FINANCE_LINEAGE_CORRUPTION_MATCHED:%', actual;
+       END IF;
+     END
+     $approval_shadow_lineage$;
+     ROLLBACK;
+     SELECT 1 / CASE WHEN approval_shadow.observe_finance_close_run_v1(
+       fixture."tenantId", fixture."companyId", fixture."id"
+     ) = 'SHADOW_MATCH' THEN 1 ELSE 0 END
+       FROM (${financeFixture}) fixture`,
+  );
+
+  const controlledIterations = 25;
+  const planEvidence = [];
+  for (const [documentType, routineName] of approvalShadowObservers) {
+    const fixtureOutput = runPsql(
+      migratorDatabaseUrl,
+      `SELECT "tenantId", "companyId", "id" FROM (${fixtureSelect(documentType)}) fixture`,
+    ).trim();
+    const [tenantId, companyId, approvalInstanceId, extra] =
+      fixtureOutput.split("|");
+    if (
+      extra !== undefined ||
+      !validUuid(tenantId) ||
+      !validUuid(companyId) ||
+      !validUuid(approvalInstanceId)
+    ) {
+      throw new Error(`APPROVAL_SHADOW_PLAN_FIXTURE_INVALID:${documentType}`);
+    }
+    const validInvocation = observerCall(
+      routineName,
+      `${quoteLiteral(tenantId)}::uuid, ${quoteLiteral(companyId)}::uuid, ${quoteLiteral(approvalInstanceId)}::uuid`,
+    );
+    const explainOutput = runPsql(
+      migratorDatabaseUrl,
+      `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON, TIMING ON, SUMMARY ON)
+       SELECT ${validInvocation}`,
+    ).trim();
+    let explain;
+    try {
+      explain = JSON.parse(explainOutput);
+    } catch {
+      throw new Error(`APPROVAL_SHADOW_EXPLAIN_JSON_INVALID:${documentType}`);
+    }
+    const executionTimeMs = explain?.[0]?.["Execution Time"];
+    if (!Number.isFinite(executionTimeMs) || executionTimeMs < 0) {
+      throw new Error(`APPROVAL_SHADOW_EXPLAIN_TIMING_INVALID:${documentType}`);
+    }
+
+    const correlatedInvocation = observerCall(
+      routineName,
+      `${quoteLiteral(tenantId)}::uuid, ${quoteLiteral(companyId)}::uuid,
+       CASE WHEN series.ordinal > 0 THEN ${quoteLiteral(approvalInstanceId)}::uuid ELSE NULL::uuid END`,
+    );
+    const matchCount = runPsql(
+      migratorDatabaseUrl,
+      `SELECT count(*)
+         FROM generate_series(1, ${controlledIterations}) AS series(ordinal)
+        WHERE ${correlatedInvocation} = 'SHADOW_MATCH'`,
+    ).trim();
+    if (matchCount !== String(controlledIterations)) {
+      throw new Error(
+        `APPROVAL_SHADOW_CONTROLLED_LOAD_MISMATCH:${documentType}:${matchCount}`,
+      );
+    }
+    planEvidence.push(executionTimeMs);
+  }
+
+  const slowestExplainMs = Math.max(...planEvidence).toFixed(3);
+
+  console.log(
+    "APPROVAL_SHADOW_OBSERVER_PASS | 18 positive | null/random/scope/family negative | runtime denied | read-only | rollback lineage",
+  );
+  console.log(
+    `APPROVAL_SHADOW_PLAN_LOAD_EVIDENCE | 18 single-call EXPLAIN ANALYZE/BUFFERS | separate ${controlledIterations}-call correlated checks | slowest single-call fixture ${slowestExplainMs} ms | disposable non-production volume`,
+  );
+}
+
+function validUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value ?? "",
+  );
+}
 
 function verifyApprovalRoutingReplicationRoleGuards(databaseUrl) {
   runPsql(

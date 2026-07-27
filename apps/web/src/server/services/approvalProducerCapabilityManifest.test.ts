@@ -523,11 +523,11 @@ function moduleReferences(file: string, source: string, target: string) {
   return references;
 }
 
-describe("DEC-0247 C1-D dormant observer design contract", () => {
-  test("pins a deeply frozen, non-executable exact 18-family manifest", () => {
-    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.dormant-binary-observer-design.1");
+describe("DEC-0247 C1-S dormant observer structural contract", () => {
+  test("pins a deeply frozen, private exact 18-family manifest", () => {
+    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.private-binary-observer-sql.1");
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(
-      "f692d28f5b5244dfaccffb1085ce2584e5588e0f56c79ad730d3d5a492a7f1cd",
+      "982d32877fd2e71e87394c73b81b2955c6422f586baa14b7d40dbc939b385a0b",
     );
     expect(Object.isFrozen(approvalProducerCapabilityManifest)).toBe(true);
     expect(approvalProducerCapabilityContracts).toHaveLength(18);
@@ -606,11 +606,13 @@ describe("DEC-0247 C1-D dormant observer design contract", () => {
           leakproof: false,
           exposure: "PRIVATE_UNGRANTED",
           allowsDml: false,
-          acquiresLocks: false,
+          acquiresExplicitLocks: false,
           allowsDynamicSql: false,
+          searchPath: ["pg_catalog"],
         },
-        executable: false,
-        sqlExists: false,
+        sqlExecutable: true,
+        runtimeCallable: false,
+        sqlExists: true,
         grantsAuthority: false,
       });
       expect(contract.observerDesign.derivation).toMatchObject({
@@ -644,7 +646,118 @@ describe("DEC-0247 C1-D dormant observer design contract", () => {
     }
     expect(toolingFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("approval_shadow.observe_"),
-    )).toEqual([]);
+    )).toEqual([
+      "packages/database/prisma/migrations/20260727160000_approval_routing_shadow_observers/migration.sql",
+      "scripts/run-disposable-postgres-tests.mjs",
+    ]);
+  });
+
+  test("pins B-S exact source backlinks, lineage relations, and exclusions without policy parity", () => {
+    const backlinks = approvalProducerCapabilityContracts
+      .filter(({ observerDesign }) => observerDesign.predicateMatrix.source.approvalInstanceBacklink !== null)
+      .map(({ documentType }) => documentType);
+    expect(backlinks).toEqual([
+      "ExpenseRequest",
+      "CashAdvanceRequest",
+      "PettyCashRequest",
+      "PaymentRequest",
+      "PaymentRelease",
+      "EmployeeLeaveRequest",
+      "EmployeeOvertimeRecord",
+      "WorkforceSchedule",
+      "AttendanceImportBatch",
+    ]);
+
+    const expectedRelations = {
+      PurchaseRequest: [["Location"], ["Brand"], []],
+      QuotationRecommendation: [["QuotationRequest", "PurchaseRequest", "Location"], [], []],
+      PurchaseOrder: [["PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
+      PurchaseOrderBalanceClosure: [["PurchaseOrder", "PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
+      PurchaseOrderAmendment: [["PurchaseOrder", "PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
+      WastageReport: [["InventoryLocation", "Location"], [], []],
+      StockAdjustment: [["InventoryLocation", "Location"], [], []],
+      FinanceCloseRun: [["Company"], [], []],
+      BudgetRevision: [["Budget"], ["Location"], ["BudgetLine", "Location"]],
+      ExpenseRequest: [["Location"], [], ["ExpenseRequestLine", "ExpenseRequestSourceLink"]],
+      CashAdvanceRequest: [["Location"], ["User", "ExpenseRequest", "PaymentRequest", "BudgetCommitment", "BankAccount"], []],
+      PettyCashRequest: [["PettyCashFund", "Location"], ["Location"], []],
+      PaymentRequest: [["Location"], [], ["PaymentRequestLine", "ApInvoice"]],
+      PaymentRelease: [["PaymentRequest", "BankAccount", "Location"], [], ["PaymentReleaseAllocation", "PaymentRequestLine", "ApInvoice"]],
+      EmployeeLeaveRequest: [["Employee"], ["Location"], []],
+      EmployeeOvertimeRecord: [["Employee"], ["Location"], []],
+      WorkforceSchedule: [["Location"], [], ["WorkforceScheduleLine", "Employee"]],
+      AttendanceImportBatch: [["Location"], [], ["AttendanceImportLine", "Employee"]],
+    } as const;
+    const excludedFacts = [
+      "SOURCE_OR_APPROVAL_STATUS",
+      "APPROVAL_RULE_OR_RULE_STEPS",
+      "APPROVAL_INSTANCE_STEPS",
+      "ROUTING_SCOPE_OR_TARGETS",
+      "PROHIBITED_OR_ELIGIBLE_ACTORS",
+      "DUE_OR_ACTIVATION",
+      "PERMISSION_OR_POLICY",
+      "AMOUNTS_OR_TOTALS",
+      "CHILD_CARDINALITY_OR_COMPLETENESS",
+      "EVIDENCE_SUFFICIENCY_OR_SELECTION",
+      "SNAPSHOT_VALUE_POLICY",
+    ];
+
+    for (const contract of approvalProducerCapabilityContracts) {
+      const matrix = contract.observerDesign.predicateMatrix;
+      expect(matrix.approvalInstance).toEqual({
+        relation: "ApprovalInstance",
+        idBinding: "id = p_approval_instance_id",
+        tenantBinding: "tenantId = p_tenant_id",
+        companyBinding: "companyId = p_company_id",
+        familyBinding: "documentType = fixedDocumentType",
+        sourceBinding: "source.id = ApprovalInstance.documentId",
+      });
+      expect(matrix.source).toMatchObject({
+        relation: contract.currentCompatibility.sourceRelation,
+        scope: "EXACT_TENANT_COMPANY",
+      });
+      expect([
+        matrix.mandatoryRelations.map(({ relation }) => relation),
+        matrix.optionalRelationAntiMismatch.map(({ relation }) => relation),
+        matrix.presentChildAntiMismatch.map(({ relation }) => relation),
+      ]).toEqual(expectedRelations[contract.documentType]);
+      expect(matrix.excludedFacts).toEqual(excludedFacts);
+      for (const relation of [
+        ...matrix.mandatoryRelations,
+        ...matrix.optionalRelationAntiMismatch,
+        ...matrix.presentChildAntiMismatch,
+      ]) {
+        expect(relation.scope).toBe(
+          relation.relation === "User" ? "EXACT_TENANT" : "EXACT_TENANT_COMPANY",
+        );
+      }
+      const includedPredicates = JSON.stringify({
+        approvalInstance: matrix.approvalInstance,
+        source: matrix.source,
+        mandatoryRelations: matrix.mandatoryRelations,
+        optionalRelationAntiMismatch: matrix.optionalRelationAntiMismatch,
+        presentChildAntiMismatch: matrix.presentChildAntiMismatch,
+        jsonShape: matrix.jsonShape,
+      });
+      expect(includedPredicates).not.toMatch(
+        /ApprovalRule|ApprovalInstanceStep|status|routing|permission|policy|threshold|amount|total|cardinality|completeness/i,
+      );
+      expect(Object.isFrozen(matrix)).toBe(true);
+      expect(Object.isFrozen(matrix.mandatoryRelations)).toBe(true);
+      expect(Object.isFrozen(matrix.excludedFacts)).toBe(true);
+    }
+
+    expect(approvalProducerCapabilityManifest.FinanceCloseRun.observerDesign.predicateMatrix.jsonShape).toEqual({
+      relation: "FinanceCloseRun",
+      objectPath: "configSnapshot.pendingSensitiveApproval",
+      requiredNonEmptyStringKeys: ["approvalAction", "requestedByUserId", "requestedAt"],
+      validatesAllowedValues: false,
+    });
+    for (const family of supportedApprovalDocumentTypes.filter(
+      (documentType) => documentType !== "FinanceCloseRun",
+    )) {
+      expect(approvalProducerCapabilityManifest[family].observerDesign.predicateMatrix.jsonShape).toBeNull();
+    }
   });
 
   test("keeps the manifest and inventory transitively test-only", () => {

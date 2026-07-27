@@ -211,6 +211,105 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   }
 });
 
+test("approval shadow deployment contract is owner-only and exact after migration", () => {
+  const bootstrap = requireText(new URL("../infra/hostinger/postgres/bootstrap-roles.sql", import.meta.url));
+  const reconcile = requireText(new URL("../infra/hostinger/postgres/reconcile-ownership-and-grants.sql", import.meta.url));
+  const verify = requireText(new URL("../infra/hostinger/postgres/verify-role-contract.sql", import.meta.url));
+  const observerNames = [
+    "observe_purchase_request_v1",
+    "observe_quotation_recommendation_v1",
+    "observe_purchase_order_v1",
+    "observe_purchase_order_balance_closure_v1",
+    "observe_purchase_order_amendment_v1",
+    "observe_wastage_report_v1",
+    "observe_stock_adjustment_v1",
+    "observe_finance_close_run_v1",
+    "observe_budget_revision_v1",
+    "observe_expense_request_v1",
+    "observe_cash_advance_request_v1",
+    "observe_petty_cash_request_v1",
+    "observe_payment_request_v1",
+    "observe_payment_release_v1",
+    "observe_employee_leave_request_v1",
+    "observe_employee_overtime_record_v1",
+    "observe_workforce_schedule_v1",
+    "observe_attendance_import_batch_v1",
+  ];
+
+  const bootstrapShadow = boundedSection(
+    bootstrap,
+    "-- DEC-0247's shadow observers are private owner-only diagnostics.",
+    "\nEND\n$bootstrap$;",
+  );
+  const reconcileShadow = boundedSection(
+    reconcile,
+    "-- The controlled migration runs before reconciliation.",
+    "\n\n  EXECUTE format('REVOKE ALL ON DATABASE",
+  );
+  const verifyShadow = boundedSection(
+    verify,
+    "  SELECT oid INTO approval_shadow_schema_oid",
+    "\n  IF EXISTS (\n    SELECT 1 FROM pg_class c",
+  );
+
+  assert.equal(observerNames.length, 18);
+  for (const observerName of observerNames) {
+    assert.match(bootstrapShadow, new RegExp(`'${observerName}'`));
+    assert.match(reconcileShadow, new RegExp(`'${observerName}'`));
+    assert.match(verifyShadow, new RegExp(`'${observerName}'`));
+  }
+
+  for (const containmentSql of [bootstrapShadow, reconcileShadow]) {
+    assert.match(containmentSql, /IF approval_shadow_schema_oid IS NOT NULL THEN/);
+    assert.match(containmentSql, /ALTER SCHEMA approval_shadow OWNER TO %I/);
+    assert.match(containmentSql, /ALTER FUNCTION approval_shadow\.%I\(%s\) OWNER TO %I/);
+    assert.match(containmentSql, /p\.proargtypes\[0\] = 'uuid'::regtype/);
+    assert.match(containmentSql, /REVOKE ALL ON SCHEMA approval_shadow FROM PUBLIC/);
+    assert.match(containmentSql, /REVOKE ALL ON ROUTINE approval_shadow\.%I\(%s\) FROM PUBLIC/);
+    assert.match(containmentSql, /CROSS JOIN LATERAL aclexplode\(routine\.proacl\) acl/);
+    assert.match(containmentSql, /d\.defaclnamespace IN \(0, approval_shadow_schema_oid\)/);
+    assert.match(containmentSql, /IN SCHEMA approval_shadow REVOKE ALL ON FUNCTIONS FROM PUBLIC/);
+    assert.doesNotMatch(containmentSql, /\bGRANT\s+[^;]*approval_shadow/i);
+  }
+
+  assert.match(
+    verify,
+    /n\.nspname NOT IN \('public', 'approval_shadow', 'pg_catalog', 'information_schema'\)/,
+  );
+  assert.match(
+    verify,
+    /public\.acquire_approval_routing_producer_barrier_shared\(uuid,uuid,text\)/,
+  );
+  assert.match(verifyShadow, /Mandatory approval_shadow schema is absent or not owner-owned/);
+  assert.match(verifyShadow, /approval_shadow contains a non-routine object/);
+  assert.match(verifyShadow, /count\(\*\) FROM pg_proc WHERE pronamespace = approval_shadow_schema_oid\) <> 18/);
+  assert.match(verifyShadow, /p\.prokind <> 'f'/);
+  assert.match(verifyShadow, /p\.proargtypes\[2\] <> 'uuid'::regtype/);
+  assert.match(verifyShadow, /p\.proargnames IS DISTINCT FROM ARRAY/);
+  assert.match(verifyShadow, /'p_tenant_id'/);
+  assert.match(verifyShadow, /'p_company_id'/);
+  assert.match(verifyShadow, /'p_approval_instance_id'/);
+  assert.match(verifyShadow, /p\.proretset/);
+  assert.match(verifyShadow, /p\.prorettype <> 'text'::regtype/);
+  assert.match(verifyShadow, /p\.proowner <> owner_oid/);
+  assert.match(verifyShadow, /p\.prosecdef/);
+  assert.match(verifyShadow, /p\.provolatile <> 's'/);
+  assert.match(verifyShadow, /p\.proleakproof/);
+  assert.match(verifyShadow, /p\.proisstrict/);
+  assert.match(verifyShadow, /p\.proconfig IS DISTINCT FROM ARRAY\['search_path=pg_catalog'\]::text\[\]/);
+  assert.match(verifyShadow, /approval_shadow exposes an effective non-owner privilege/);
+  assert.match(verifyShadow, /approval_shadow function defaults expose a non-owner privilege/);
+  assert.doesNotMatch(verifyShadow, /md5\(p\.prosrc\)|source_md5|semantics drifted/);
+});
+
+function boundedSection(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, `Missing section start: ${startMarker}`);
+  const end = source.indexOf(endMarker, start);
+  assert.notEqual(end, -1, `Missing section end: ${endMarker}`);
+  return source.slice(start, end);
+}
+
 function requireText(url) {
   return readFileSync(url, "utf8");
 }

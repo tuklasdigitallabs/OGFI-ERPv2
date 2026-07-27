@@ -457,6 +457,10 @@ The migration also installs six deferred validator trigger placeholders with a
 constant false predicate; they queue no validation and do not enforce complete-v1
 or exact descriptor provenance.
 
+### 7.7 Private Approval Routing Shadow Observers (`DEC-0247`)
+
+`approval_shadow` contains no business entity or durable evidence table. It owns exactly 18 private fixed-family structural observer routines, each bound by tenant, company, and Approval Instance ID and returning only `SHADOW_MATCH` or `SHADOW_NO_MATCH`. Source, mandatory-parent, optional-present, present-child, and Finance Close snapshot-shape facts are derived from authoritative relations; the tenant-owned Cash Advance beneficiary `User` check is tenant-scoped, while company-owned relations are tenant/company-scoped. The result is non-authoritative and cannot grant approval, validate routing policy, certify readiness, or change a source, approval, inventory, finance, or audit fact. Runtime has no execute access and no user-facing term is introduced.
+
 Source-table transition triggers, active deferred validation, provenance writes,
 exclusive activation/final-scan locking, the Option C closed writer capability
 perimeter, and a `V1_PRODUCER_BARRIER_READY` result remain pending. The feature

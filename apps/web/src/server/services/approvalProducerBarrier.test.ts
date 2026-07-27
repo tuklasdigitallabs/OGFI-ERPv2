@@ -47,6 +47,8 @@ describe("approval producer shared-lock participation", () => {
     expect(transactionAt).toBeGreaterThanOrEqual(0);
     expect(barrierAt).toBeGreaterThan(transactionAt);
     expect(actionAt).toBeGreaterThan(barrierAt);
+    expect(source).toContain("await tx.$executeRaw`");
+    expect(source).not.toContain("await tx.$queryRaw`");
     expect(source).not.toMatch(/generation|provenance|readiness|certif|mappingHash|capabilityHash/i);
   });
 

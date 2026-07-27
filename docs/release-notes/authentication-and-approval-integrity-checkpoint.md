@@ -15,7 +15,7 @@
 ## What you need to do
 
 - If sign-in is temporarily rejected during heavy traffic, wait briefly and retry once. Continued safe rejection should be reported to support; it does not confirm whether an account exists.
-- Refresh the Approval Inbox before retrying an approval that reports stale authority or a concurrent decision.
+- After normalized Approval Inbox activation, refresh it before retrying an approval that reports stale authority or a concurrent decision. While it remains disabled, follow the authoritative source-workflow owner or administrator guidance.
 - Treat notifications as reminders only. They do not grant approval authority.
 
 ## Important limitations

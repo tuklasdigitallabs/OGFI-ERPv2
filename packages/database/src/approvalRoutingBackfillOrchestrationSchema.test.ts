@@ -85,6 +85,9 @@ describe("DEC-0245 durable approval-routing backfill orchestration schema", () =
       "APPROVAL_ROUTING_BACKFILL_BATCH_NOT_CHECKPOINTED",
     );
     expect(migrationSource).toContain(
+      'NEW."status" IS DISTINCT FROM (CASE committed_batch."outcome"',
+    );
+    expect(migrationSource).toContain(
       "APPROVAL_ROUTING_BACKFILL_RECEIPT_CHAIN_INVALID",
     );
     expect(migrationSource).toContain(

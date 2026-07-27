@@ -84,9 +84,6 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE attempt_row RECORD;
 BEGIN
   IF NEW."sourceStockCountAttemptId" IS NULL THEN
-    IF NEW."sourceStockCountAttemptLineId" IS NOT NULL THEN
-      RAISE EXCEPTION 'Attempt-line lineage requires an attempt header' USING ERRCODE = '23514';
-    END IF;
     RETURN NEW;
   END IF;
 

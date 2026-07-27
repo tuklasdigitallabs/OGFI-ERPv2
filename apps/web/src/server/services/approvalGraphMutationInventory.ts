@@ -351,6 +351,7 @@ export const approvalGraphToolingDdlInventory = Object.freeze([
   "packages/database/prisma/migrations/20260724010000_controlled_evidence_qualification_foundation/migration.sql",
   "packages/database/prisma/migrations/20260727140000_approval_routing_backfill_orchestration/migration.sql",
   "packages/database/prisma/migrations/20260727150000_approval_routing_producer_barrier_dormant/migration.sql",
+  "packages/database/prisma/migrations/20260727160000_approval_routing_shadow_observers/migration.sql",
 ] as const);
 
 export const approvalGraphToolingProbeInventory = Object.freeze([
