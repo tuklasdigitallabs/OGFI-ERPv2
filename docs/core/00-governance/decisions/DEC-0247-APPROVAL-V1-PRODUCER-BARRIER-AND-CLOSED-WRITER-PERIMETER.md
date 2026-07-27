@@ -743,6 +743,14 @@ typecheck/lint green; PostgreSQL race, rollback, replay, and lifecycle-writer
 parity remain unexecuted/open. This is planned Phase III compatibility work,
 not Phase I or production activation; the routing flag remains false.
 
+The dormant Employee Overtime producer now applies the same locked source,
+employee, and location contract, sealed-rule gate, scoped DRAFT/`updatedAt`
+CAS, and exact graph backlink binding. Requester, creator, and linked employee
+users are prohibited from approving the record. Focused Workforce coverage
+passes 22/22 with web typecheck/lint green; PostgreSQL race, rollback, replay,
+and lifecycle-writer parity remain unexecuted/open. This remains planned Phase
+III compatibility work, not Phase I or production activation.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

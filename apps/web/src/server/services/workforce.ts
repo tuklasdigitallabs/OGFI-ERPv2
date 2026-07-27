@@ -850,7 +850,8 @@ async function findEmployeeOvertimeApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "EmployeeOvertimeRecord",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -2645,13 +2646,25 @@ export async function submitOvertimeRecord(
     companyId: session.context.companyId,
     documentType: "EmployeeOvertimeRecord",
   }, async (tx) => {
-    const record = await getScopedOvertimeOrThrow(
-      tx,
-      session,
-      input.overtimeRecordId
-    );
+    const lockedRows = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      employeeId: string;
+      locationId: string | null;
+    }>>`
+      SELECT r.id, r.status, r."updatedAt", r."employeeId", r."locationId"
+        FROM "EmployeeOvertimeRecord" r
+       WHERE r.id = ${input.overtimeRecordId}::uuid
+         AND r."tenantId" = ${session.context.tenantId}::uuid
+         AND r."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedRecord = lockedRows[0];
+    if (!lockedRecord) throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
+    const record = await getScopedOvertimeOrThrow(tx, session, input.overtimeRecordId);
     if (record.status === "SUBMITTED") {
-      return record;
+      throw new Error("WORKFORCE_OVERTIME_ALREADY_SUBMITTED");
     }
     assertStatusAllowed(
       record.status,
@@ -2669,6 +2682,26 @@ export async function submitOvertimeRecord(
     if (!record.locationId) {
       throw new Error("WORKFORCE_OVERTIME_APPROVAL_SOURCE_LOCATION_REQUIRED");
     }
+    const employeeRows = await tx.$queryRaw<Array<{ id: string; status: string; userId: string | null }>>`
+      SELECT e.id, e.status, e."userId"
+        FROM "Employee" e
+       WHERE e.id = ${record.employeeId}::uuid
+         AND e."tenantId" = ${session.context.tenantId}::uuid
+         AND e."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const employee = employeeRows[0];
+    if (!employee || employee.status !== "ACTIVE") throw new Error("WORKFORCE_OVERTIME_EMPLOYEE_NOT_ACTIVE");
+    const locationRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT l.id, l.status
+        FROM "Location" l
+       WHERE l.id = ${record.locationId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    if (!locationRows[0] || locationRows[0].status !== "ACTIVE") throw new Error("WORKFORCE_OVERTIME_APPROVAL_SOURCE_LOCATION_REQUIRED");
+    if (lockedRecord.updatedAt.getTime() !== record.updatedAt.getTime()) throw new Error("WORKFORCE_OVERTIME_SUBMIT_CONFLICT");
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -2732,10 +2765,15 @@ export async function submitOvertimeRecord(
             locationId: record.locationId
           }]
         }],
-        prohibitedActors: [{
-          userId: record.requestedByUserId,
-          reasonCode: "REQUESTER"
-        }]
+        prohibitedActors: [
+          { userId: record.requestedByUserId, reasonCode: "REQUESTER" },
+          ...(employee.userId && employee.userId !== record.requestedByUserId
+            ? [{ userId: employee.userId, reasonCode: "EMPLOYEE" }]
+            : []),
+          ...(record.createdByUserId !== record.requestedByUserId
+            ? [{ userId: record.createdByUserId, reasonCode: "CREATOR" }]
+            : [])
+        ]
       });
     }
     await assertAnyEligibleApprovalActorForStep(tx, {
@@ -2743,14 +2781,34 @@ export async function submitOvertimeRecord(
       companyId: session.context.companyId,
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
-    const updated = await tx.employeeOvertimeRecord.update({
-      where: { id: record.id },
-      data: {
-        status: "SUBMITTED",
-        approvalInstanceId: approvalInstance.id,
-        updatedByUserId: session.user.id
-      }
+    const claimed = await tx.employeeOvertimeRecord.updateMany({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "DRAFT",
+        updatedAt: lockedRecord.updatedAt
+      },
+      data: { status: "SUBMITTED", approvalInstanceId: null, updatedByUserId: session.user.id }
     });
+    if (claimed.count !== 1) throw new Error("WORKFORCE_OVERTIME_SUBMIT_CONFLICT");
+    const linked = await tx.employeeOvertimeRecord.updateMany({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "SUBMITTED",
+        approvalInstanceId: null
+      },
+      data: { approvalInstanceId: approvalInstance.id }
+    });
+    if (linked.count !== 1) throw new Error("WORKFORCE_OVERTIME_SUBMIT_CONFLICT");
+    const updated = {
+      ...record,
+      status: "SUBMITTED" as const,
+      approvalInstanceId: approvalInstance.id,
+      updatedByUserId: session.user.id
+    };
     const auditEvent = await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
