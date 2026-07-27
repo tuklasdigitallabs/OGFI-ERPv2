@@ -1013,3 +1013,7 @@ Architecture and Security review conditionally approved a reject-only parity sli
 ### Finance Close cancellation lifecycle — July 27, 2026
 
 Architecture, Security, and QA rejected an isolated cancellation barrier/CAS change. Mutable readiness runs and `CLOSED` sensitive-approval runs are disjoint, and readiness, completion, checklist, and exception writers are not yet fenced by a common parent lock/version order. The next acceptable cancellation change must couple those lifecycle writers, define graph incoherence handling and durable replay identity, and preserve a zero-period/zero-accounting-side-effect boundary. No implementation or authority change is approved by this review.
+
+### Finance Close mutable lifecycle fencing correction — July 27, 2026
+
+The coupled correction is accepted as a dormant, feature-disabled source-integrity improvement. Checklist, exception, readiness, completion, and cancellation writers now share the FinanceCloseRun barrier and parent-row lock order; completion locks the AccountingPeriod before soft-close; cancellation requires a stable idempotency identity, verifies legacy graph coherence, and remains source-only. This does not authorize Finance Close approval/period lock/reopen activation, and PostgreSQL race/replay/rollback/zero-side-effect evidence remains a release gate.

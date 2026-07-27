@@ -300,6 +300,16 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain("APPROVAL_SOURCE_STATE_CHANGED");
   });
 
+  it("fences mutable close lifecycle writers behind the parent run lock", () => {
+    expect(serviceSource).toContain("lockFinanceCloseRunForMutation");
+    expect(serviceSource).toContain('PERIOD_CLOSE_CANCELLATION_IDEMPOTENCY_KEY_REQUIRED');
+    expect(serviceSource).toContain('PERIOD_CLOSE_CANCELLATION_IDEMPOTENCY_CONFLICT');
+    expect(serviceSource).toContain("forceWhenDisabled: true");
+    expect(serviceSource).toContain('FOR UPDATE OF run');
+    expect(serviceSource).toContain('FOR UPDATE OF period');
+    expect(serviceSource).toContain("ACCOUNTING_PERIOD_CLOSE_STATE_CONFLICT");
+  });
+
   it("wires period-close readiness actions through the page server actions", () => {
     expect(pageSource).toContain("runPeriodCloseRunAction");
     expect(pageSource).toContain("requestPeriodCloseSensitiveActionApproval");

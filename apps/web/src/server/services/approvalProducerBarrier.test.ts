@@ -82,7 +82,7 @@ describe("approval producer shared-lock participation", () => {
     ) ?? [];
     // The registry covers 18 producer families; terminal and lifecycle
     // writers in those same services also participate in the shared barrier.
-    expect(wrapperCalls).toHaveLength(34);
-    expect(literalCalls).toHaveLength(34);
+    expect(wrapperCalls).toHaveLength(42);
+    expect(literalCalls).toHaveLength(42);
   });
 });

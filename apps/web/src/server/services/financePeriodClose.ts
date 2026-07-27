@@ -360,6 +360,23 @@ async function getScopedCloseRunOrThrow(
   return run;
 }
 
+async function lockFinanceCloseRunForMutation(
+  tx: TransactionClient,
+  session: SessionContext,
+  financeCloseRunId: string
+) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT run.id
+      FROM "FinanceCloseRun" run
+     WHERE run.id = ${financeCloseRunId}::uuid
+       AND run."tenantId" = ${session.context.tenantId}::uuid
+       AND run."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF run
+  `;
+  if (locked.length !== 1) throw new Error("PERIOD_CLOSE_RUN_NOT_FOUND");
+  return getScopedCloseRunOrThrow(tx, session, financeCloseRunId);
+}
+
 async function writeCloseAudit(
   tx: TransactionClient,
   input: {
@@ -1110,8 +1127,12 @@ export async function recordPeriodCloseChecklistResult(
       ? requireCloseReason(input.reason, "PERIOD_CLOSE_CHECKLIST_FAIL_REASON_REQUIRED")
       : input.reason?.trim() ?? null;
 
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const item = run.checklistItems.find(
       (check) => check.id === input.checklistItemId
@@ -1179,8 +1200,12 @@ export async function waivePeriodCloseChecklistItem(
     "PERIOD_CLOSE_CHECKLIST_WAIVER_EVIDENCE_REQUIRED"
   );
 
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const item = run.checklistItems.find(
       (check) => check.id === input.checklistItemId
@@ -1241,8 +1266,12 @@ export async function acknowledgePeriodCloseException(
     input.reason,
     "PERIOD_CLOSE_EXCEPTION_ACK_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const exception = run.exceptions.find((item) => item.id === input.exceptionId);
     if (!exception) {
@@ -1291,8 +1320,12 @@ export async function resolvePeriodCloseException(
     input.evidenceReference,
     "PERIOD_CLOSE_EXCEPTION_RESOLUTION_EVIDENCE_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const exception = run.exceptions.find((item) => item.id === input.exceptionId);
     if (!exception) {
@@ -1358,8 +1391,12 @@ export async function waivePeriodCloseException(
     input.evidenceReference,
     "PERIOD_CLOSE_EXCEPTION_WAIVER_EVIDENCE_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const exception = run.exceptions.find((item) => item.id === input.exceptionId);
     if (!exception) {
@@ -1418,7 +1455,11 @@ export async function calculatePeriodCloseReadiness(
   await requirePermission(session, permissions.financePeriodCloseManage);
   const idempotencyKey =
     input.idempotencyKey ?? `close:${input.financeCloseRunId}:readiness:${Date.now()}`;
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
     const existingAttempt = await tx.financeCloseAttempt.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1430,7 +1471,7 @@ export async function calculatePeriodCloseReadiness(
     if (existingAttempt) {
       return existingAttempt.financeCloseRun;
     }
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const syncedBankExceptionCount = await syncBankStatementCloseExceptions(
       tx,
@@ -1511,7 +1552,11 @@ export async function completePeriodCloseRun(
   const idempotencyKey =
     input.idempotencyKey ?? `close:${input.financeCloseRunId}:complete:${Date.now()}`;
 
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
     const existingAttempt = await tx.financeCloseAttempt.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1524,7 +1569,7 @@ export async function completePeriodCloseRun(
       return existingAttempt.financeCloseRun;
     }
 
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     if (run.status !== "READY_TO_CLOSE") {
       throw new Error("PERIOD_CLOSE_RUN_MUST_BE_READY");
@@ -1535,6 +1580,18 @@ export async function completePeriodCloseRun(
     }
     if (!["OPEN", "REOPENED"].includes(run.accountingPeriod.status)) {
       throw new Error("ACCOUNTING_PERIOD_NOT_CLOSEABLE");
+    }
+
+    const lockedPeriods = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT period.id, period.status
+        FROM "AccountingPeriod" period
+       WHERE period.id = ${run.accountingPeriodId}::uuid
+         AND period."tenantId" = ${session.context.tenantId}::uuid
+         AND period."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF period
+    `;
+    if (lockedPeriods.length !== 1 || !["OPEN", "REOPENED"].includes(lockedPeriods[0]!.status)) {
+      throw new Error("ACCOUNTING_PERIOD_CLOSE_STATE_CONFLICT");
     }
 
     const closedAt = new Date();
@@ -2565,6 +2622,10 @@ export async function cancelPeriodCloseRun(
   input: PeriodCloseActionInput
 ) {
   await requirePermission(session, permissions.financePeriodCloseManage);
+  const idempotencyKey = input.idempotencyKey?.trim();
+  if (!idempotencyKey) {
+    throw new Error("PERIOD_CLOSE_CANCELLATION_IDEMPOTENCY_KEY_REQUIRED");
+  }
   const reason = requireCloseReason(
     input.reason,
     "PERIOD_CLOSE_CANCELLATION_REASON_REQUIRED"
@@ -2573,15 +2634,35 @@ export async function cancelPeriodCloseRun(
     input.evidenceReference,
     "PERIOD_CLOSE_CANCELLATION_EVIDENCE_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
+    const existingAttempt = await tx.financeCloseAttempt.findFirst({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        idempotencyKey,
+        action: "CANCEL_RUN"
+      },
+      include: { financeCloseRun: true }
+    });
+    if (existingAttempt) {
+      if (existingAttempt.notes !== reason) {
+        throw new Error("PERIOD_CLOSE_CANCELLATION_IDEMPOTENCY_CONFLICT");
+      }
+      return existingAttempt.financeCloseRun;
+    }
+    const run = await lockFinanceCloseRunForMutation(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
     const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       documentType: "FinanceCloseRun",
       documentId: run.id,
-      policy: "APPROVAL_OPTIONAL"
+      policy: "APPROVAL_OPTIONAL",
+      forceWhenDisabled: true
     });
     const sourceUpdate = await tx.financeCloseRun.updateMany({
       where: { id: run.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: run.status, version: run.version },
@@ -2609,8 +2690,7 @@ export async function cancelPeriodCloseRun(
         financeCloseRunId: run.id,
         action: "CANCEL_RUN",
         result: "SUCCEEDED",
-        idempotencyKey:
-          input.idempotencyKey ?? `close:${run.id}:cancel:${Date.now()}`,
+        idempotencyKey,
         attemptedByUserId: session.user.id,
         notes: reason
       }
