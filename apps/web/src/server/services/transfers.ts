@@ -104,6 +104,59 @@ export function hashInventoryTransferReceiptRequest(input: {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+function receiptRequestHashFromForm(
+  transfer: {
+    id: string;
+    destinationLocationId: string;
+    lines: Array<{
+      id: string;
+      dispatchedQty: unknown;
+      receivedQty: unknown;
+      rejectedQty: unknown;
+      damagedQty: unknown;
+      discrepancyQty: unknown;
+      sourceInventoryLocationId: string;
+      destinationInventoryLocationId: string;
+    }>;
+  },
+  session: SessionContext,
+  formData: FormData,
+  notes: string | null | undefined
+) {
+  return hashInventoryTransferReceiptRequest({
+    actorUserId: session.user.id,
+    destinationLocationId: transfer.destinationLocationId,
+    transferId: transfer.id,
+    notes: notes ?? null,
+    lines: transfer.lines.map((line) => ({
+      lineId: line.id,
+      sourceInventoryLocationId: line.sourceInventoryLocationId,
+      destinationInventoryLocationId: line.destinationInventoryLocationId,
+      acceptedQty:
+        parseReceiptQuantity(formData, line.id, "acceptedQty") ??
+        Number(
+          (
+            Number(line.dispatchedQty) -
+            Number(line.receivedQty) -
+            Number(line.rejectedQty) -
+            Number(line.damagedQty) -
+            Number(line.discrepancyQty)
+          ).toFixed(6)
+        ),
+      rejectedQty: parseReceiptQuantity(formData, line.id, "rejectedQty") ?? 0,
+      damagedQty: parseReceiptQuantity(formData, line.id, "damagedQty") ?? 0,
+      discrepancyQty:
+        parseReceiptQuantity(formData, line.id, "discrepancyQty") ?? 0,
+      discrepancyType:
+        String(formData.get(`lines.${line.id}.discrepancyType`) ?? "").trim() || null,
+      discrepancyReason:
+        String(formData.get(`lines.${line.id}.discrepancyReason`) ?? "").trim() || null,
+      evidenceReference:
+        String(formData.get(`lines.${line.id}.evidenceReference`) ?? "").trim() || null
+    }))
+  });
+}
+
 const reverseTransferReceiptSchema = z.object({
   id: z.string().uuid(),
   receiptId: z.string().uuid(),
@@ -1460,7 +1513,6 @@ export async function dispatchInventoryTransfer(formData: FormData) {
   if (!transfer) {
     throw new Error("TRANSFER_NOT_FOUND");
   }
-
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
@@ -1667,6 +1719,12 @@ export async function receiveInventoryTransfer(formData: FormData) {
   if (!transfer) {
     throw new Error("TRANSFER_NOT_FOUND");
   }
+  const requestHashCandidate = receiptRequestHashFromForm(
+    transfer,
+    session,
+    formData,
+    values.notes
+  );
 
   const now = new Date();
   try {
@@ -2024,6 +2082,21 @@ export async function receiveInventoryTransfer(formData: FormData) {
     });
   } catch (error) {
     if (isTransferReceiptIdempotencyUniqueConstraintError(error)) {
+      const racedReceipt = await prisma.inventoryTransferReceipt.findFirst({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          idempotencyKey: values.idempotencyKey,
+          inventoryTransferId: values.id
+        },
+        select: { idempotencyRequestHash: true, status: true }
+      });
+      if (
+        racedReceipt?.idempotencyRequestHash === requestHashCandidate &&
+        (racedReceipt.status === "POSTED" || racedReceipt.status === "REVERSED")
+      ) {
+        return;
+      }
       throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
     }
     throw error;

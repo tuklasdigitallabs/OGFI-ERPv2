@@ -698,5 +698,7 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain('movementType: "TRANSFER_IN"');
     expect(service).toContain("isTransferReceiptIdempotencyUniqueConstraintError");
     expect(service).toContain("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
+    expect(service).toContain("racedReceipt");
+    expect(service).toContain("requestHashCandidate");
   });
 });
