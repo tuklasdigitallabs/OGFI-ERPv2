@@ -1478,31 +1478,61 @@ export async function createDraftPurchaseRequest(formData: FormData) {
   return request;
 }
 
+type LockedPurchaseRequestSource = {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  brandId: string | null;
+  requestLocationId: string;
+  requesterUserId: string;
+  requiredDate: Date;
+  urgency: string;
+  publicReference: string;
+  status: string;
+  version: number;
+};
+
 export async function submitPurchaseRequest(id: string) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.purchaseRequestSubmit);
-  const existing = await getPurchaseRequest(session, id);
-  if (!existing) {
-    throw new Error("PURCHASE_REQUEST_NOT_FOUND");
-  }
-  if (existing.requesterUserId !== session.user.id) {
-    throw new Error("PERMISSION_DENIED");
-  }
-  if (existing.status !== "DRAFT") {
-    throw new Error("INVALID_STATUS_TRANSITION");
-  }
 
   await withApprovalProducerTransaction({
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     documentType: "PurchaseRequest",
   }, async (tx) => {
+    const lockedRows = await tx.$queryRaw<LockedPurchaseRequestSource[]>`
+      SELECT id, "tenantId", "companyId", "brandId", "requestLocationId",
+             "requesterUserId", "requiredDate", urgency, "publicReference",
+             status::text AS status, version
+        FROM "PurchaseRequest"
+       WHERE id = ${id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "requestLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE
+    `;
+    const source = lockedRows[0];
+    if (!source) {
+      throw new Error("PURCHASE_REQUEST_NOT_FOUND");
+    }
+    if (source.requesterUserId !== session.user.id) {
+      throw new Error("PERMISSION_DENIED");
+    }
+    assertAuthorizedLocation(session, source.requestLocationId);
+    if (source.status !== "DRAFT") {
+      throw new Error("INVALID_STATUS_TRANSITION");
+    }
+
     const claimed = await tx.purchaseRequest.updateMany({
       where: {
-        id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
+        id: source.id,
+        tenantId: source.tenantId,
+        companyId: source.companyId,
+        requestLocationId: source.requestLocationId,
+        requesterUserId: source.requesterUserId,
         status: "DRAFT",
+        version: source.version,
       },
       data: {
         status: "PENDING_APPROVAL",
@@ -1515,7 +1545,7 @@ export async function submitPurchaseRequest(id: string) {
 
     const route = resolvePurchaseRequestApprovalRule({
       rules: await findPurchaseRequestApprovalRule(tx, session),
-      isEmergency: existing.isEmergency,
+      isEmergency: isEmergencyPurchaseUrgency(source.urgency),
     });
     const approvalRule = route.approvalRule;
 
@@ -1564,7 +1594,7 @@ export async function submitPurchaseRequest(id: string) {
         companyId: session.context.companyId,
         routingPolicy: getApprovalRoutingPolicy("PurchaseRequest"),
         requiredPermissionCode: permissions.purchaseRequestApprove,
-        dueAt: new Date(`${existing.requiredDate}T00:00:00.000Z`),
+        dueAt: new Date(`${source.requiredDate.toISOString().slice(0, 10)}T00:00:00.000Z`),
         activationAudit: {
           actorUserId: session.user.id,
           source: "purchase-request-submission"
@@ -1575,11 +1605,11 @@ export async function submitPurchaseRequest(id: string) {
           targets: [{
             scopeType: "LOCATION",
             companyId: session.context.companyId,
-            locationId: existing.requestLocationId
+            locationId: source.requestLocationId
           }]
         }],
         prohibitedActors: [{
-          userId: existing.requesterUserId,
+          userId: source.requesterUserId,
           reasonCode: "REQUESTER"
         }]
       });
@@ -1594,7 +1624,14 @@ export async function submitPurchaseRequest(id: string) {
     });
 
     await tx.purchaseRequest.update({
-      where: { id },
+      where: {
+        id: source.id,
+        tenantId: source.tenantId,
+        companyId: source.companyId,
+        requestLocationId: source.requestLocationId,
+        status: "PENDING_APPROVAL",
+        version: source.version + 1,
+      },
       data: { currentApprovalStep: firstStep.stepOrder },
     });
 
@@ -1618,9 +1655,17 @@ export async function submitPurchaseRequest(id: string) {
           approvalRouteType: route.routeType,
           emergencyFallbackUsed: route.fallbackUsed,
           emergencyReview: {
-            isEmergency: existing.isEmergency,
-            slaStatus: existing.slaStatus,
-            slaLabel: existing.slaLabel,
+            isEmergency: isEmergencyPurchaseUrgency(source.urgency),
+            slaStatus: getPurchaseRequestSlaStatus({
+              urgency: source.urgency,
+              requiredDate: source.requiredDate,
+              status: "DRAFT",
+            }),
+            slaLabel: getPurchaseRequestSlaLabel(getPurchaseRequestSlaStatus({
+              urgency: source.urgency,
+              requiredDate: source.requiredDate,
+              status: "DRAFT",
+            })),
           },
         },
       },
@@ -1630,12 +1675,12 @@ export async function submitPurchaseRequest(id: string) {
       await recordApprovalStepReadyNotification(tx, {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        locationId: existing.requestLocationId,
+        locationId: source.requestLocationId,
         approvalInstanceId: approvalInstance.id,
         approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
         stepOrder: firstRoutedStep.stepOrder,
         recipientUserId: firstRoutedStep.userId,
-        publicReference: existing.publicReference,
+        publicReference: source.publicReference,
         locationName: session.context.locationName,
         entityLabel: "Purchase request",
         entityType: "PurchaseRequest",
@@ -1644,7 +1689,7 @@ export async function submitPurchaseRequest(id: string) {
           assignedRoleId: firstRoutedStep.roleId,
           requiredPermissionCode: permissions.purchaseRequestApprove,
           scopeType: "LOCATION_CONTEXT",
-          scopeId: existing.requestLocationId
+          scopeId: source.requestLocationId
         }
       });
     }

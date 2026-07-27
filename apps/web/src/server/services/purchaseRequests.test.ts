@@ -53,18 +53,21 @@ describe("purchase request workflow controls", () => {
     expect(submit).toContain("for (const step of routedSteps)");
     expect(submit).toContain("configureApprovalStepRouting(tx");
     expect(submit).toContain("requiredPermissionCode: permissions.purchaseRequestApprove");
-    expect(submit).toContain("dueAt: new Date(`${existing.requiredDate}T00:00:00.000Z`)");
+    expect(submit).toContain("SELECT id, \"tenantId\", \"companyId\", \"brandId\"");
+    expect(submit).toContain("FOR UPDATE");
+    expect(submit).toContain("version: source.version");
+    expect(submit).toContain("dueAt: new Date(`${source.requiredDate.toISOString().slice(0, 10)}T00:00:00.000Z`)");
     expect(submit).toContain('source: "purchase-request-submission"');
     expect(submit).toContain('scopeType: "LOCATION"');
-    expect(submit).toContain("locationId: existing.requestLocationId");
-    expect(submit).toContain("userId: existing.requesterUserId");
+    expect(submit).toContain("locationId: source.requestLocationId");
+    expect(submit).toContain("userId: source.requesterUserId");
     expect(submit).toContain("assertAnyEligibleApprovalActorForStep(tx");
     expect(submit).toContain("status: \"DRAFT\"");
     expect(submit).toContain("const claimed = await tx.purchaseRequest.updateMany");
     expect(submit.indexOf("const claimed = await tx.purchaseRequest.updateMany")).toBeLessThan(
       submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")
     );
-    expect(submit).toContain("if (existing.requesterUserId !== session.user.id)");
+    expect(submit).toContain("if (source.requesterUserId !== session.user.id)");
     expect(submit).toContain('throw new Error("PERMISSION_DENIED")');
     expect(submit).toContain("actorUserId: firstRoutedStep.userId");
     expect(submit).toContain("if (firstRoutedStep.userId)");

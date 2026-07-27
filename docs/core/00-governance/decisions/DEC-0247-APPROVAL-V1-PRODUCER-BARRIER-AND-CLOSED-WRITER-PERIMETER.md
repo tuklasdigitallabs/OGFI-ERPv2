@@ -598,6 +598,15 @@ and activation remain pending. `APPROVAL_ROUTING_V1_ENABLED` remains false.
   documentation stewardship, were used. Model fallback did not relax a hard gate
   or authorize activation.
 
+## Purchase Request source-lock prerequisite — July 27, 2026
+
+The Purchase Request producer now locks the exact scoped source row inside the
+shared-barrier transaction and derives submission routing facts from that
+authoritative snapshot. Its DRAFT claim uses an exact source-version/status/
+scope compare-and-set. This corrects the stale pre-read defect without
+activating a typed capability; durable replay identity and adjacent
+cancel/reopen/decision writer races remain rollout blockers.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

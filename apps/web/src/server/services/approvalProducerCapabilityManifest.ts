@@ -503,7 +503,7 @@ const requiredCapabilityDiscoveryFacts = {
 type CurrentControlLevel = "IMPLEMENTED" | "PARTIAL" | "ABSENT";
 
 const currentTransactionFacts = {
-  PurchaseRequest: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Source is read before the transaction; in-transaction DRAFT updateMany claims status and increments version, while routing facts still use the earlier snapshot." },
+  PurchaseRequest: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer transaction locks the exact tenant/company/location source row, derives routing facts from that snapshot, and claims DRAFT with an exact version/status/scope compare-and-set; durable replay identity remains absent." },
   QuotationRecommendation: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Recommendation is loaded before the transaction; DRAFT updateMany claims status and increments version." },
   PurchaseOrder: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Source and lineage are read before the transaction; graph creation precedes the DRAFT status compare-and-set." },
   PurchaseOrderBalanceClosure: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Parent PurchaseOrder is locked and revalidated; the child is newly created without a request-hash replay contract." },
