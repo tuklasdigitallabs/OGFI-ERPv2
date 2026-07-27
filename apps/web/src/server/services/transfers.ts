@@ -340,6 +340,22 @@ function isUniqueConstraintError(error: unknown) {
   );
 }
 
+function isTransferReceiptIdempotencyUniqueConstraintError(error: unknown) {
+  if (!isUniqueConstraintError(error)) return false;
+  const meta =
+    "meta" in (error as object) &&
+    typeof (error as { meta?: unknown }).meta === "object" &&
+    (error as { meta?: unknown }).meta !== null
+      ? (error as { meta: Record<string, unknown> }).meta
+      : null;
+  const target = meta?.target;
+  return Array.isArray(target)
+    ? target.includes("tenantId") &&
+        target.includes("companyId") &&
+        target.includes("idempotencyKey")
+    : typeof target === "string" && target.includes("idempotencyKey");
+}
+
 function settlementMetadataValue(
   metadata: unknown,
   key: "settlementType" | "evidenceReference" | "reason"
@@ -1653,7 +1669,8 @@ export async function receiveInventoryTransfer(formData: FormData) {
   }
 
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
+  try {
+    await prisma.$transaction(async (tx) => {
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,
@@ -2004,7 +2021,13 @@ export async function receiveInventoryTransfer(formData: FormData) {
         }
       }
     });
-  });
+    });
+  } catch (error) {
+    if (isTransferReceiptIdempotencyUniqueConstraintError(error)) {
+      throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
+    }
+    throw error;
+  }
 }
 
 export async function settleInventoryTransferDiscrepancy(formData: FormData) {
