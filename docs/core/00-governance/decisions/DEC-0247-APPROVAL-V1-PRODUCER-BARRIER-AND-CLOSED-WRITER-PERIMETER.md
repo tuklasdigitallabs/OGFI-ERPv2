@@ -723,6 +723,17 @@ Request policy (DEC-0244), legacy decision-writer parity, durable replay,
 Payment Release/AP settlement, and activation remain open; the routing flag
 stays false.
 
+Independent Architecture, Security, and QA review of Payment Release reached
+consensus that the current graph-first producer is not safe to migrate as a
+lock/CAS-only patch. The bounded design must lock the approved PaymentRequest,
+ordered lines and AP invoices, BankAccount, and active exposure under the
+company barrier; require a sealed rule; create the DRAFT release and
+allocations before the graph; attach the exact graph by CAS; and define durable
+canonical-payload replay/conflict semantics. Payment-readiness, controlled
+evidence, document-number allocation, and AP/bank/journal settlement decisions
+remain open. The Payment Release adapter therefore remains `ABSENT/PARTIAL`,
+no production-readiness credit is claimed, and the routing flag stays false.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
