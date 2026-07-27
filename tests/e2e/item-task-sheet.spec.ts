@@ -188,7 +188,10 @@ test("name correction announces success and suppresses duplicate submission whil
   await page.route("**/items*", async (route) => {
     if (route.request().method() === "POST") {
       actionPosts += 1;
+      const response = await route.fetch();
       await new Promise((resolve) => setTimeout(resolve, 350));
+      await route.fulfill({ response });
+      return;
     }
     await route.continue();
   });
