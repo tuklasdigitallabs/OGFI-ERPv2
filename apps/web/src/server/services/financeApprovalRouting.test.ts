@@ -104,8 +104,11 @@ describe("finance approval routing creation contracts", () => {
       expect(eligibilityAt).toBeGreaterThan(configureAt);
       expect(transitionAt).toBeGreaterThanOrEqual(0);
       if (contract.sourceBacked) {
+        const sourceClaimMarker = "sourceClaimMarker" in contract
+          ? contract.sourceClaimMarker
+          : undefined;
         const sourceClaimAt = source.indexOf(
-          contract.sourceClaimMarker ?? "approvalInstanceId: null"
+          sourceClaimMarker ?? "approvalInstanceId: null"
         );
         const backlinkAt = source.indexOf("approvalInstanceId: approvalInstance.id", eligibilityAt);
         expect(sourceClaimAt).toBeGreaterThanOrEqual(0);

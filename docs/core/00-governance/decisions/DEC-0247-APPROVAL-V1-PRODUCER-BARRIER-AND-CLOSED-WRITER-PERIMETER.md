@@ -1041,3 +1041,7 @@ Security conditionally approved the non-posting submit correction. The writer lo
 ### Inventory Transfer receipt writer review — July 27, 2026 (NO-GO)
 
 Architecture review rejected enabling the current receipt writer. It requires an additive durable receipt idempotency key/request hash, authoritative transfer/line/receipt locks and CAS, transaction-time privileged MFA, reversal-compatible lock ordering, exact replay/conflict semantics, accepted-only `TRANSFER_IN`, and PostgreSQL rollback/race/balance evidence before implementation. The current writer remains deferred; no receipt schema, UI, or authority change is approved by this record.
+
+### Inventory Transfer receipt idempotency schema foundation — July 27, 2026
+
+Architecture and Security approved the smallest additive foundation compatible with DEC-0093: nullable `InventoryTransferReceipt.idempotencyKey` (`VARCHAR(200)`) and `idempotencyRequestHash` (`CHAR(64)`), plus tenant/company/key uniqueness. Legacy rows remain null and no receipt authority or UI activation is implied. The migration is backward-compatible before keyed rows exist, but PostgreSQL deployment, canonical request hashing, live replay/conflict checks, transaction-time MFA, receipt/reversal lock alignment, and exact-once database evidence remain mandatory before receipt activation.

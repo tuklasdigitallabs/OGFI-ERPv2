@@ -4379,6 +4379,8 @@ model InventoryTransferReceipt {
   reversedByUserId    String?                        @db.Uuid
   status              String                         @default("DRAFT")
   receivedAt          DateTime                       @default(now())
+  idempotencyKey      String?                        @db.VarChar(200)
+  idempotencyRequestHash String?                     @db.Char(64)
   postedAt            DateTime?
   reversedAt          DateTime?
   reversalReason      String?
@@ -4395,6 +4397,7 @@ model InventoryTransferReceipt {
   lines               InventoryTransferReceiptLine[]
 
   @@index([tenantId, companyId, status])
+  @@unique([tenantId, companyId, idempotencyKey], map: "InventoryTransferReceipt_tenantId_companyId_idempotencyKey_key")
   @@index([inventoryTransferId, status])
   @@index([receivedByUserId])
   @@index([reversedByUserId])

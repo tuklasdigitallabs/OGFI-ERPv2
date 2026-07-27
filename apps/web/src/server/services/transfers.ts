@@ -1,4 +1,4 @@
-import { prisma, type Prisma } from "@ogfi/database";
+import { prisma, Prisma } from "@ogfi/database";
 import { z } from "zod";
 import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseTransfers, permissions, requirePermission } from "./authorization";
