@@ -227,6 +227,29 @@ describe("action feedback helpers", () => {
     }
   });
 
+  it("provides specific user-safe feedback for every transfer receipt reversal failure", () => {
+    const codes = [
+      "TRANSFER_RECEIPT_NOT_FOUND",
+      "TRANSFER_RECEIPT_NOT_POSTED_FOR_REVERSAL",
+      "TRANSFER_RECEIPT_ALREADY_REVERSED",
+      "TRANSFER_RECEIPT_SELF_REVERSAL_NOT_ALLOWED",
+      "TRANSFER_RECEIPT_DISPATCHER_REVERSAL_NOT_ALLOWED",
+      "TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_REQUIRED",
+      "TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_INVALID",
+      "TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH",
+      "TRANSFER_RECEIPT_LINE_ALREADY_REVERSED",
+      "TRANSFER_RECEIPT_REVERSAL_ROLLUP_INVALID",
+      "TRANSFER_RECEIPT_REVERSAL_STATE_CONFLICT",
+    ];
+    for (const code of codes) {
+      const feedback = getActionFeedback({ error: code });
+      expect(feedback?.message, code).toBeTruthy();
+      expect(feedback?.message, code).not.toBe(
+        "The action could not be completed. Review the form and try again.",
+      );
+    }
+  });
+
   it("does not distinguish missing local accounts from invalid credentials", () => {
     expect(getActionFeedback({ error: "LOGIN_ACCOUNT_NOT_FOUND" })?.message).toBe(
       getActionFeedback({ error: "LOGIN_CREDENTIALS_INVALID" })?.message
