@@ -13,3 +13,12 @@ the source record and approval graph must remain a single auditable workflow.
 Rejection and cancellation actions still require their documented permissions,
 scope, reason, and audit controls. Do not retry or bypass a disabled approval
 action to force a status change.
+
+## Workforce leave records during controlled routing
+
+If a leave request is linked to a governed approval graph, legacy Workforce
+approve, return, reject, and cancel actions are unavailable while normalized
+routing is disabled. Open the Approval Inbox when controlled routing is
+enabled; do not retry a legacy action or bypass the graph. Graph-free historical
+records may retain their documented legacy action subject to permission, scope,
+reason, and audit checks.

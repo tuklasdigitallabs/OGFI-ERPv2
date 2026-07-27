@@ -990,6 +990,76 @@ async function lockOvertimeForLifecycleMutation(
   return source;
 }
 
+async function lockLeaveForLegacyLifecycleMutation(
+  tx: TransactionClient,
+  session: SessionContext,
+  leaveRequestId: string,
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    employeeId: string;
+    locationId: string | null;
+    requestedByUserId: string;
+    createdByUserId: string;
+    status: "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "CANCELLED" | "RETURNED_FOR_REVISION";
+    approvalInstanceId: string | null;
+    updatedAt: Date;
+  }>>`
+    SELECT request.id,
+           request."employeeId",
+           request."locationId",
+           request."requestedByUserId",
+           request."createdByUserId",
+           request.status::text AS status,
+           request."approvalInstanceId",
+           request."updatedAt"
+      FROM "EmployeeLeaveRequest" request
+     WHERE request.id = ${leaveRequestId}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  const source = rows[0];
+  if (!source) throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
+  const employeeRows = await tx.$queryRaw<Array<{ id: string; status: string; homeLocationId: string | null }>>`
+    SELECT employee.id, employee.status::text AS status, employee."homeLocationId"
+      FROM "Employee" employee
+     WHERE employee.id = ${source.employeeId}::uuid
+       AND employee."tenantId" = ${session.context.tenantId}::uuid
+       AND employee."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE OF employee
+  `;
+  const employee = employeeRows[0];
+  if (!employee || employee.status !== "ACTIVE") throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
+  const scopeLocationId = source.locationId ?? employee.homeLocationId;
+  if (!scopeLocationId) throw new Error("WORKFORCE_EMPLOYEE_HOME_LOCATION_REQUIRED");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${scopeLocationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
+  await assertScopedLocation(session, scopeLocationId);
+  const graphRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT ai.id
+      FROM "ApprovalInstance" ai
+     WHERE ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+       AND ai."documentType" = 'EmployeeLeaveRequest'
+       AND ai."documentId" = ${source.id}::uuid
+     ORDER BY ai.id ASC
+     FOR UPDATE OF ai
+  `;
+  if (source.approvalInstanceId !== null || graphRows.length > 0) {
+    throw new Error("WORKFORCE_LEAVE_APPROVAL_GRAPH_REQUIRES_INBOX");
+  }
+  return source;
+}
+
 async function getScopedScheduleOrThrow(
   tx: TransactionClient,
   session: SessionContext,
@@ -2480,7 +2550,14 @@ export async function approveLeaveRequest(
 ) {
   await requireWorkforcePermission(session, permissions.workforceLeaveApprove);
   assertLegacyApprovalDecisionAllowed();
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest"
+    },
+    async (tx) => {
+    const lockedSource = await lockLeaveForLegacyLifecycleMutation(tx, session, input.leaveRequestId);
     const request = await getScopedLeaveOrThrow(
       tx,
       session,
@@ -2508,8 +2585,15 @@ export async function approveLeaveRequest(
     ) {
       throw new Error("WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED");
     }
-    const updated = await tx.employeeLeaveRequest.update({
-      where: { id: request.id },
+    const updatedResult = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceId: null,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: lockedSource.updatedAt
+      },
       data: {
         status: "APPROVED",
         approvedByUserId: session.user.id,
@@ -2519,6 +2603,8 @@ export async function approveLeaveRequest(
         updatedByUserId: session.user.id
       }
     });
+    if (updatedResult.count !== 1) throw new Error("WORKFORCE_LEAVE_APPROVAL_CONFLICT");
+    const updated = await tx.employeeLeaveRequest.findFirstOrThrow({ where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId } });
     await writeWorkforceAudit(tx, {
       session,
       entityType: "EmployeeLeaveRequest",
@@ -2529,7 +2615,8 @@ export async function approveLeaveRequest(
       reason: input.reason?.trim() ?? null
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function returnLeaveRequestForRevision(
@@ -2542,7 +2629,14 @@ export async function returnLeaveRequestForRevision(
     input.reason,
     "WORKFORCE_LEAVE_RETURN_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest"
+    },
+    async (tx) => {
+    const lockedSource = await lockLeaveForLegacyLifecycleMutation(tx, session, input.leaveRequestId);
     const request = await getScopedLeaveOrThrow(
       tx,
       session,
@@ -2553,8 +2647,15 @@ export async function returnLeaveRequestForRevision(
       ["SUBMITTED", "UNDER_REVIEW"],
       "WORKFORCE_LEAVE_INVALID_RETURN_STATUS"
     );
-    const updated = await tx.employeeLeaveRequest.update({
-      where: { id: request.id },
+    const updatedResult = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceId: null,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: lockedSource.updatedAt
+      },
       data: {
         status: "RETURNED_FOR_REVISION",
         decisionAt: new Date(),
@@ -2562,6 +2663,8 @@ export async function returnLeaveRequestForRevision(
         updatedByUserId: session.user.id
       }
     });
+    if (updatedResult.count !== 1) throw new Error("WORKFORCE_LEAVE_APPROVAL_CONFLICT");
+    const updated = await tx.employeeLeaveRequest.findFirstOrThrow({ where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId } });
     await writeWorkforceAudit(tx, {
       session,
       entityType: "EmployeeLeaveRequest",
@@ -2573,7 +2676,8 @@ export async function returnLeaveRequestForRevision(
       evidenceReference: input.evidenceReference ?? null
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function rejectLeaveRequest(
@@ -2586,7 +2690,14 @@ export async function rejectLeaveRequest(
     input.reason,
     "WORKFORCE_LEAVE_REJECTION_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest"
+    },
+    async (tx) => {
+    const lockedSource = await lockLeaveForLegacyLifecycleMutation(tx, session, input.leaveRequestId);
     const request = await getScopedLeaveOrThrow(
       tx,
       session,
@@ -2597,8 +2708,15 @@ export async function rejectLeaveRequest(
       ["SUBMITTED", "UNDER_REVIEW"],
       "WORKFORCE_LEAVE_INVALID_REJECTION_STATUS"
     );
-    const updated = await tx.employeeLeaveRequest.update({
-      where: { id: request.id },
+    const updatedResult = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceId: null,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: lockedSource.updatedAt
+      },
       data: {
         status: "REJECTED",
         decisionAt: new Date(),
@@ -2606,6 +2724,8 @@ export async function rejectLeaveRequest(
         updatedByUserId: session.user.id
       }
     });
+    if (updatedResult.count !== 1) throw new Error("WORKFORCE_LEAVE_APPROVAL_CONFLICT");
+    const updated = await tx.employeeLeaveRequest.findFirstOrThrow({ where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId } });
     await writeWorkforceAudit(tx, {
       session,
       entityType: "EmployeeLeaveRequest",
@@ -2617,7 +2737,8 @@ export async function rejectLeaveRequest(
       evidenceReference: input.evidenceReference ?? null
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function cancelLeaveRequest(
@@ -2629,7 +2750,14 @@ export async function cancelLeaveRequest(
     input.reason,
     "WORKFORCE_LEAVE_CANCELLATION_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest"
+    },
+    async (tx) => {
+    const lockedSource = await lockLeaveForLegacyLifecycleMutation(tx, session, input.leaveRequestId);
     const request = await getScopedLeaveOrThrow(
       tx,
       session,
@@ -2663,7 +2791,9 @@ export async function cancelLeaveRequest(
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: request.status
+        approvalInstanceId: null,
+        status: request.status,
+        updatedAt: lockedSource.updatedAt
       },
       data: {
         status: "CANCELLED",
@@ -2697,7 +2827,8 @@ export async function cancelLeaveRequest(
       }
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function submitOvertimeRecord(

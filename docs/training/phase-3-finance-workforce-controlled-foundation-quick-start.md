@@ -50,6 +50,7 @@ Each participant should complete the exercises that match their role:
 | --- | --- |
 | Approval is missing from inbox | Confirm the record was submitted, the approver is not the requester, and the approver has matching role and location scope. |
 | Workforce overtime approval is unavailable | If the overtime record is linked to a governed approval graph, use the Approval Inbox after controlled routing is enabled; do not retry the legacy Workforce approval action or bypass the graph. |
+| Workforce leave action is unavailable | If the leave request is linked to a governed approval graph, use the Approval Inbox after controlled routing is enabled; do not retry or bypass the legacy Workforce action. |
 | A finance row shows an issue label | Open the source detail or report preview and resolve the evidence, match, variance, or close-readiness item in the proper workflow. |
 | A workforce row shows a coverage or attendance issue | Review the schedule line, attendance import batch, exception list, or duplicate row before recording UAT pass evidence. |
 | Evidence remains unavailable after upload | Read the visible safety state. Refresh later while checks are in progress; retry an expired or failed upload; upload a different file after rejection; contact support if the state does not resolve. Production activation remains gated. |

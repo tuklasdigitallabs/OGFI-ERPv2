@@ -887,6 +887,16 @@ hardening with no payroll, payment, inventory, or journal mutation. Leave legacy
 approve/return/cancel parity, replay, PostgreSQL/ACL evidence, DEC-0246 authority,
 and activation remain open.
 
+Legacy Leave approve, return, reject, and cancel actions now share a reversible
+graph-present fail-closed guard. Each action acquires the company barrier,
+locks the exact source and active Employee/Location scope, locks all matching
+Leave approval instances, and rejects any graph-backed or incoherent source
+with `WORKFORCE_LEAVE_APPROVAL_GRAPH_REQUIRES_INBOX` before mutation. Only
+graph-free historical records retain compatibility actions, using null-backlink
+and `updatedAt` CAS plus existing permission, scope, reason, and SOD checks.
+This does not enable routing or create a second graph authority; PostgreSQL/ACL,
+replay, DEC-0246, legacy Inbox migration, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

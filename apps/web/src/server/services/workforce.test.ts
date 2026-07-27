@@ -513,6 +513,24 @@ describe("workforce foundation controls", () => {
     expect(action).toContain("approvalCancellationMode: approvalTermination.mode");
   });
 
+  it("fails closed for graph-backed legacy leave actions", () => {
+    expect(workforceServiceSource).toContain("lockLeaveForLegacyLifecycleMutation");
+    expect(workforceServiceSource).toContain("WORKFORCE_LEAVE_APPROVAL_GRAPH_REQUIRES_INBOX");
+    for (const functionName of [
+      "approveLeaveRequest",
+      "returnLeaveRequestForRevision",
+      "rejectLeaveRequest",
+      "cancelLeaveRequest"
+    ]) {
+      const start = workforceServiceSource.indexOf(`export async function ${functionName}`);
+      const end = workforceServiceSource.indexOf("\nexport async function ", start + 1);
+      const action = workforceServiceSource.slice(start, end === -1 ? undefined : end);
+      expect(action).toContain("withApprovalProducerTransaction");
+      expect(action).toContain("lockLeaveForLegacyLifecycleMutation");
+      expect(action).toContain("updatedAt: lockedSource.updatedAt");
+    }
+  });
+
   it("normalizes every workforce approval step and fails before source transition", () => {
     expect(workforceServiceSource.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(4);
     expect(workforceServiceSource.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(4);
