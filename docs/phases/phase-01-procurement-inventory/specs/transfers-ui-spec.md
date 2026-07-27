@@ -75,6 +75,7 @@ Cancelled / Reversed only through controlled actions
 
 - Source and destination stock never both increase or both decrease for the same confirmed transfer.
 - Dispatch/receipt are idempotent.
+- Receipt retry identity binds the actor, destination, transfer lines, quantities, notes, and discrepancy details; exact completed retries replay, while changed or in-progress reuse fails with a safe conflict state. Receipt reversal follows the same authoritative location/header/line lock order and transaction-time MFA boundary.
 - Accepted receipt quantity links to immutable `TRANSFER_IN`; rejected, damaged, and short/discrepant receipt quantities do not post destination stock.
 - Overdue transfers appear in dashboards, notifications, and transfer report.
 - Both sender and receiver identity/timestamp are retained.

@@ -3,7 +3,7 @@
 **Audience / required role:** Branch, warehouse, or destination-location user with `inventory.transfer.receive`  
 **Applies to:** Current ERP header location as the transfer destination  
 **Related phase/module:** Phase I / Inventory Transfers  
-**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow
+**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow (2026-07-27)
 
 ## Purpose
 
@@ -33,6 +33,8 @@ Use this article to confirm stock received from a dispatched transfer. Only acce
 8. Add an optional receiving note.
 9. Select `Post Receipt`.
 
+The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock.
+
 [Screenshot placeholder: Transfer detail page showing Destination Receipt fields for accepted, rejected, damaged, short, reason, and evidence reference.]
 
 ## Expected result
@@ -61,6 +63,7 @@ Reversal writes linked `REVERSAL` movements for accepted quantity, updates trans
 - Discrepancy reason must be specific enough for operations follow-up.
 - Evidence reference can be a photo filename, document ID, incident reference, or other approved operational reference. Binary upload/download remains part of the shared attachment-service roadmap.
 - Reversal is the correction path for posted receipt events. Do not edit posted inventory movements.
+- Posting and reversal recheck the transfer, ordered lines, inventory destinations, permission, and privileged MFA inside the transaction. If another action changes the locked facts first, refresh the transfer and retry from the current detail page.
 
 ## Related articles
 

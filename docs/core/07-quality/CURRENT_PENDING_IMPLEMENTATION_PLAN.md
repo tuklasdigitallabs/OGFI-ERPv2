@@ -1843,3 +1843,7 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Goods Receipt reversal broad regression gate — July 27, 2026
 
 - The post-reversal candidate broad non-database web suite passes **1,546 tests** across **142 files**, with **314 database/integration cases skipped** and **1 TODO**. The manifest remains included in that run and passes **21/21**. This is regression evidence only; it does not substitute for PostgreSQL reversal/rollback, browser/UAT, deployment, recovery, or hosted evidence.
+
+### Transfer receipt retry and reversal enablement documentation — July 27, 2026
+
+- The transfer receipt knowledge-base article, transfer UI specification, and glossary now describe the implemented actor/destination/line/quantity/discrepancy-bound retry identity, exact terminal replay, safe conflict behavior, and transaction-time lock/MFA boundary. This documents existing behavior only; it does not activate the transfer receipt writer or close its PostgreSQL migration, race, rollback, browser/UAT, or hosted gates.
