@@ -360,7 +360,10 @@ BEGIN
         'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'::regprocedure,
-        'd4eb4612092f08e84f67332a54dc36a1', 'plpgsql', false,
+        '56d541f206e22b519da7e0d8462baf59', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)'::regprocedure,
+        '7b52a3ede8f97dd7ecca08eb8ded185c', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_graph_barrier_shared()'::regprocedure,
         '86624a49f8ca97a553c7ffe12777bab8', 'plpgsql', false,
@@ -771,6 +774,28 @@ BEGIN
     RAISE EXCEPTION 'Approval producer barrier shared-lock function contract is unsafe or incomplete';
   END IF;
 
+  PERFORM 1
+  FROM pg_proc p
+  JOIN pg_language l ON l.oid = p.prolang
+  WHERE p.oid = 'public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)'::regprocedure
+    AND p.proowner = owner_oid
+    AND l.lanname = 'plpgsql'
+    AND NOT p.prosecdef
+    AND p.provolatile = 'v'
+    AND p.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+    AND position('APPROVAL_ROUTING_PRODUCER_BARRIER_SCOPE_INVALID' IN p.prosrc) > 0
+    AND position('pg_try_advisory_xact_lock(' IN p.prosrc) > 0
+    AND position('APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY' IN p.prosrc) > 0
+    AND position('40001' IN p.prosrc) > 0
+    AND NOT has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+    AND NOT EXISTS (
+      SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+      WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+    );
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Approval producer barrier exclusive-lock function contract is unsafe or callable';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM (VALUES
@@ -778,7 +803,8 @@ BEGIN
       ('public.validate_approval_routing_provenance_lineage()'::regprocedure),
       ('public.reject_approval_routing_producer_evidence_mutation()'::regprocedure),
       ('public.reject_dormant_approval_routing_evidence_insert()'::regprocedure),
-      ('public.reject_dormant_approval_routing_validator_execution()'::regprocedure)
+      ('public.reject_dormant_approval_routing_validator_execution()'::regprocedure),
+      ('public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)'::regprocedure)
     ) AS internal(function_oid)
     JOIN pg_proc p ON p.oid = internal.function_oid
     WHERE has_function_privilege(runtime_role, internal.function_oid, 'EXECUTE')

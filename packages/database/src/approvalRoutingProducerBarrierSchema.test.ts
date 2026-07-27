@@ -9,6 +9,9 @@ const schemaSource = read("../prisma/schema.prisma");
 const migrationSource = read(
   "../prisma/migrations/20260727150000_approval_routing_producer_barrier_dormant/migration.sql",
 );
+const exclusiveMigrationSource = read(
+  "../prisma/migrations/20260727170000_approval_routing_producer_barrier_exclusive_dormant/migration.sql",
+);
 const reconcileSource = read(
   "../../../infra/hostinger/postgres/reconcile-ownership-and-grants.sql",
 );
@@ -175,6 +178,47 @@ describe("DEC-0247 dormant approval-routing producer barrier schema", () => {
     );
     expect(verifySource).toContain(
       "Approval producer barrier shared-lock function contract is unsafe or incomplete",
+    );
+  });
+
+  test("adds only a dormant same-key exclusive primitive", () => {
+    expect(exclusiveMigrationSource).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.acquire_approval_routing_producer_barrier_exclusive\(\s*\n?\s*scope_tenant_id UUID,\s*\n\s*scope_company_id UUID\s*\n\)/,
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "pg_catalog.pg_try_advisory_xact_lock(\n    pg_catalog.hashtextextended(",
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "pg_catalog.pg_try_advisory_xact_lock_shared(\n    pg_catalog.hashtextextended(",
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "ogfi:approval-routing-producer-barrier:v1:",
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "6510615555426900570::bigint",
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "APPROVAL_ROUTING_PRODUCER_BARRIER_SCOPE_INVALID",
+    );
+    expect(exclusiveMigrationSource).toContain(
+      "APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY",
+    );
+    expect(exclusiveMigrationSource).toContain("ERRCODE = '40001'");
+    expect(exclusiveMigrationSource).toContain(
+      "REVOKE ALL ON FUNCTION public.acquire_approval_routing_producer_barrier_exclusive(UUID, UUID) FROM PUBLIC",
+    );
+    expect(exclusiveMigrationSource).not.toMatch(
+      /(?:INSERT|UPDATE|DELETE)\s+(?:INTO\s+|FROM\s+)?(?:public\.)?"?(?:Approval|Audit|Source)/i,
+    );
+    expect(exclusiveMigrationSource).not.toMatch(
+      /CREATE\s+TABLE|CREATE\s+TYPE|CREATE\s+VIEW|V1_PRODUCER_BARRIER_READY|DRAIN_CLEAN/i,
+    );
+    expect(exclusiveMigrationSource).not.toMatch(/SECURITY\s+DEFINER/i);
+    expect(reconcileSource).toContain(
+      "acquire_approval_routing_producer_barrier_exclusive(UUID, UUID)",
+    );
+    expect(verifySource).toContain(
+      "acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)",
     );
   });
 });

@@ -384,6 +384,13 @@ BEGIN
       runtime_role
     );
   END IF;
+  IF to_regprocedure('public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.acquire_approval_routing_producer_barrier_exclusive(UUID, UUID) FROM PUBLIC;
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.acquire_approval_routing_producer_barrier_exclusive(UUID, UUID) FROM %I',
+      runtime_role
+    );
+  END IF;
   FOREACH protected_table IN ARRAY ARRAY[
     'ControlledEvidencePolicyVersion',
     'ControlledEvidencePolicyActivationEvent'
