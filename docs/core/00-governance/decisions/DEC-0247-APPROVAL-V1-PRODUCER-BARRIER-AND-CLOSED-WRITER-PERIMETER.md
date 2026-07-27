@@ -942,6 +942,15 @@ rejected subtype. No issuance, receiving, inventory, payment, journal, budget,
 or supplier master mutation is introduced. PO approval/issuance, replay,
 PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
 
+The next PO increment hardens approval only, preserving the existing final
+budget-commitment projection in the same transaction. It locks the PO,
+recommendation → quotation request → purchase request → delivery-location
+lineage, ordered PO lines, referenced budget lines, and approval graph before
+intermediate or final graph CAS; final approval CASes the PO to `APPROVED` with
+full lineage/`updatedAt` predicates. Supplier issuance, receiving, inventory,
+AP, payment, and journal effects remain separate authorities. PO issuance,
+replay, PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

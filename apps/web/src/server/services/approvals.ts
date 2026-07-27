@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
+import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import {
   canUseApprovals,
@@ -8347,6 +8347,39 @@ export async function approvePurchaseOrder(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseOrder",
+    });
+    const lockedSource = await lockPurchaseOrderApprovalSource(tx, session, {
+      id: order.id,
+      expectedUpdatedAt: order.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "PurchaseOrder" || lockedApproval.documentId !== order.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     const stepResult = await approveCurrentStepAndAdvance(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -8384,7 +8417,12 @@ export async function approvePurchaseOrder(formData: FormData) {
         id: order.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedSource.updatedAt,
+        purchaseRequestId: lockedSource.purchaseRequestId,
+        quotationRequestId: lockedSource.quotationRequestId,
+        quotationRecommendationId: lockedSource.quotationRecommendationId,
+        deliveryLocationId: lockedSource.deliveryLocationId
       },
       data: {
         status: "APPROVED"
@@ -10530,6 +10568,26 @@ async function lockPurchaseOrderApprovalSource(
   if (locationRows.length !== 1) throw new Error("PURCHASE_ORDER_SCOPE_OR_LINEAGE_CHANGED");
   await assertApprovalScope(session, source.deliveryLocationId);
   if (source.createdByUserId === session.user.id) throw new Error("SELF_APPROVAL_BLOCKED");
+  const lineRows = await tx.$queryRaw<Array<{ id: string; budgetLineId: string | null }>>`
+    SELECT line.id, line."budgetLineId"
+      FROM "PurchaseOrderLine" line
+     WHERE line."purchaseOrderId" = ${source.id}::uuid
+       AND line."tenantId" = ${session.context.tenantId}::uuid
+       AND line."companyId" = ${session.context.companyId}::uuid
+     ORDER BY line."lineNumber" ASC, line.id ASC
+     FOR SHARE OF line
+  `;
+  const budgetLineIds = lineRows.map((line) => line.budgetLineId).filter((id): id is string => Boolean(id));
+  if (budgetLineIds.length > 0) {
+    const budgetRows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT budgetLine.id
+        FROM "BudgetLine" budgetLine
+       WHERE budgetLine.id IN (${Prisma.join(budgetLineIds.map((id) => Prisma.sql`${id}::uuid`))})
+       ORDER BY budgetLine.id ASC
+       FOR UPDATE OF budgetLine
+    `;
+    if (budgetRows.length !== budgetLineIds.length) throw new Error("PURCHASE_ORDER_BUDGET_LINE_CHANGED");
+  }
   return source;
 }
 

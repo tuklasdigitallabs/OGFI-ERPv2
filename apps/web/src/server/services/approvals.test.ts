@@ -595,6 +595,16 @@ describe("multi-step approval advancement", () => {
     expect(source).toContain('quotationRecommendationId: lockedSource.quotationRecommendationId');
   });
 
+  test("purchase order approval locks lineage and preserves final budget projection", () => {
+    const source = extractFunctionSource(serviceSource, "approvePurchaseOrder");
+    expect(source).toContain("lockPurchaseOrderApprovalSource");
+    expect(source).toContain('documentType: "PurchaseOrder"');
+    expect(source).toContain('updatedAt: lockedSource.updatedAt');
+    expect(source).toContain('quotationRecommendationId: lockedSource.quotationRecommendationId');
+    expect(source).toContain("projectPurchaseOrderBudgetCommitments");
+    expect(source).not.toContain("issuePurchaseOrderToSupplier");
+  });
+
   test.each([
     [
       "approvePurchaseRequest",
