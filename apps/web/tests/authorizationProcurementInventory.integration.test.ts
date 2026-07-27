@@ -935,6 +935,9 @@ describe("procurement and inventory authorization boundaries", () => {
   function form(values: Record<string, string>) {
     const data = new FormData();
     for (const [key, value] of Object.entries(values)) data.set(key, value);
+    if (!data.has("idempotencyKey")) {
+      data.set("idempotencyKey", `test:transfer-receipt:${randomUUID()}`);
+    }
     return data;
   }
 
