@@ -13,6 +13,7 @@
 - `Food Safety Reviews` now opens a read-only profile of all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`; it is not a personal task list.
 - Search can narrow each profile without accepting raw status, log type, or business-date values that would redefine it. Record and export controls remain hidden in these views.
 - Unsupported or retired profile links fail visibly, and log detail retains the return path to the same profile, search, and page.
+- The current responsive register has authenticated Chromium/mobile evidence for its scoped list, source-log action, and read-only profile surfaces; this does not declare the wider workflow or release production-ready.
 
 ## What You Need To Do
 
