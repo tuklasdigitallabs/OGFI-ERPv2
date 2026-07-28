@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      APP_ENV: development
+      APP_ENV: uat
       APP_URL: https://staging-erp.onegourmetph.com
       APP_DEFAULT_TIMEZONE: Asia/Manila
       AUTH_MODE: demo

@@ -150,8 +150,18 @@ export function getTrustedRequestFingerprint(requestHeaders: Headers): RequestFi
 }
 
 function isProduction() {
+  const applicationEnvironment = process.env.APP_ENV?.trim().toLowerCase();
+  if (
+    applicationEnvironment === "development" ||
+    applicationEnvironment === "test" ||
+    applicationEnvironment === "uat" ||
+    applicationEnvironment === "controlled-uat"
+  ) {
+    return false;
+  }
   return (
-    process.env.APP_ENV === "production" ||
+    applicationEnvironment === "production" ||
+    applicationEnvironment === "staging" ||
     process.env.NODE_ENV === "production"
   );
 }

@@ -75,6 +75,13 @@ describe("production authentication primitives", () => {
     expect(() => getAuthMode()).toThrow("PRODUCTION_DEMO_AUTH_FORBIDDEN");
   });
 
+  it("allows explicit controlled UAT demo authentication under the Next production runtime", () => {
+    vi.stubEnv("APP_ENV", "uat");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_MODE", "demo");
+    expect(getAuthMode()).toBe("demo");
+  });
+
   it("requires production auth and encryption secrets", () => {
     vi.stubEnv("APP_ENV", "production");
     vi.stubEnv("NODE_ENV", "production");
