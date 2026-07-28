@@ -416,6 +416,30 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 | 14 | Reports, exports, notifications, and audit | Scope-safe filters, source links, trust notices, export metadata/audit, in-app notification behavior, and pagination | Pending production-readiness review |
 | 15 | Projects & Implementation Tracker | Visibility, membership, tasks, blockers, evidence, requirements, milestones, risks, linked-record redaction, activity, and mobile completion | Pending production-readiness review |
 
+### Evidence-weighted workspace snapshot — July 30, 2026
+
+These are implementation-progress estimates, not production-readiness claims. They weight visible workflow coverage, server authorization, data-integrity evidence, tests, documentation, and deployment/UAT gates; an unresolved applicable gate keeps the workspace below 100%.
+
+| Workspace | Current estimate | Evidence-backed reason it is not complete |
+|---|---:|---|
+| Overview and application shell | **80%** | Core shell, scoped summaries, My Tasks adapters, and several drilldowns are implemented; normalized approval, remaining browser/staging, reconciliation-plan, hosted, and UAT gates remain. |
+| Administration | **70%** | Bounded registries and security controls are implemented; responsive browser, PostgreSQL boundary/query evidence, hosted recovery, and UAT remain. |
+| Master data | **84%** | Item and Supplier browser slices now pass current Chromium/mobile suites; governed material lifecycle, remaining policy/query evidence, hosted calibration/recovery, and UAT remain. |
+| Approval engine and inbox | **62%** | Feature-disabled contract, authorization, and explicit disabled Inbox evidence exist; routing activation, exact-candidate PostgreSQL evidence, responsive browser, hosted recovery, and UAT remain. |
+| Purchase Requests | **66%** | Core workflow and integrity foundations exist; visible returned/correction parity, current browser coverage, approval activation, hosted gates, and UAT remain. |
+| Quotations | **58%** | Comparison/commercial fields and export foundations exist; attachment policy, PostgreSQL parity, responsive browser, hosted gates, and UAT remain. |
+| Purchase Orders | **58%** | Conversion, approval, issue, balance, and amendment foundations exist; current-candidate parity, browser, hosted recovery, and UAT remain. |
+| Receiving | **68%** | Discrepancy, partial receipt, reversal, and integrity foundations exist; broader browser, production authentication, hosted recovery, and UAT remain. |
+| Inventory and immutable ledger | **66%** | Ledger, balances, transfers, counts, wastage, adjustments, and reconciliation foundations exist; query-plan/volume, full browser, hosted, and UAT gates remain. |
+| Transfers | **78%** | Disposable PostgreSQL receipt/reversal integrity and authenticated mobile receive→reverse acceptance pass; broader responsive, production-authenticated, hosted, and UAT gates remain. |
+| Stock Counts | **55%** | Core count/variance foundations and blind-count controls exist; immutable recount recovery, PostgreSQL execution, browser, hosted, and UAT remain. |
+| Wastage | **52%** | Reason/evidence/approval/post/reversal foundations exist; broader race/rollback evidence, browser, hosted, and UAT remain. |
+| Stock Adjustments | **50%** | Controlled reason/evidence/approval/reversal foundations exist; PostgreSQL concurrency, browser, hosted, and UAT remain. |
+| Reports, exports, notifications, and audit | **54%** | Several scoped reports/export/audit foundations exist; cross-workspace parity, volume/query evidence, browser, hosted, and UAT remain. |
+| Projects & Implementation Tracker | **64%** | Foundation, task, link, evidence, risk, and activity surfaces exist; full production-readiness review, browser, hosted, and UAT remain. |
+
+**Phase I implementation estimate:** **65%** evidence-weighted. This does not advance the release decision: strict release status remains **NO-GO** until production authentication/MFA, hosted DEC-0248 deployment/recovery, signed evidence, real UAT, and owner approval are available.
+
 ### Workspace 2 Administration implementation checkpoint — July 24, 2026
 
 - `DEC-0108` selects a bounded Users-registry pilot as the first Administration slice. Core Administration now applies server-owned name/email and status predicates, exact count/page parity, deterministic `displayName ASC, id ASC` ordering, bounded URL-backed pagination, and an explicit pre-query restricted state when `core.tenant_role_administer` is absent. The existing service guard and DEC-0043 target-company rules are unchanged; roles, organization, audit, request, permission, and detail pagination remain separate follow-up slices.
