@@ -25,6 +25,7 @@
 - A dashboard profile does not grant create, correction, resolution, cancellation, assignment, or related-source access. Incident detail and every action independently recheck current permission, exact scope, record status, actor lineage, and segregation controls.
 - A saved overdue cutoff does not freeze record history. Later resolution, cancellation, or due-date correction can change which rows appear.
 - Incident actions preserve audit history and do not approve, post, receive, move inventory, create a financial entry, or alter a linked source record.
+- Authenticated Chromium and mobile acceptance verifies the Incident register remains scoped and readable, including responsive action, location, and due-context presentation. This is browser evidence for the register and read-only profile only, not a declaration of end-to-end Incident release readiness.
 - This note describes the confirmed dashboard-profile checkpoint only; it does not declare the wider Incident workspace or release production-ready.
 
 ## Learn More
