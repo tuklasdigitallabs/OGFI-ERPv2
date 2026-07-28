@@ -325,7 +325,7 @@ for (const status of ["INACTIVE", "ARCHIVED"] as const) {
       "href",
       `/admin?tab=audit&entityType=Item&entityId=${item.id}`
     );
-    await sheet.getByRole("button", { name: "Close Item Details" }).click();
+    await sheet.getByRole("button", { name: "Close Item Details", exact: true }).click();
     await expectPreservedRegisterContext(page, item, status);
   });
 }

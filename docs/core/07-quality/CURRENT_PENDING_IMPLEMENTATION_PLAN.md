@@ -2069,3 +2069,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Strict release-readiness gate recheck — July 30, 2026
 
 - `pnpm release:status-suite:strict` remains **FAIL / NO-GO** with 31 blocking gates and 32 final-review blockers. The authoritative diagnostics identify missing owner metadata and signed UAT/security/enablement evidence, incomplete backup/restore/data-snapshot proof, and unavailable DEC-0248 root-owned hosted release authority and same-fence rollback/recovery. This is external release-state evidence, not a waiver; no production-readiness percentage is advanced from it.
+
+### Item retained-history responsive locator acceptance — July 30, 2026
+
+- The complete Item-focused disposable browser run reached **13 passed, 4 failed, 1 skipped** across Chromium and mobile; the four failures were the same strict-mode close-button locator in inactive/archived retained-history cases. The test now uses the exact footer button label instead of a substring that also matched the dialog X button.
+- A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the corrected retained-history cases plus the related supplier retained-state checks: **6/6** across Chromium and mobile. No application behavior or authorization contract changed; the Item TaskSheet browser slice remains complete, while full-suite browser/UAT, production authentication/MFA, hosted recovery/deployment, formal UAT evidence, and owner signoff remain open. Workspace 4 and Phase I remain **NO-GO**.
