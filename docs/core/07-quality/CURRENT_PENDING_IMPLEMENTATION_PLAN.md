@@ -2103,3 +2103,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the complete Item TaskSheet suite across Chromium and mobile: **17 passed, 1 intentionally skipped**. Coverage includes active open/close, dirty confirmation, name correction with pending duplicate-submit suppression, stale correction recovery, audit handoff, inactive/archived retained history, unavailable selection, and mobile overflow/task focus.
 - This confirms the Item TaskSheet browser slice on the current candidate. The intentionally skipped case remains documented in the test; production-mode authentication/MFA, hosted recovery/deployment, formal UAT evidence, and owner signoff remain open. Workspace 4 and Phase I remain **NO-GO**.
+
+### Overview dashboard responsive browser recheck — July 30, 2026
+
+- A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the authenticated dashboard priority-preview case in both Chromium and mobile projects: **2/2**. The run verifies readable Today’s Work, Assigned Approvals, and Operational Exceptions sections with no horizontal overflow.
+- This adds current responsive evidence for the Overview shell only; normalized approval, remaining drilldown/source coverage, PostgreSQL reconciliation/query-plan evidence, hosted load/recovery, production authentication/MFA, and UAT remain open. Overview, Workspace 1, and Phase I remain **NO-GO**.
