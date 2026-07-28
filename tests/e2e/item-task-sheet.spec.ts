@@ -203,10 +203,13 @@ test("name correction announces success and suppresses duplicate submission whil
   await expect(itemNameInput).toBeEditable();
   await expect(itemNameInput).toBeFocused();
   await expect(reasonInput).toBeEditable();
-  await itemNameInput.fill(correctedName);
-  await reasonInput.fill("Correct the item display label");
+  await itemNameInput.click();
+  await itemNameInput.press("Control+A");
+  await itemNameInput.pressSequentially(correctedName);
   await expect(itemNameInput).toHaveValue(correctedName);
+  await reasonInput.fill("Correct the item display label");
   await expect(reasonInput).toHaveValue("Correct the item display label");
+  await expect(itemNameInput).toHaveValue(correctedName);
   const saveButton = sheet.getByRole("button", { name: "Save Item Name" });
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
