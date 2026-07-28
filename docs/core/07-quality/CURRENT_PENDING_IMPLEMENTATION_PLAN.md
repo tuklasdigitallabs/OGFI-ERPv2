@@ -2138,3 +2138,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the complete Chromium/mobile browser register: **61 passed, 7 expected skips**. The run includes Core Administration, Overview authorization denial, Purchase Request cancellation, Item TaskSheet, Receiving responsive states, Supplier responsive workflows, and Transfer receive/reverse idempotency. The seven skips are documented dormant approval-routing cases plus the intentional approval-dependent milestone cases; no unexpected failures remain in this marked run.
 - This closes current responsive browser evidence for the covered slices, not production authentication/MFA, normalized approval activation, hosted deployment/recovery, formal UAT evidence, or owner signoff. Purchase Requests remains **67%**, Workspace 1/2/4 remain subject to their broader gates, and Phase I remains **NO-GO**.
+
+### Strict release-readiness recheck — July 31, 2026
+
+- `pnpm release:status-suite:strict` remains **FAIL / NO-GO**. The current run reports 31 blocking GO/NO-GO gates and 32 final-review blockers, including unavailable DEC-0248 root-owned hosted release authority and same-fence rollback/recovery, missing migration/backup/restore snapshots, incomplete production-authenticated `next start` evidence, and missing owner-signed UAT/security/enablement evidence.
+- This confirms that the responsive browser improvements do not clear external release controls; no phase or workspace completion percentage is advanced from this recheck.
