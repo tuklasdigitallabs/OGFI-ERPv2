@@ -13,6 +13,8 @@ const rollbackSummary = source("scripts/release-rollback-summary.mjs");
 const migrationUnit = source("infra/systemd/database/ogfi-db-migrate@.service");
 const verifierUnit = source("infra/systemd/database/ogfi-db-role-verify.service");
 const verifierTimer = source("infra/systemd/database/ogfi-db-role-verify.timer");
+const releaseUnit = source("infra/systemd/release/ogfi-release@.service");
+const releaseReadme = source("infra/systemd/release/README.md");
 const tmpfiles = source("infra/systemd/tmpfiles.d/ogfi-deploy.conf");
 const releaseWorkflow = source(".github/workflows/staging-release.yml");
 const rollbackWorkflow = source(".github/workflows/staging-rollback.yml");
@@ -55,6 +57,7 @@ test("future request, lock, journal, state, and evidence paths preserve the root
   assert.match(tmpfiles, /^d \/run\/ogfi-deploy 0750 root root -$/m);
   assert.match(tmpfiles, /^f \/run\/ogfi-deploy\/release-session\.lock 0640 root root -$/m);
   assert.match(tmpfiles, /^d \/var\/spool\/ogfi-release\/incoming 0730 root ogfi-deploy 1d$/m);
+  assert.match(tmpfiles, /^d \/var\/spool\/ogfi-release\/approved 0700 root root -$/m);
   assert.match(tmpfiles, /^d \/var\/spool\/ogfi-release\/admitted 0700 root root -$/m);
   assert.match(tmpfiles, /^d \/var\/lib\/ogfi\/release-state 0700 root root -$/m);
   assert.doesNotMatch(tmpfiles, /^f .* ogfi-deploy /m);
@@ -67,4 +70,15 @@ test("amended decision requires one service, immutable artifacts, split credenti
   assert.match(decision, /fsync-safe phase journal/);
   assert.match(decision, /recovery must acquire the same fence/);
   assert.match(decision, /production NO-GO/);
+});
+
+test("the future release authority is a root-only fixed-fence service, not a candidate path", () => {
+  assert.match(releaseUnit, /^User=root$/m);
+  assert.match(releaseUnit, /^KillMode=control-group$/m);
+  assert.match(releaseUnit, /\/usr\/bin\/flock --nonblock/);
+  assert.match(releaseUnit, /\/run\/ogfi-deploy\/release-session\.lock/);
+  assert.match(releaseUnit, /\/usr\/libexec\/ogfi-release\/current\/ogfi-release-controller\.mjs/);
+  assert.doesNotMatch(releaseUnit, /\/opt\/ogfi\/current|EnvironmentFile=|LoadCredential=/);
+  assert.match(releaseReadme, /must never be\s+run from a candidate release tree/);
+  assert.match(releaseReadme, /always ends in maintenance-required state/);
 });

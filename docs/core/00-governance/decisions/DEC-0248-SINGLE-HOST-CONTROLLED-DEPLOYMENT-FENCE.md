@@ -4,7 +4,7 @@
 
 - Decision ID: `DEC-0248`
 - Title: Single-Host Controlled Deployment Fence
-- Status: `Confirmed — amended after security challenge; implementation pending; production NO-GO`
+- Status: `Confirmed — amended after security challenge; partial source foundation only; production NO-GO`
 - Date: 2026-07-27
 - Decision owner: Shared Production Foundation / Hostinger deployment
 - Decision Chair: Parent agent
@@ -272,7 +272,7 @@ trigger is a hard gate rather than a scorecard preference.
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Replace the rejected split SSH/migration source with the single `ogfi-release@<opaque-id>` service, request spool, immutable artifact path, isolated helpers, and phase journal | DevOps / Security | Before hosted deployment rehearsal | Pending |
+| Complete and accept the single `ogfi-release@<opaque-id>` service, request spool, immutable artifact path, isolated helpers, phase journal, cutover, and rollback | DevOps / Security | Before hosted deployment rehearsal | Source controller template added 2026-07-28; acceptance pending |
 | Author operator admission, maintenance, recovery, rollback, and durable-alert runbooks | DevOps / Release | Before installed-host rehearsal | Pending |
 | Execute hosted contention, credential-isolation, phase fault/reboot, migration, backup/restore, cutover, served-SHA smoke, rollback, and alert evidence | DevOps / QA / Release | Before production promotion | Pending |
 | Introduce database session keeper with liveness/recovery controls | Architecture / DevOps | Before any second host, remote runner, alternate namespace, shared credential, or direct hosted path | Blocked by topology trigger |
@@ -289,6 +289,14 @@ trigger is a hard gate rather than a scorecard preference.
   2026-07-27. The requested Code Spark and exact GPT-5.4 models were unavailable;
   the closest permitted GPT-5.6 specialists were used without relaxing hard
   gates.
+- 2026-07-28 source-foundation checkpoint: a root-installable controller template
+  adds hostile request admission from approval records held only in the
+  root-owned `/var/spool/ogfi-release/approved` spool, not a deploy-writable
+  incoming path; a fixed fence unit; an fsync journal; and maintenance-only
+  recovery. It is not root-installed or hosted-tested and adds no migration,
+  snapshot, cutover, served-SHA, smoke, or rollback helper. The
+  strict status suite remains **NO-GO** with 31 blocking gates and 32 final-review
+  blockers; no readiness conclusion changes.
 
 ## Supersession
 

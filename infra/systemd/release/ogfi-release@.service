@@ -1,0 +1,49 @@
+[Unit]
+Description=OGFI fenced release controller (%i)
+Documentation=file:/usr/share/doc/ogfi-release/README.md
+DefaultDependencies=no
+After=local-fs.target
+Before=multi-user.target
+ConditionPathIsReadWrite=/var/lib/ogfi/release-state
+ConditionPathIsReadWrite=/var/spool/ogfi-release
+RefuseManualStop=yes
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+Environment=LANG=C.UTF-8
+Environment=LC_ALL=C.UTF-8
+Environment=TZ=UTC
+ExecStart=/usr/bin/flock --nonblock --conflict-exit-code=75 /run/ogfi-deploy/release-session.lock /usr/libexec/ogfi-release/current/ogfi-release-controller.mjs --request-id %i
+ExecStopPost=/usr/libexec/ogfi-release/current/ogfi-release-controller.mjs --recover
+TimeoutStartSec=45min
+TimeoutStopSec=5min
+KillMode=control-group
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+ReadWritePaths=/var/spool/ogfi-release /var/lib/ogfi/release-state /var/lib/ogfi/release-evidence /opt/ogfi/releases /run/ogfi-deploy
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN CAP_SETUID CAP_SETGID
+AmbientCapabilities=
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
