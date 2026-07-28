@@ -28,7 +28,7 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 
 | Variable               |                                Required | Notes                                                                                                        |
 | ---------------------- | --------------------------------------: | ------------------------------------------------------------------------------------------------------------ |
-| `APP_ENV`              |                                     Yes | `development`, `staging`, or `production`.                                                                   |
+| `APP_ENV`              |                                     Yes | `development`, `uat` / `controlled-uat`, `staging`, or `production`. `uat` is an explicitly isolated controlled-UAT mode, not a production release classification. |
 | `APP_URL`              |                                     Yes | Canonical URL for the active environment.                                                                    |
 | `APP_DEFAULT_TIMEZONE` |                                     Yes | Initial value: `Asia/Manila`; database timestamps remain UTC.                                                |
 | `DATABASE_URL`         |                                     Yes | PostgreSQL application connection.                                                                           |
@@ -41,8 +41,8 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `APP_ENCRYPTION_KEY_VERSION` |                              Yes | Positive version of the current field-encryption key; current default `1`.                                   |
 | `APP_ENCRYPTION_PREVIOUS_KEY` | During a reviewed key rotation only | Immediately previous 32-byte base64 key retained only until protected values are re-encrypted.                |
 | `APP_ENCRYPTION_PREVIOUS_KEY_VERSION` | During a reviewed key rotation only | Version paired with the previous key; it must differ from the current version.                         |
-| `AUTH_MODE`            |                                     Yes | `local` in production; `demo` is allowed only in isolated development/test.                                  |
-| `AUTH_TRUSTED_PROXY_MODE` |                                  Yes | `caddy_single_hop` in hosted staging/production; local development uses `untrusted` and never trusts client-supplied forwarding headers. |
+| `AUTH_MODE`            |                                     Yes | `local` in production/staging; `demo` is allowed only in isolated development/test or explicit controlled UAT. |
+| `AUTH_TRUSTED_PROXY_MODE` |                                  Yes | `caddy_single_hop` or the reviewed `nginx_single_hop` in hosted environments; local development uses `untrusted` and never trusts client-supplied forwarding headers. |
 | `AUTH_SESSION_IDLE_MINUTES` |                              Yes | Inactivity expiry for database-backed sessions; current default `30`.                                        |
 | `AUTH_SESSION_ABSOLUTE_HOURS` |                            Yes | Maximum database-session lifetime; current default `12`.                                                     |
 | `AUTH_MFA_STEP_UP_MINUTES` |                                Yes | Maximum age of runtime MFA assurance for guarded sensitive actions; current default `15`.                    |
