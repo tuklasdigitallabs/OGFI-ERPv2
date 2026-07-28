@@ -2108,3 +2108,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the authenticated dashboard priority-preview case in both Chromium and mobile projects: **2/2**. The run verifies readable Today’s Work, Assigned Approvals, and Operational Exceptions sections with no horizontal overflow.
 - This adds current responsive evidence for the Overview shell only; normalized approval, remaining drilldown/source coverage, PostgreSQL reconciliation/query-plan evidence, hosted load/recovery, production authentication/MFA, and UAT remain open. Overview, Workspace 1, and Phase I remain **NO-GO**.
+
+### Overview authorization denial responsive recheck — July 30, 2026
+
+- A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the non-admin deep-link denial case in Chromium and mobile: **2/2**. The assertions cover Core Administration, User Access, Approval Rule creation/revision, Suppliers, Items, and Quotes routes, confirming redirection to the authorized Overview shell without exposing protected headings.
+- This adds responsive denial evidence only; it does not close Administration or the broader Overview authorization matrix. Production authentication/MFA, hosted recovery/deployment, formal UAT evidence, and owner signoff remain open. Overview, Workspace 1, and Phase I remain **NO-GO**.
