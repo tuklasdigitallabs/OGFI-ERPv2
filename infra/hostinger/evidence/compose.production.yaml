@@ -173,6 +173,9 @@ services:
       CADDY_MFA_SOURCE_EVENTS: ${CADDY_MFA_SOURCE_EVENTS:?Set the staged and reviewed MFA source limit}
       CADDY_PASSWORD_COARSE_INFLIGHT: ${CADDY_PASSWORD_COARSE_INFLIGHT:?Set the staged coarse password-route inflight ceiling}
       CADDY_MFA_COARSE_INFLIGHT: ${CADDY_MFA_COARSE_INFLIGHT:?Set the staged coarse MFA-route inflight ceiling}
+      OGFI_EDGE_TRUSTED_PROXY_CIDR: ${OGFI_EDGE_TRUSTED_PROXY_CIDR:?Set the exact Docker bridge CIDR used only by the shared-VPS Nginx edge}
+    ports:
+      - "127.0.0.1:${CADDY_HTTP_PORT:?Set the loopback-only Caddy HTTP port behind host Nginx}:8080"
     restart: unless-stopped
     read_only: true
     tmpfs: !override

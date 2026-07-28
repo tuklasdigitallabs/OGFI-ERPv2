@@ -34,6 +34,7 @@
     "test:database-role-tools": "node --test scripts/db-migrate-controlled.test.mjs scripts/db-append-only-contract.test.mjs",
     "test:authorization-denial-tools": "node --test scripts/authorization-denial-finalizer.test.mjs",
     "test:database-deployment-authority": "node --test scripts/database-deployment-authority-closure.test.mjs",
+    "test:shared-vps-edge": "node --test scripts/shared-vps-edge-contract.test.mjs",
     "test:auth-trusted-proxy": "node --test scripts/auth-trusted-proxy-contract.test.mjs",
     "test:auth-edge": "node --test scripts/auth-edge-contract.test.mjs scripts/auth-trusted-proxy-contract.test.mjs",
     "auth-edge:image-preflight": "node scripts/auth-edge-image-preflight.mjs",

@@ -16,6 +16,11 @@
 
 	servers {
 		protocols h1 h2
+		# The shared-VPS Nginx edge is the only trusted hop. The value must be
+		# the exact Docker bridge CIDR used by the host edge-to-Caddy publication;
+		# never use private_ranges or an unreviewed broad network here.
+		trusted_proxies static {$OGFI_EDGE_TRUSTED_PROXY_CIDR}
+		trusted_proxies_strict
 		max_header_size 64KiB
 		timeouts {
 			read_header {$CADDY_READ_HEADER_TIMEOUT:10s}

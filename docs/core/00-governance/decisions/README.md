@@ -87,6 +87,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0246-APPROVAL-BACKFILL-MAINTENANCE-AUTHORITY.md`
 - `DEC-0247-APPROVAL-V1-PRODUCER-BARRIER-AND-CLOSED-WRITER-PERIMETER.md`
 - `DEC-0248-SINGLE-HOST-CONTROLLED-DEPLOYMENT-FENCE.md` — amended single-host release service, durable recovery journal, and fixed fence; implementation pending, with a database session keeper required for distributed executors
+- `DEC-0249-SERVED-IDENTITY-PROVENANCE-AND-PUBLIC-PROBE-CONTRACT.md` — immutable build-baked provenance, no-store nonce-bound public identity, Caddy edge fence re-stamping, and required external per-address HTTPS evidence before smoke
 
 ## Suggested future decision records
 

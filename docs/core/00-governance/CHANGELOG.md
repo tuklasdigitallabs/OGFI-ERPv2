@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-28 — Served-Identity Provenance and Public-Probe Contract
+
+- Added confirmed `DEC-0249`: provenance is immutable and build-baked; the public identity response is dynamic, `no-store`, and request-nonce-bound; Caddy strips upstream/controller fence headers and re-stamps the canonical edge fence; and every configured public HTTPS address requires an external candidate/nonce/fence probe before smoke receives credit.
+- The DEC-0248 production **NO-GO** remains unconditional until source, installed-host, recovery, and retained external public evidence pass. Requested Code Spark and exact GPT-5.4 reviewers were unavailable; the closest permitted GPT-5.6 fallback was used without relaxing hard gates. No user-facing enablement change is required.
+- Added the controlled shared-VPS edge foundation: an exact-host Nginx template that preserves existing sites, loopback-only Caddy publication with an exact trusted-edge CIDR, a public-address inventory template, and a fail-closed multi-address served-identity probe. Hosted installation and external evidence remain pending.
+
 ## 2026-07-27 — Single-Host Controlled Deployment Fence
 
 - Amended `DEC-0248` after Security challenge: one root-owned systemd service/cgroup and fixed fence must own strict request admission through immutable artifact verification, isolated migration/probes, cutover, authoritative served-SHA smoke, same-fence rollback, and fsync-safe crash/reboot recovery. The earlier SSH-held lock plus separately startable migration unit is rejected.

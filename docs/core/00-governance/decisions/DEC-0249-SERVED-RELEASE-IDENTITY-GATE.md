@@ -3,7 +3,7 @@
 ## Metadata
 
 - Decision ID: `DEC-0249`
-- Status: `Confirmed; implementation pending; production NO-GO`
+- Status: `Confirmed; source foundation implemented, hosted evidence pending; production NO-GO`
 - Date: 2026-07-28
 - Decision owner: Shared Production Foundation / Hostinger deployment
 - Decision Chair: Parent agent
@@ -34,5 +34,7 @@ cannot satisfy this gate.
 
 Security and DevOps independent review selected this combined public-path gate.
 Requested Spark/GPT-5.4 reviewers were unavailable; GPT-5.6 fallbacks were used
-without relaxing controls. No identity endpoint, controller helper, host install,
-or external probe exists yet; production remains NO-GO.
+without relaxing controls. The source identity endpoint, multi-address probe,
+and edge-header contract are now present. The root-controller integration,
+host Nginx/Caddy installation, and external public evidence remain pending;
+production remains NO-GO.

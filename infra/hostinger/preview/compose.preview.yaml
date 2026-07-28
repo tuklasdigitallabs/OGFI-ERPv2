@@ -1,0 +1,73 @@
+name: ogfi-erp-preview
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ogfi_preview
+      POSTGRES_USER: ogfi_preview
+      POSTGRES_PASSWORD: ${OGFI_PREVIEW_DATABASE_PASSWORD:?Set the isolated preview database password}
+    volumes:
+      - preview_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ogfi_preview -d ogfi_preview"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    networks: [private]
+
+  web:
+    build:
+      context: ../../..
+      dockerfile: infra/docker/Dockerfile.web.example
+      args:
+        NODE_VERSION: "22"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      APP_ENV: development
+      APP_URL: https://staging-erp.onegourmetph.com
+      APP_DEFAULT_TIMEZONE: Asia/Manila
+      AUTH_MODE: demo
+      DATABASE_URL: postgresql://ogfi_preview:${OGFI_PREVIEW_DATABASE_PASSWORD}@postgres:5432/ogfi_preview?schema=public
+      EVIDENCE_STORAGE_PROVIDER: local-private
+      EVIDENCE_LOCAL_STORAGE_ROOT: /var/lib/ogfi-preview/evidence
+      EVIDENCE_LOCAL_SCAN_MODE: quarantine-only
+      DEMO_TENANT_LOGIN_CODE: ogfi
+      DEMO_USER_EMAIL: storekeeper.bgc@ogfi.example
+      DEMO_APPROVER_EMAIL: ops.approver@ogfi.example
+      DEMO_ADMIN_EMAIL: erp.admin@ogfi.example
+      DEMO_SUPER_USER_EMAIL: super.admin@ogfi.example
+    volumes:
+      - preview_evidence:/var/lib/ogfi-preview/evidence
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 45s
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks:
+      private: {}
+      shared_edge:
+        aliases: [staging_erp_web]
+
+networks:
+  private:
+    internal: true
+  shared_edge:
+    external: true
+    name: og-inventory_default
+
+volumes:
+  preview_postgres:
+  preview_evidence:
