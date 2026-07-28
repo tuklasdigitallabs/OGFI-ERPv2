@@ -194,7 +194,7 @@ export default async function BranchOperationChecklistDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Review date
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={today}
                     name="reviewedAt"
                     required
@@ -204,7 +204,7 @@ export default async function BranchOperationChecklistDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Review outcome
                   <select
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={defaultOutcome}
                     name="outcome"
                     required
@@ -225,7 +225,7 @@ export default async function BranchOperationChecklistDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   Review Checklist
                 </button>
@@ -256,13 +256,13 @@ export default async function BranchOperationChecklistDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Evidence reference
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     maxLength={255}
                     name="evidenceReference"
                     placeholder="Optional photo, note, or checklist reference"
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100">
                   Return for Correction
                 </button>
               </form>
@@ -317,7 +317,7 @@ export default async function BranchOperationChecklistDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   Close Checklist
                 </button>

@@ -72,6 +72,14 @@ function statusTone(status: string) {
   return "info" as const;
 }
 
+function nextActionLabel(status: string) {
+  if (status === "SUBMITTED" || status === "MANAGER_REVIEW") return "Review";
+  if (status === "RETURNED") return "Correct and resubmit";
+  if (status === "REVIEWED" || status === "EXCEPTION_OPEN") return "Close or follow up";
+  if (status === "CLOSED") return "No further action";
+  return "Complete and submit";
+}
+
 function getSearchParam(
   searchParams: Record<string, string | string[] | undefined>,
   key: string
@@ -536,7 +544,8 @@ export default async function BranchOperationsPage({
                           : checklist.exceptionCount} / {checklist.lines.length}
                       </dd>
                     </div>
-                    <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewed by</dt><dd className="font-semibold text-slate-700">{checklist.reviewedByName ?? "Not reviewed"}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Location</dt><dd className="font-semibold text-slate-700">{checklist.locationName}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Next action</dt><dd className="font-semibold text-slate-700">{nextActionLabel(checklist.status)}</dd></div>
                   </dl>
                   <ButtonLink href={detailHref(checklist.id)} tone="secondary" className="min-h-11 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100">View Detail</ButtonLink>
                 </article>

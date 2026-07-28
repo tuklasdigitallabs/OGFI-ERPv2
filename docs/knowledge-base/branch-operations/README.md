@@ -31,7 +31,7 @@
 - `Checklist Exceptions` reports all exception lines separately from affected checklists.
 - `Critical exception lines` reports matching critical lines separately from affected checklists. It is not a count of unresolved actions or personal tasks.
 - `Checklist Reviews` contains all scoped `SUBMITTED` and `MANAGER REVIEW` checklists, including records that are not personal tasks.
-- The ordinary Branch Operations register uses checklist cards through tablet widths and identifies its reviewer field as `Reviewed by`; the value reflects the recorded reviewer state rather than implying a review occurred.
+- The ordinary Branch Operations register uses checklist cards through tablet widths and shows the selected location plus a status-derived `Next action`; the desktop table retains the recorded `Reviewed by` field. These labels reflect source-record state and do not grant authority.
 - Search can narrow the results, but raw status, shift, or business-date values cannot widen or redefine the profile.
 - An unsupported or retired dashboard link shows `Dashboard view unavailable` instead of silently opening a different population.
 

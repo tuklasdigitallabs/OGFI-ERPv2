@@ -10,6 +10,7 @@
 - `Checklist Exceptions` now opens a read-only, selected-scope Branch Operations profile. The card counts exception lines, and the destination also shows how many checklists are affected.
 - `Checklist Reviews` now opens a read-only profile of all scoped checklists in `SUBMITTED` or `MANAGER REVIEW`; it is not a personal task list.
 - Both profiles allow Search to narrow results without accepting raw status, shift, or business-date values that would redefine the list.
+- The responsive register cards now show explicit location and status-derived next-action context, and detail action controls meet the shared mobile touch-target standard.
 - Unsupported or retired profile links fail visibly, and checklist detail retains the return path to the profile.
 
 ## What You Need To Do

@@ -2143,3 +2143,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - `pnpm release:status-suite:strict` remains **FAIL / NO-GO**. The current run reports 31 blocking GO/NO-GO gates and 32 final-review blockers, including unavailable DEC-0248 root-owned hosted release authority and same-fence rollback/recovery, missing migration/backup/restore snapshots, incomplete production-authenticated `next start` evidence, and missing owner-signed UAT/security/enablement evidence.
 - This confirms that the responsive browser improvements do not clear external release controls; no phase or workspace completion percentage is advanced from this recheck.
+
+### Branch Operations responsive browser acceptance — July 31, 2026
+
+- Branch Operations mobile cards now expose explicit location and a status-derived next-action label; detail form controls and action buttons use the shared 44px minimum touch target. The source record remains read-only in dashboard profiles and service-layer scope/actor checks are unchanged.
+- A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the new authenticated Chromium/mobile contract: **4/4**. It verifies register scope/context, responsive no-overflow, visible location/next-action card context, desktop table action surface, and the explicitly read-only Checklist Reviews profile. `pnpm typecheck:e2e` and web lint pass. Branch Operations, Workspace 1, and Phase I remain **NO-GO** pending broader lifecycle, PostgreSQL authorization/query-plan, hosted, production-authentication, and UAT evidence.
