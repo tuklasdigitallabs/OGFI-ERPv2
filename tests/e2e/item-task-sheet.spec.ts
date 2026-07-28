@@ -200,12 +200,27 @@ test("name correction announces success and suppresses duplicate submission whil
   const correctedName = `${item.itemName} corrected`;
   const itemNameInput = sheet.getByLabel("Item name", { exact: true });
   const reasonInput = sheet.getByLabel("Correction reason");
+  await expect(itemNameInput).toHaveCount(1);
+  page.on("pageerror", (error) => console.log(`ITEM_TASK_SHEET_PAGEERROR:${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") console.log(`ITEM_TASK_SHEET_CONSOLE_ERROR:${message.text()}`);
+  });
   await expect(itemNameInput).toBeEditable();
   await expect(itemNameInput).toBeFocused();
   await expect(reasonInput).toBeEditable();
+  console.log("ITEM_TASK_SHEET_BEFORE_INPUT", await itemNameInput.evaluate((element) => ({
+    value: (element as HTMLInputElement).value,
+    active: document.activeElement === element,
+    outerHTML: element.outerHTML
+  })));
   await itemNameInput.click();
   await itemNameInput.press("Control+A");
   await itemNameInput.pressSequentially(correctedName);
+  console.log("ITEM_TASK_SHEET_AFTER_INPUT", await itemNameInput.evaluate((element) => ({
+    value: (element as HTMLInputElement).value,
+    active: document.activeElement === element,
+    outerHTML: element.outerHTML
+  })));
   await expect(itemNameInput).toHaveValue(correctedName);
   await reasonInput.fill("Correct the item display label");
   await expect(reasonInput).toHaveValue("Correct the item display label");

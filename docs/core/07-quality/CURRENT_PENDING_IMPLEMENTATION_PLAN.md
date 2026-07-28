@@ -2033,3 +2033,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and executed the save case in both Chromium and Pixel 7. With readiness assertions, Playwright `fill()` still left the controlled item-name DOM value unchanged; switching to real keystrokes changed the field but the first selection attempt produced an appended value, so the save flow remains unresolved. This isolates the issue to client/harness event and rerender behavior before the server action; no backend or inventory integrity defect was observed.
 - The test now uses a focused keyboard select-all/type path for the next controlled rerun. `pnpm typecheck:e2e` passes. This diagnostic run provides no browser completion credit; supplier/mobile, transfer receive→reverse, production authentication/MFA, hosted recovery/deployment, formal UAT evidence, and owner signoff remain open. Workspace 4 and Phase I remain **NO-GO**.
+
+### Item TaskSheet native-event diagnostic instrumentation — July 30, 2026
+
+- The save case now records a single-locator assertion plus the item input’s value, active-element state, and outer HTML immediately before and after the input sequence, and surfaces page/console errors with an explicit test prefix. This is bounded diagnostic instrumentation to distinguish hydration/rerender reset from event-path behavior; no production handler or validation semantics changed.
+- `pnpm typecheck:e2e` passes. A fresh marked runtime rerun is required to collect the diagnostic output and determine the next production-safe correction. No browser/UAT completion credit is claimed; Workspace 4 and Phase I remain **NO-GO**.
