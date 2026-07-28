@@ -23,6 +23,7 @@ services:
       dockerfile: infra/docker/Dockerfile.web.example
       args:
         NODE_VERSION: "22"
+        WEB_BUILD_NODE_OPTIONS: --max-old-space-size=4096
     depends_on:
       postgres:
         condition: service_healthy
