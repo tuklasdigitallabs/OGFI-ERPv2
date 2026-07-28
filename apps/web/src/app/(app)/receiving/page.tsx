@@ -234,7 +234,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
       <div className="space-y-4">
         {!profile && canCreateReceiving ? (
           <div className="flex justify-end">
-            <ButtonLink href="/receiving/new" className="bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700">
+            <ButtonLink href="/receiving/new" className="!min-h-11 bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700">
               Create Draft Receipt
             </ButtonLink>
           </div>
@@ -263,7 +263,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                   href={profile
                     ? `/receiving/export?dashboard=${profile}${profilePage?.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`
                     : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${receivedFrom ? `&receivedFrom=${receivedFrom}` : ""}${receivedTo ? `&receivedTo=${receivedTo}` : ""}${supplierId ? `&supplierId=${encodeURIComponent(supplierId)}` : ""}${purchaseOrderId ? `&purchaseOrderId=${encodeURIComponent(purchaseOrderId)}` : ""}${receivedByUserId ? `&receivedByUserId=${encodeURIComponent(receivedByUserId)}` : ""}`}
-                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                  className="!min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
                 </ButtonLink>
@@ -468,7 +468,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                     {receipt.status === "DRAFT" && canPostReceiving ? (
                       <form action={postReceiptAction}>
                         <input name="id" type="hidden" value={receipt.id} />
-                        <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                        <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                           Post Receipt
                         </button>
                       </form>
