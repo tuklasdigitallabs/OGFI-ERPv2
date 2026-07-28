@@ -105,6 +105,7 @@ export function SelectedItemTaskSheet({
       size="workspace"
       dirty={dirty}
       onDirtyChange={setDirty}
+      captureDirty={false}
       pending={pending}
       header={
         <div className="grid gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-950 sm:grid-cols-2 xl:grid-cols-4">

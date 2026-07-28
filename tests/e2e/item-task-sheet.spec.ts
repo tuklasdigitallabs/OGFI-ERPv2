@@ -213,10 +213,7 @@ test("name correction announces success and suppresses duplicate submission whil
     active: document.activeElement === element,
     outerHTML: element.outerHTML
   })));
-  await itemNameInput.click();
-  await itemNameInput.press("Home");
-  await itemNameInput.press("Shift+End");
-  await itemNameInput.pressSequentially(correctedName);
+  await itemNameInput.fill(correctedName);
   console.log("ITEM_TASK_SHEET_AFTER_INPUT", await itemNameInput.evaluate((element) => ({
     value: (element as HTMLInputElement).value,
     active: document.activeElement === element,

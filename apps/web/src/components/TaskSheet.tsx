@@ -31,6 +31,8 @@ type TaskSheetProps = {
   /** Lets callers explicitly mark a form dirty when changes do not emit input or change events. */
   dirty?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Allows controlled forms to own dirty tracking without capture-triggered caret rerenders. */
+  captureDirty?: boolean;
   className?: string;
   bodyClassName?: string;
 };
@@ -54,6 +56,7 @@ export function TaskSheet({
   pending = false,
   dirty,
   onDirtyChange,
+  captureDirty = true,
   className,
   bodyClassName
 }: TaskSheetProps) {
@@ -237,8 +240,8 @@ export function TaskSheet({
                   : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6",
                 bodyClassName
               )}
-              onChangeCapture={markDirty}
-              onInputCapture={markDirty}
+              onChangeCapture={captureDirty ? markDirty : undefined}
+              onInputCapture={captureDirty ? markDirty : undefined}
             >
               {children}
             </div>
