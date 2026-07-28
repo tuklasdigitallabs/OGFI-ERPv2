@@ -15,7 +15,9 @@ services:
       timeout: 5s
       retries: 12
     restart: unless-stopped
-    networks: [private]
+    networks:
+      private:
+        aliases: [preview_postgres]
 
   web:
     build:
@@ -33,7 +35,7 @@ services:
       APP_URL: https://staging-erp.onegourmetph.com
       APP_DEFAULT_TIMEZONE: Asia/Manila
       AUTH_MODE: demo
-      DATABASE_URL: postgresql://ogfi_preview:${OGFI_PREVIEW_DATABASE_PASSWORD}@postgres:5432/ogfi_preview?schema=public
+      DATABASE_URL: postgresql://ogfi_preview:${OGFI_PREVIEW_DATABASE_PASSWORD}@preview_postgres:5432/ogfi_preview?schema=public
       EVIDENCE_STORAGE_PROVIDER: local-private
       EVIDENCE_LOCAL_STORAGE_ROOT: /var/lib/ogfi-preview/evidence
       EVIDENCE_LOCAL_SCAN_MODE: quarantine-only
