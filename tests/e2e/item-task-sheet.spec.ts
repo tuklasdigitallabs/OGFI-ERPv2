@@ -198,9 +198,17 @@ test("name correction announces success and suppresses duplicate submission whil
 
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
   const correctedName = `${item.itemName} corrected`;
-  await sheet.getByLabel("Item name", { exact: true }).fill(correctedName);
-  await sheet.getByLabel("Correction reason").fill("Correct the item display label");
+  const itemNameInput = sheet.getByLabel("Item name", { exact: true });
+  const reasonInput = sheet.getByLabel("Correction reason");
+  await expect(itemNameInput).toBeEditable();
+  await expect(itemNameInput).toBeFocused();
+  await expect(reasonInput).toBeEditable();
+  await itemNameInput.fill(correctedName);
+  await reasonInput.fill("Correct the item display label");
+  await expect(itemNameInput).toHaveValue(correctedName);
+  await expect(reasonInput).toHaveValue("Correct the item display label");
   const saveButton = sheet.getByRole("button", { name: "Save Item Name" });
+  await expect(saveButton).toBeEnabled();
   await saveButton.click();
   await expect(sheet.getByRole("button", { name: "Saving Item Name…" })).toBeDisabled();
   await expect(sheet.getByRole("button", { name: "Cancel" })).toBeDisabled();
