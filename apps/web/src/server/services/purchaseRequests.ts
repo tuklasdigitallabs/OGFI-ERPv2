@@ -1211,6 +1211,48 @@ export async function searchPurchaseRequestDraftLookup(
   return { kind: values.kind, options: pageOptions, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
 }
 
+export async function getPurchaseRequestDraftOptions(session: SessionContext) {
+  await requirePermission(session, permissions.purchaseRequestCreate);
+  assertAuthorizedLocation(session, session.context.locationId);
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+  };
+  const [items, uoms, budgetLines] = await Promise.all([
+    prisma.item.findMany({
+      where: scope,
+      select: { id: true, itemCode: true, itemName: true, purchaseUomId: true },
+      orderBy: [{ itemName: "asc" }, { itemCode: "asc" }, { id: "asc" }],
+      take: 25,
+    }),
+    prisma.uom.findMany({
+      where: scope,
+      select: { id: true, uomCode: true, uomName: true },
+      orderBy: [{ uomCode: "asc" }, { id: "asc" }],
+      take: 25,
+    }),
+    prisma.budgetLine.findMany({
+      where: {
+        ...scope,
+        budget: { status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] } },
+        OR: [{ locationId: null }, { locationId: session.context.locationId }],
+        ...(session.context.brandId
+          ? { AND: [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }] }
+          : {}),
+      },
+      select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } },
+      orderBy: [{ code: "asc" }, { name: "asc" }, { id: "asc" }],
+      take: 25,
+    }),
+  ]);
+  return {
+    items: items.map((item) => ({ id: item.id, itemCode: item.itemCode, itemName: item.itemName, defaultUomId: item.purchaseUomId, uoms: [] })),
+    uoms,
+    budgetLines: budgetLines.map((line) => ({ id: line.id, label: `${line.code} / ${line.name}`, helper: `${line.budget.publicReference} / ${line.budget.name}` })),
+  };
+}
+
 export async function createDraftPurchaseRequest(formData: FormData) {
   const session = await requireSessionContext();
   const values = createDraftHeaderSchema.parse(Object.fromEntries(formData));

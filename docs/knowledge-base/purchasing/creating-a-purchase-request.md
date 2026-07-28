@@ -21,7 +21,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 - When using a catalog item, select a UOM that is configured for that item. The server checks the item/UOM relationship again when creating the draft; an invalid or stale pair is rejected without creating the request.
 - Catalog-item, valid-UOM, and budget-line choices use bounded server lookups with independent Previous/Next controls. The editor shows the current page and total pages, retains the selected context while you search, and does not silently accept an incomplete result set.
 - A retained budget-line selection is shown only when it is active for the selected location and brand (or explicitly company-wide). Budget classification remains optional through `Finance to classify`; a stale or foreign selected ID is not displayed.
-- When a draft has multiple lines, selected item, UOM, and budget options remain available when you switch between lines; this does not preload the full catalog.
+- The composer starts with the first scoped page of active catalog items, UOMs, and budget lines; bounded server lookup and pagination remain available for the rest of the catalog. When a draft has multiple lines, selected item, UOM, and budget options remain available when you switch between lines.
 - An approval rule must be configured before a draft can be submitted.
 - Current recommended approval bands are shown in the workspace from Admin Settings: standard approval from PHP 10,000, high-value review from PHP 50,000, executive review from PHP 200,000, and 3 quotes from PHP 50,000 when quotation comparison is required. These values are policy context; assigned approval rules and scope still control the actual approval route.
 

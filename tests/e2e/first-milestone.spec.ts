@@ -199,7 +199,9 @@ test("returned purchase requests can be reopened as draft", async ({
   await page.getByLabel("Required date").fill(futureDate(7));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Return/reopen validation for ${marker}`);
-  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
+  const catalogItem = page.getByLabel("Catalog item", { exact: true });
+  await catalogItem.scrollIntoViewIfNeeded();
+  await catalogItem.selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
@@ -252,9 +254,13 @@ test("draft purchase requests can be cancelled with audit history", async ({
     .slice(2, 8)}`;
   await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill(futureDate(8));
-  await page.getByLabel("Urgency").selectOption("Normal");
+  await page.getByLabel("Urgency").selectOption("Emergency");
   await page.getByLabel("Justification").fill(`Cancellation validation for ${marker}`);
-  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
+  await page.getByLabel("Emergency reason").fill("Cancellation acceptance setup");
+  await page.getByLabel("Evidence reference").fill("E2E-cancellation-evidence");
+  await page.getByLabel("Free-text UOM").fill("EA");
+  await page.getByLabel("Emergency item detail").fill("Cancellation acceptance item");
+  await page.getByLabel("Estimated unit cost").fill("100");
   await page.getByLabel("Quantity").fill("1");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
