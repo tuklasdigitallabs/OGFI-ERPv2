@@ -3,7 +3,7 @@
 **Audience / required role:** Branch, warehouse, or destination-location user with `inventory.transfer.receive`  
 **Applies to:** Current ERP header location as the transfer destination  
 **Related phase/module:** Phase I / Inventory Transfers  
-**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow (2026-07-27)
+**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow (2026-07-30)
 
 ## Purpose
 
@@ -33,7 +33,7 @@ Use this article to confirm stock received from a dispatched transfer. Only acce
 8. Add an optional receiving note.
 9. Select `Post Receipt`.
 
-The receipt opens in a workspace-sized task sheet with an independently scrolling body, persistent transfer/source/destination context, and a sticky `Post Receipt` footer. Quantity and evidence controls remain touch-friendly on mobile, and the sheet prevents a second submission while the receipt is posting. If all dispatched quantities are already accounted for, the detail page shows that no receivable lines remain instead of opening an unusable form.
+The receipt opens in a workspace-sized task sheet with an independently scrolling body, persistent transfer/source/destination context, and a touch-friendly `Post Receipt` action at the end of the form. Quantity and evidence controls remain touch-friendly on mobile, and the sheet prevents a second submission while the receipt is posting. If all dispatched quantities are already accounted for, the detail page shows that no receivable lines remain instead of opening an unusable form.
 
 The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock. A scope conflict tells you to refresh the transfer; a retry-key conflict tells you to start a new receipt attempt; and an in-progress response tells you to wait for the existing result before retrying.
 

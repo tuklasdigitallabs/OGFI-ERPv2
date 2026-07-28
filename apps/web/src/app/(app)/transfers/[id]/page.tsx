@@ -395,16 +395,6 @@ export default async function TransferDetailPage({
                     <span><strong className="font-semibold text-slate-800">To:</strong> {transfer.destinationLocationName}</span>
                   </div>
                 }
-                footer={({ pending }) => (
-                  <button
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"
-                    disabled={pending}
-                    form={`transfer-receipt-form-${transfer.id}`}
-                    type="submit"
-                  >
-                    {pending ? "Posting Receipt…" : "Post Receipt"}
-                  </button>
-                )}
               >
                 <form
                   action={receiveTransferAction}
@@ -521,6 +511,11 @@ export default async function TransferDetailPage({
                       placeholder="Optional receiving note"
                     />
                       </label>
+                  <PendingActionButton
+                    label="Post Receipt"
+                    pendingLabel="Posting Receipt…"
+                    tone="primary"
+                  />
                 </form>
               </TaskSheet>
             </div>
