@@ -130,7 +130,7 @@ type MfaAuthenticatorSnapshot = {
 
 export function getTrustedRequestFingerprint(requestHeaders: Headers): RequestFingerprint {
   const trustedProxyMode = process.env.AUTH_TRUSTED_PROXY_MODE;
-  if (trustedProxyMode === "caddy_single_hop") {
+  if (trustedProxyMode === "caddy_single_hop" || trustedProxyMode === "nginx_single_hop") {
     const forwardedFor = requestHeaders.get("x-forwarded-for")?.trim() ?? "";
     if (!forwardedFor || forwardedFor.includes(",") || isIP(forwardedFor) === 0) {
       throw new Error("AUTH_TRUSTED_PROXY_SOURCE_INVALID");
@@ -288,7 +288,7 @@ export function assertProductionAuthConfiguration() {
     decodeEncryptionKey(previousKey, "APP_ENCRYPTION_PREVIOUS_KEY");
   }
   if (isProduction()) {
-    if (process.env.AUTH_TRUSTED_PROXY_MODE !== "caddy_single_hop") {
+    if (!["caddy_single_hop", "nginx_single_hop"].includes(process.env.AUTH_TRUSTED_PROXY_MODE ?? "")) {
       throw new Error("AUTH_TRUSTED_PROXY_MODE_INVALID");
     }
     loadAuthenticationThrottleConfig();

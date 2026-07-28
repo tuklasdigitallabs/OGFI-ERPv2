@@ -30,8 +30,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       APP_ENV: uat
+      AUTH_TRUSTED_PROXY_MODE: nginx_single_hop
       APP_URL: https://staging-erp.onegourmetph.com
       APP_DEFAULT_TIMEZONE: Asia/Manila
       AUTH_MODE: demo

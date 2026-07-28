@@ -332,6 +332,12 @@ describe("production authentication primitives", () => {
     }
   });
 
+  it("accepts the same one-address contract from the reviewed Nginx edge", () => {
+    vi.stubEnv("AUTH_TRUSTED_PROXY_MODE", "nginx_single_hop");
+    expect(getTrustedRequestFingerprint(new Headers({ "x-forwarded-for": "203.0.113.9" }))).toEqual({ sourceAddress: "203.0.113.9", userAgent: "unknown" });
+    expect(() => getTrustedRequestFingerprint(new Headers({ "x-forwarded-for": "203.0.113.9, 10.0.0.1" }))).toThrow("AUTH_TRUSTED_PROXY_SOURCE_INVALID");
+  });
+
   it("ignores spoofable forwarded headers outside trusted proxy mode", () => {
     vi.stubEnv("APP_ENV", "development");
     vi.stubEnv("NODE_ENV", "test");
@@ -342,8 +348,10 @@ describe("production authentication primitives", () => {
     }))).toEqual({ sourceAddress: "untrusted-direct", userAgent: "local-test" });
   });
 
-  it("requires the Caddy single-hop trust contract in production", () => {
+  it("requires a reviewed single-hop trust contract in production", () => {
     stubCompleteProductionAuthEnvironment();
+    vi.stubEnv("AUTH_TRUSTED_PROXY_MODE", "nginx_single_hop");
+    expect(() => assertProductionAuthConfiguration()).not.toThrow();
     vi.stubEnv("AUTH_TRUSTED_PROXY_MODE", "");
     expect(() => assertProductionAuthConfiguration()).toThrow(
       "AUTH_TRUSTED_PROXY_MODE_INVALID"

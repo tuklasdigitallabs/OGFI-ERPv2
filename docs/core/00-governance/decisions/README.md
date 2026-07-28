@@ -88,6 +88,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0247-APPROVAL-V1-PRODUCER-BARRIER-AND-CLOSED-WRITER-PERIMETER.md`
 - `DEC-0248-SINGLE-HOST-CONTROLLED-DEPLOYMENT-FENCE.md` — amended single-host release service, durable recovery journal, and fixed fence; implementation pending, with a database session keeper required for distributed executors
 - `DEC-0249-SERVED-IDENTITY-PROVENANCE-AND-PUBLIC-PROBE-CONTRACT.md` — immutable build-baked provenance, no-store nonce-bound public identity, Caddy edge fence re-stamping, and required external per-address HTTPS evidence before smoke
+- `DEC-0250-NGINX-SINGLE-HOP-SHARED-VPS-EDGE.md` — exact-host shared-VPS Nginx public edge, root-owned cutover fragment/fence, one-hop trusted-header replacement, and direct-backend isolation; source preview only and production NO-GO pending hosted evidence
 
 ## Suggested future decision records
 

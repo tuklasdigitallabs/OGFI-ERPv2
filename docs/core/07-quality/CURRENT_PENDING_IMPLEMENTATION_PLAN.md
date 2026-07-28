@@ -2175,3 +2175,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The web application now has a dedicated dynamic `/.well-known/ogfi-release` route. It returns candidate identity only from a build-baked manifest and echoes a bounded probe nonce with no-store headers; the checked-in unbuilt manifest fails closed with `503`. Web typecheck passes. Caddy fence stamping, immutable build-manifest generation/verification, controller probing, hosted execution, and external evidence remain pending; this does not advance release readiness.
 - Caddy now removes any upstream `X-OGFI-Proxy-Fence` value and stamps its configured controller fence only for that identity route; the authority source contract passes **5/5**. An unset fence, manifest generation, controller verification, and all hosted evidence remain pending and receive no release credit.
+
+### Shared-VPS Nginx edge amendment — July 28, 2026
+
+- `DEC-0250` confirms the shared-VPS exact-host Nginx edge model. Production authentication now accepts `nginx_single_hop` only under the same strict single-IP `X-Forwarded-For` contract as Caddy; focused authentication coverage passes **25/25**. The isolated preview Compose definition now uses `NODE_ENV=production`, controlled-UAT application mode, and `nginx_single_hop`. Root-owned Nginx cutover/fence, direct-backend denial, rate-limit/metrics parity, hosted reload/recovery, and UAT evidence remain required; no release readiness is claimed.
