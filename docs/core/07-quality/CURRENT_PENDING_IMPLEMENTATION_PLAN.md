@@ -2170,3 +2170,7 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Served release identity decision — July 28, 2026
 
 - `DEC-0249` confirms that future smoke credit requires immutable application provenance, a dynamic no-store public identity response with controller nonce, a Caddy-stamped candidate fence, and external HTTPS verification across approved public addresses. The current health/readiness and status-only smoke paths remain non-acceptance diagnostics. Implementation, host installation, and external evidence are pending; Phase I remains **NO-GO**.
+
+### Served release identity source foundation — July 28, 2026
+
+- The web application now has a dedicated dynamic `/.well-known/ogfi-release` route. It returns candidate identity only from a build-baked manifest and echoes a bounded probe nonce with no-store headers; the checked-in unbuilt manifest fails closed with `503`. Web typecheck passes. Caddy fence stamping, immutable build-manifest generation/verification, controller probing, hosted execution, and external evidence remain pending; this does not advance release readiness.
