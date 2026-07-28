@@ -2166,3 +2166,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The source now contains a root-installable release-controller template with hostile request admission from approval records held only in the root-owned `/var/spool/ogfi-release/approved` spool, not a deploy-writable incoming path; a fixed fence unit; an fsync journal; and maintenance-only recovery. This is a source foundation only: no root installation, hosted execution, or hosted fault/recovery evidence is claimed. It does not add migration, snapshot, cutover, served-SHA, smoke, or rollback helpers.
 - `pnpm release:status-suite:strict` remains **FAIL / NO-GO** with **31** blocking GO/NO-GO gates and **32** final-review blockers. No migration/snapshot/cutover/served-SHA/smoke/rollback helper, root install, hosted evidence, or accepted same-fence deployment/rollback path exists. The requested Spark and GPT-5.4 council models were unavailable; the closest GPT-5.6 fallback council was used without relaxing gates. No phase or workspace completion percentage is advanced.
+
+### Served release identity decision — July 28, 2026
+
+- `DEC-0249` confirms that future smoke credit requires immutable application provenance, a dynamic no-store public identity response with controller nonce, a Caddy-stamped candidate fence, and external HTTPS verification across approved public addresses. The current health/readiness and status-only smoke paths remain non-acceptance diagnostics. Implementation, host installation, and external evidence are pending; Phase I remains **NO-GO**.
