@@ -105,7 +105,6 @@ async function deactivateSupplierItemLinkAction(
       status: "error"
     };
   }
-  revalidatePath("/suppliers");
   return {
     feedback: getActionFeedback({ success: "SUPPLIER_ITEM_LINK_DEACTIVATED" }),
     status: "success"
@@ -887,10 +886,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 Status
                 <select
                   className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"
-                  defaultValue={catalogStatus ?? "ALL"}
+                  defaultValue={catalogStatus ?? ""}
                   name="catalogStatus"
                 >
-                  <option value="ALL">All statuses</option>
+                  <option value="">All statuses</option>
                   <option value="ACTIVE">Active</option>
                   <option value="INACTIVE">Inactive</option>
                 </select>

@@ -237,7 +237,7 @@ export function WorkspaceTabs({
         );
 
         const className = cn(
-          "inline-flex min-h-8 min-w-0 items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-semibold transition-colors",
+          "inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-semibold transition-colors",
           item.active
             ? "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] shadow-[var(--shadow-soft)]"
             : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]",

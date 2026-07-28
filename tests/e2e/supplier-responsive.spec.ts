@@ -167,7 +167,8 @@ async function expectNoHorizontalOverflow(page: Page) {
 async function expectTouchTargetsAtLeast44(locator: Locator) {
   const controls = locator.locator("a:visible, button:visible, input:visible, select:visible");
   for (let index = 0; index < await controls.count(); index += 1) {
-    const box = await controls.nth(index).boundingBox();
+    const control = controls.nth(index);
+    const box = await control.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
   }
@@ -219,7 +220,7 @@ test("Catalog Apply, Clear, and paging retain register and selected-supplier URL
     url.searchParams.get("query") === seededSupplierCode &&
     url.searchParams.get("status") === "ACTIVE" &&
     url.searchParams.get("accreditationStatus") === "APPROVED" &&
-    url.searchParams.get("page") === "1" &&
+    !url.searchParams.has("page") &&
     url.searchParams.get("catalogQuery") === link.item.itemCode &&
     !url.searchParams.has("catalogPage")
   );
@@ -229,7 +230,7 @@ test("Catalog Apply, Clear, and paging retain register and selected-supplier URL
     url.searchParams.get("supplier") === supplier.id &&
     url.searchParams.get("tab") === "catalog" &&
     url.searchParams.get("query") === seededSupplierCode &&
-    url.searchParams.get("page") === "1" &&
+    !url.searchParams.has("page") &&
     !url.searchParams.has("catalogQuery") &&
     !url.searchParams.has("catalogStatus") &&
     !url.searchParams.has("catalogCategory") &&
@@ -383,13 +384,13 @@ test("true-empty, filtered-empty, and inactive retained states remain distinct",
   await signInAsAdmin(page);
 
   await page.goto(`/suppliers?supplier=${emptySupplierId}&tab=catalog`);
-  await expect(page.getByTestId("supplier-catalog-workspace").getByText("No catalog links configured")).toBeVisible();
+  await expect(page.getByTestId("supplier-catalog-responsive-cards").getByText("No catalog links configured")).toBeVisible();
   await page.goto(catalogHref((await seededCatalogContext()).supplier.id, { catalogQuery: "DEC0242-NO-MATCH" }));
-  await expect(page.getByTestId("supplier-catalog-workspace").getByText("No catalog links match the current filters")).toBeVisible();
+  await expect(page.getByTestId("supplier-catalog-responsive-cards").getByText("No catalog links match the current filters")).toBeVisible();
   await page.goto("/suppliers?query=DEC0242-NO-SUPPLIER-MATCH");
   await expect(page.getByText("No suppliers match the current filters")).toBeVisible();
   await page.goto("/suppliers?query=DEC0242-INACTIVE&status=INACTIVE");
-  const inactiveCard = page.getByTestId("supplier-card").filter({ hasText: "DEC0242-INACTIVE" });
+  const inactiveCard = page.getByTestId("supplier-card").filter({ hasText: "DEC-0242 Inactive Supplier" });
   await expect(inactiveCard).toContainText("Inactive supplier retained as read-only history.");
   await expect(inactiveCard.getByRole("link", { name: "Deactivate" })).toHaveCount(0);
   await page.goto(`/suppliers?supplier=${inactiveSupplierId}&tab=catalog`);
@@ -398,7 +399,7 @@ test("true-empty, filtered-empty, and inactive retained states remain distinct",
   await expect(inactiveCatalog.getByRole("link", { name: "Open controls" })).toHaveCount(0);
   await expect(inactiveCatalog.getByText("Supplier and catalog links are retained as read-only history.")).toBeVisible();
   await page.goto(`/suppliers?supplier=${inactiveEmptySupplierId}&tab=catalog`);
-  await expect(page.getByTestId("supplier-catalog-workspace").getByText("This inactive supplier has no catalog history. New links are unavailable.")).toBeVisible();
+  await expect(page.getByTestId("supplier-catalog-responsive-cards").getByText("This inactive supplier has no catalog history. New links are unavailable.")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
 

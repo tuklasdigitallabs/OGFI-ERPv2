@@ -260,6 +260,29 @@ export function UrlOwnedTaskSheet({
     }
   }, [storageKey]);
 
+  const restoreStoredDraft = useCallback(() => {
+    if (!contentRef.current) return;
+    try {
+      const serialized = window.sessionStorage.getItem(storageKey);
+      if (!serialized) return;
+      const draft = JSON.parse(serialized) as Partial<StoredDraft>;
+      if (
+        draft.version !== 1 ||
+        typeof draft.savedAt !== "number" ||
+        Date.now() - draft.savedAt > draftTtlMs ||
+        !Array.isArray(draft.controls)
+      ) {
+        clearStoredDraft();
+        return;
+      }
+      if (restoreDraftControls(contentRef.current, draft.controls)) {
+        setDirty(Boolean(draft.dirty));
+      }
+    } catch {
+      clearStoredDraft();
+    }
+  }, [clearStoredDraft, storageKey]);
+
   const persistDraft = useCallback(
     (forceDirty = false) => {
       if (!contentRef.current) return;
@@ -282,27 +305,8 @@ export function UrlOwnedTaskSheet({
   );
 
   useEffect(() => {
-    if (!contentRef.current) return;
-    try {
-      const serialized = window.sessionStorage.getItem(storageKey);
-      if (!serialized) return;
-      const draft = JSON.parse(serialized) as Partial<StoredDraft>;
-      if (
-        draft.version !== 1 ||
-        typeof draft.savedAt !== "number" ||
-        Date.now() - draft.savedAt > draftTtlMs ||
-        !Array.isArray(draft.controls)
-      ) {
-        clearStoredDraft();
-        return;
-      }
-      if (restoreDraftControls(contentRef.current, draft.controls)) {
-        setDirty(Boolean(draft.dirty));
-      }
-    } catch {
-      clearStoredDraft();
-    }
-  }, [clearStoredDraft, storageKey]);
+    restoreStoredDraft();
+  }, [restoreStoredDraft]);
 
   const returnToContext = useCallback((nextFocusTargetId = focusTargetId) => {
     setOpen(false);
@@ -331,7 +335,11 @@ export function UrlOwnedTaskSheet({
     );
     if (actionFeedback.tone !== "success") {
       setDirty(true);
-      return () => window.clearTimeout(focusTimer);
+      const restoreTimer = window.setTimeout(restoreStoredDraft, 0);
+      return () => {
+        window.clearTimeout(focusTimer);
+        window.clearTimeout(restoreTimer);
+      };
     }
 
     clearStoredDraft();
@@ -344,7 +352,7 @@ export function UrlOwnedTaskSheet({
       window.clearTimeout(focusTimer);
       window.clearTimeout(returnTimer);
     };
-  }, [actionFeedback, clearStoredDraft, focusTargetId, returnToContext, successFocusTargetId]);
+  }, [actionFeedback, clearStoredDraft, focusTargetId, restoreStoredDraft, returnToContext, successFocusTargetId]);
 
   const captureDraftChange = (_event: SyntheticEvent) => {
     persistDraft(true);
