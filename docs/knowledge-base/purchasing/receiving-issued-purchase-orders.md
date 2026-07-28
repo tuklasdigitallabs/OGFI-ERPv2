@@ -31,7 +31,7 @@ Use this article to create and post a Receiving Report from an issued Purchase O
 4. Enter delivered, accepted, rejected, and damaged quantities for each received line.
 5. Add lot or expiry details when required by the item.
 6. Add a discrepancy reason and evidence reference for rejected, damaged, or short quantities.
-7. Select `Create Draft Receipt` at the bottom of the task page. This saves a draft only; it does not post inventory.
+7. Select `Create Draft Receipt` at the bottom of the task page. The action disables itself and announces `Creating Draft Receipt…` while the server request is pending; wait for the result rather than submitting again. This saves a draft only; it does not post inventory.
 8. Review the draft receipt, then select `Post Receipt`.
 
  If the browser or network retries the same draft submission, OGFI returns the original draft instead of creating a duplicate. The retry token is handled automatically and is not a business reference you need to copy. If you change the PO, quantities, delivery details, or other receipt values after a failed attempt, submit the changed receipt as a new attempt; the previous retry token cannot be reused for changed data.
