@@ -214,7 +214,7 @@ test("name correction announces success and suppresses duplicate submission whil
     outerHTML: element.outerHTML
   })));
   await itemNameInput.click();
-  await itemNameInput.press("Control+A");
+  await itemNameInput.press("ControlOrMeta+A");
   await itemNameInput.pressSequentially(correctedName);
   console.log("ITEM_TASK_SHEET_AFTER_INPUT", await itemNameInput.evaluate((element) => ({
     value: (element as HTMLInputElement).value,

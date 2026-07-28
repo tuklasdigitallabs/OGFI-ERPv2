@@ -2036,5 +2036,5 @@ Update this register only when implementation state, release scope, a confirmed 
 
 ### Item TaskSheet native-event diagnostic instrumentation — July 30, 2026
 
-- The save case now records a single-locator assertion plus the item input’s value, active-element state, and outer HTML immediately before and after the input sequence, and surfaces page/console errors with an explicit test prefix. This is bounded diagnostic instrumentation to distinguish hydration/rerender reset from event-path behavior; no production handler or validation semantics changed.
-- `pnpm typecheck:e2e` passes. A fresh marked runtime rerun is required to collect the diagnostic output and determine the next production-safe correction. No browser/UAT completion credit is claimed; Workspace 4 and Phase I remain **NO-GO**.
+- The marked Chromium run confirmed one hydrated, focused, editable input and no reported page/console errors. The native value remained stable before typing; the failed result was caused by the test’s `Control+A` shortcut not selecting the existing value, producing an appended string during `pressSequentially`. This is a test interaction defect, not a production rerender or server-action defect. The test now uses Playwright’s platform-neutral `ControlOrMeta+A` contract; no production handler or validation semantics changed.
+- `pnpm typecheck:e2e` passes. A fresh marked runtime rerun is still required to verify the corrected shortcut in Chromium and Pixel 7. No browser/UAT completion credit is claimed; Workspace 4 and Phase I remain **NO-GO**.
