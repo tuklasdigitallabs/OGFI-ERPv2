@@ -89,6 +89,17 @@ http://:2021 {
 		import app_proxy
 	}
 
+	# DEC-0249: only Caddy may attest that the public identity response traversed
+	# the selected proxy. The controller renders this value from the admitted
+	# candidate; an unset value is intentionally not release evidence.
+	@release_identity path /.well-known/ogfi-release
+	handle @release_identity {
+		header -X-OGFI-Proxy-Fence
+		header X-OGFI-Proxy-Fence "{$OGFI_RELEASE_SERVE_FENCE_ID:}"
+		header Cache-Control "no-store, max-age=0"
+		import app_proxy
+	}
+
 	# Internal operator routes are published only by the loopback :2021 bridge.
 	# Never let the public catch-all proxy reach an application internal route.
 	handle /api/internal/* {

@@ -15,6 +15,7 @@ const verifierUnit = source("infra/systemd/database/ogfi-db-role-verify.service"
 const verifierTimer = source("infra/systemd/database/ogfi-db-role-verify.timer");
 const releaseUnit = source("infra/systemd/release/ogfi-release@.service");
 const releaseReadme = source("infra/systemd/release/README.md");
+const caddy = source("infra/caddy/Caddyfile.example");
 const tmpfiles = source("infra/systemd/tmpfiles.d/ogfi-deploy.conf");
 const releaseWorkflow = source(".github/workflows/staging-release.yml");
 const rollbackWorkflow = source(".github/workflows/staging-rollback.yml");
@@ -81,4 +82,11 @@ test("the future release authority is a root-only fixed-fence service, not a can
   assert.doesNotMatch(releaseUnit, /\/opt\/ogfi\/current|EnvironmentFile=|LoadCredential=/);
   assert.match(releaseReadme, /must never be\s+run from a candidate release tree/);
   assert.match(releaseReadme, /always ends in maintenance-required state/);
+});
+
+test("served release identity removes upstream fence values before Caddy stamps its controller value", () => {
+  assert.match(caddy, /@release_identity path \/\.well-known\/ogfi-release/);
+  assert.match(caddy, /header -X-OGFI-Proxy-Fence/);
+  assert.match(caddy, /header X-OGFI-Proxy-Fence "\{\$OGFI_RELEASE_SERVE_FENCE_ID:\}"/);
+  assert.match(caddy, /header Cache-Control "no-store, max-age=0"/);
 });

@@ -2174,3 +2174,4 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Served release identity source foundation — July 28, 2026
 
 - The web application now has a dedicated dynamic `/.well-known/ogfi-release` route. It returns candidate identity only from a build-baked manifest and echoes a bounded probe nonce with no-store headers; the checked-in unbuilt manifest fails closed with `503`. Web typecheck passes. Caddy fence stamping, immutable build-manifest generation/verification, controller probing, hosted execution, and external evidence remain pending; this does not advance release readiness.
+- Caddy now removes any upstream `X-OGFI-Proxy-Fence` value and stamps its configured controller fence only for that identity route; the authority source contract passes **5/5**. An unset fence, manifest generation, controller verification, and all hosted evidence remain pending and receive no release credit.
