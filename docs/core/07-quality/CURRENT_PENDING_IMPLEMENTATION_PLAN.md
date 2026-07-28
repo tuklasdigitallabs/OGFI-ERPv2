@@ -429,7 +429,7 @@ These are implementation-progress estimates, not production-readiness claims. Th
 | Purchase Requests | **66%** | Core workflow and integrity foundations exist; visible returned/correction parity, current browser coverage, approval activation, hosted gates, and UAT remain. |
 | Quotations | **58%** | Comparison/commercial fields and export foundations exist; attachment policy, PostgreSQL parity, responsive browser, hosted gates, and UAT remain. |
 | Purchase Orders | **58%** | Conversion, approval, issue, balance, and amendment foundations exist; current-candidate parity, browser, hosted recovery, and UAT remain. |
-| Receiving | **68%** | Discrepancy, partial receipt, reversal, and integrity foundations exist; broader browser, production authentication, hosted recovery, and UAT remain. |
+| Receiving | **70%** | Discrepancy, partial receipt, reversal, and integrity foundations plus current register/draft responsive evidence exist; issued-PO posting/reversal browser proof, production authentication, hosted recovery, and UAT remain. |
 | Inventory and immutable ledger | **66%** | Ledger, balances, transfers, counts, wastage, adjustments, and reconciliation foundations exist; query-plan/volume, full browser, hosted, and UAT gates remain. |
 | Transfers | **78%** | Disposable PostgreSQL receipt/reversal integrity and authenticated mobile receive→reverse acceptance pass; broader responsive, production-authenticated, hosted, and UAT gates remain. |
 | Stock Counts | **55%** | Core count/variance foundations and blind-count controls exist; immutable recount recovery, PostgreSQL execution, browser, hosted, and UAT remain. |
