@@ -2152,3 +2152,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Food Safety responsive browser acceptance — July 31, 2026
 
 - A fresh marked PostgreSQL 17 run completed the 141-migration/checksum/seed/throttle preflight and passed the authenticated Chromium/mobile Food Safety contract: **4/4**. It verifies the scoped compliance register, responsive no-overflow/readability, mobile source-log action surface, desktop table headers, and the explicitly read-only Food Safety Reviews profile. `pnpm typecheck:e2e` and web lint pass. Food Safety, Workspace 1, and Phase I remain **NO-GO** pending lifecycle actions, disposable-PostgreSQL authorization/query-plan evidence, hosted deployment/recovery, production authentication, and UAT.
+
+### Full responsive suite recheck with Branch Operations and Food Safety — July 31, 2026
+
+- The marked Chromium/mobile suite ran **78 tests: 70 passed, 7 expected skips, and 1 test-contract failure**. The failure was a strict locator caused by multiple visible Branch Operations mobile cards, not an application behavior defect; the locator was narrowed to the first visible card and the focused mobile rerun passed **1/1** with a fresh marked PostgreSQL preflight. No unexpected product failure remains credited from this run.
+- The corrected full-suite result still requires a complete rerun before claiming a clean all-suite gate. Branch Operations, Food Safety, Workspace 1, and Phase I remain **NO-GO** pending that rerun plus broader lifecycle/database, hosted, production-authentication, and UAT evidence.

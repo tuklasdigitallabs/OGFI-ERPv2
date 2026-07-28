@@ -23,8 +23,8 @@ test("Branch Operations register remains scoped and task-focused on mobile", asy
   await expect(page.getByLabel("Search")).toBeVisible();
   await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
   if ((await page.evaluate(() => window.innerWidth)) < 1024) {
-    await expect(page.locator("dt:visible", { hasText: "Location" })).toBeVisible();
-    await expect(page.locator("dt:visible", { hasText: "Next action" })).toBeVisible();
+    await expect(page.locator("dt:visible", { hasText: "Location" }).first()).toBeVisible();
+    await expect(page.locator("dt:visible", { hasText: "Next action" }).first()).toBeVisible();
   } else {
     await expect(page.getByText("Checklist", { exact: true })).toBeVisible();
     await expect(page.getByText("Action", { exact: true })).toBeVisible();
