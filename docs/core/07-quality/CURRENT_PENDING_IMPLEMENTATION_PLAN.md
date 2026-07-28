@@ -2038,3 +2038,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The marked Chromium and Pixel 7 run confirmed one hydrated, focused, editable input and no reported page/console errors. The native value remained stable before typing; the failed result was caused by the test’s platform shortcut not selecting the existing value, producing an appended string during `pressSequentially`. This is a test interaction defect, not a production rerender or server-action defect. The test now selects the input deterministically with `Home` plus `Shift+End`; no production handler or validation semantics changed.
 - `pnpm typecheck:e2e` passes. A fresh marked runtime rerun is still required to verify the corrected shortcut in Chromium and Pixel 7. No browser/UAT completion credit is claimed; Workspace 4 and Phase I remain **NO-GO**.
+
+### Item TaskSheet cross-project selection recheck — July 30, 2026
+
+- The marked PostgreSQL run completed the full 141-migration/checksum/seed/throttle preflight and exercised Chromium and Pixel 7. Both projects confirmed the input was hydrated/focused with no page or console errors, but the platform shortcut still failed to select the existing text and the typed value appended. The test now uses deterministic `Home` plus `Shift+End` selection; the save workflow remains uncredited pending another runtime recheck.
+- No production behavior changed. The disposable container was removed and generated metadata restored. `pnpm typecheck:e2e` remains passing; supplier/mobile, transfer receive→reverse, production authentication/MFA, hosted recovery/deployment, formal UAT evidence, and owner signoff remain open. Workspace 4 and Phase I remain **NO-GO**.
