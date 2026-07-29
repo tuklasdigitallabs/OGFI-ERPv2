@@ -644,7 +644,7 @@ describe.skipIf(!databaseEnabled).sequential(
         prisma.auditEvent.findMany({
           where: { tenantId: ids.tenant, companyId: ids.company, entityId: { in: [sourceId, successorId] } },
           select: { eventType: true, entityId: true },
-          orderBy: { createdAt: "asc" },
+          orderBy: { occurredAt: "asc" },
         }),
       ]);
       expect(finalSource.steps.map(({ stepOrder, roleId }) => ({ stepOrder, roleId })))

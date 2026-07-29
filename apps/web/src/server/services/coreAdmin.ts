@@ -2137,24 +2137,24 @@ export async function getCoreAdminUserDetail(
   const sensitivePermissionCodes = Object.values(permissions).filter(isSensitivePermissionCode);
   const roleCatalogBasePredicate = Prisma.sql`
     FROM "Role" r
-    WHERE r."tenantId" = ${session.context.tenantId}
+    WHERE r."tenantId" = ${session.context.tenantId}::uuid
       AND r.status = 'ACTIVE'
       AND (${roleQuery} = '' OR r.name ILIKE '%' || ${roleQuery} || '%' OR r.code ILIKE '%' || ${roleQuery} || '%')
       AND NOT EXISTS (
         SELECT 1 FROM "UserRoleAssignment" ura
-        WHERE ura."roleId" = r.id AND ura."userId" = ${user.id} AND ura.status = 'ACTIVE'
+        WHERE ura."roleId" = r.id AND ura."userId" = ${user.id}::uuid AND ura.status = 'ACTIVE'
       )
       AND NOT EXISTS (
         SELECT 1 FROM "SensitiveRoleRequest" srr
-        WHERE srr."roleId" = r.id AND srr."tenantId" = ${session.context.tenantId}
-          AND srr."companyId" = ${session.context.companyId}
-          AND srr."targetUserId" = ${user.id} AND srr.status = 'PENDING'
+        WHERE srr."roleId" = r.id AND srr."tenantId" = ${session.context.tenantId}::uuid
+          AND srr."companyId" = ${session.context.companyId}::uuid
+          AND srr."targetUserId" = ${user.id}::uuid AND srr.status = 'PENDING'
       )
       AND NOT EXISTS (
         SELECT 1
         FROM "ApprovalRuleStep" ars
         JOIN "ApprovalRule" ar ON ar.id = ars."approvalRuleId"
-        WHERE ars."roleId" = r.id AND ar."tenantId" = ${session.context.tenantId} AND ar."isActive" = true
+        WHERE ars."roleId" = r.id AND ar."tenantId" = ${session.context.tenantId}::uuid AND ar."isActive" = true
       )
   `;
   const permissionSensitivePredicate = Prisma.sql`(
@@ -2279,20 +2279,20 @@ export async function getCoreAdminUserDetail(
   const highRiskLocationTypeValues = Array.from(highRiskLocationTypes);
   const locationCatalogPredicate = Prisma.sql`
     FROM "Location" l
-    WHERE l."tenantId" = ${session.context.tenantId}
-      AND l."companyId" = ${session.context.companyId}
+    WHERE l."tenantId" = ${session.context.tenantId}::uuid
+      AND l."companyId" = ${session.context.companyId}::uuid
       AND l.status = 'ACTIVE'
       AND (${locationQuery} = '' OR l.name ILIKE '%' || ${locationQuery} || '%' OR COALESCE(l.code, '') ILIKE '%' || ${locationQuery} || '%')
       AND NOT EXISTS (
         SELECT 1 FROM "UserScopeAssignment" usa
-        WHERE usa."userId" = ${user.id} AND usa.status = 'ACTIVE'
+        WHERE usa."userId" = ${user.id}::uuid AND usa.status = 'ACTIVE'
           AND usa."scopeType" = 'LOCATION' AND usa."scopeId" = l.id
       )
       AND NOT EXISTS (
         SELECT 1 FROM "HighRiskScopeRequest" hrr
-        WHERE hrr."tenantId" = ${session.context.tenantId}
-          AND hrr."companyId" = ${session.context.companyId}
-          AND hrr."targetUserId" = ${user.id}
+        WHERE hrr."tenantId" = ${session.context.tenantId}::uuid
+          AND hrr."companyId" = ${session.context.companyId}::uuid
+          AND hrr."targetUserId" = ${user.id}::uuid
           AND hrr."locationId" = l.id AND hrr.status = 'PENDING'
       )
   `;
@@ -2550,24 +2550,24 @@ export async function listCoreAdminUserScopePage(
   const scopeBase = Prisma.sql`
     WITH scoped AS (
       SELECT usa.id, usa."scopeType"::text AS "scopeType", usa."scopeId", usa."accessLevel"::text AS "accessLevel", usa."startsAt", usa."endsAt", COALESCE(c."tradingName", c."legalName") AS "displayName", c."legalName" || ' / Company' AS "displayContext", c.code, NULL::text AS "locationType"
-        FROM "UserScopeAssignment" usa JOIN "Company" c ON c.id = usa."scopeId" AND c."tenantId" = ${session.context.tenantId} AND c.id = ${session.context.companyId}
-       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'COMPANY'
+        FROM "UserScopeAssignment" usa JOIN "Company" c ON c.id = usa."scopeId" AND c."tenantId" = ${session.context.tenantId}::uuid AND c.id = ${session.context.companyId}::uuid
+       WHERE usa."userId" = ${userId}::uuid AND usa.status = 'ACTIVE' AND usa."scopeType" = 'COMPANY'
       UNION ALL
       SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", b.name, c."tradingName" || ' / Brand', b.code, NULL::text
-        FROM "UserScopeAssignment" usa JOIN "Brand" b ON b.id = usa."scopeId" AND b."tenantId" = ${session.context.tenantId} AND b."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = b."companyId"
-       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'BRAND'
+        FROM "UserScopeAssignment" usa JOIN "Brand" b ON b.id = usa."scopeId" AND b."tenantId" = ${session.context.tenantId}::uuid AND b."companyId" = ${session.context.companyId}::uuid JOIN "Company" c ON c.id = b."companyId"
+       WHERE usa."userId" = ${userId}::uuid AND usa.status = 'ACTIVE' AND usa."scopeType" = 'BRAND'
       UNION ALL
       SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", l.name, COALESCE(b.name || ' / ', '') || c."tradingName" || ' / ' || l."locationType"::text, l.code, l."locationType"::text
-        FROM "UserScopeAssignment" usa JOIN "Location" l ON l.id = usa."scopeId" AND l."tenantId" = ${session.context.tenantId} AND l."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = l."companyId" LEFT JOIN "Brand" b ON b.id = l."brandId"
-       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'LOCATION'
+        FROM "UserScopeAssignment" usa JOIN "Location" l ON l.id = usa."scopeId" AND l."tenantId" = ${session.context.tenantId}::uuid AND l."companyId" = ${session.context.companyId}::uuid JOIN "Company" c ON c.id = l."companyId" LEFT JOIN "Brand" b ON b.id = l."brandId"
+       WHERE usa."userId" = ${userId}::uuid AND usa.status = 'ACTIVE' AND usa."scopeType" = 'LOCATION'
       UNION ALL
       SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", d.name, c."tradingName" || ' / Department', d.code, NULL::text
-        FROM "UserScopeAssignment" usa JOIN "Department" d ON d.id = usa."scopeId" AND d."tenantId" = ${session.context.tenantId} AND d."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = d."companyId"
-       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'DEPARTMENT'
+        FROM "UserScopeAssignment" usa JOIN "Department" d ON d.id = usa."scopeId" AND d."tenantId" = ${session.context.tenantId}::uuid AND d."companyId" = ${session.context.companyId}::uuid JOIN "Company" c ON c.id = d."companyId"
+       WHERE usa."userId" = ${userId}::uuid AND usa.status = 'ACTIVE' AND usa."scopeType" = 'DEPARTMENT'
       UNION ALL
       SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", p.name, c."tradingName" || ' / Project', p.code, NULL::text
-        FROM "UserScopeAssignment" usa JOIN "Project" p ON p.id = usa."scopeId" AND p."tenantId" = ${session.context.tenantId} AND p."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = p."companyId"
-       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'PROJECT'
+        FROM "UserScopeAssignment" usa JOIN "Project" p ON p.id = usa."scopeId" AND p."tenantId" = ${session.context.tenantId}::uuid AND p."companyId" = ${session.context.companyId}::uuid JOIN "Company" c ON c.id = p."companyId"
+       WHERE usa."userId" = ${userId}::uuid AND usa.status = 'ACTIVE' AND usa."scopeType" = 'PROJECT'
     ), filtered AS (
       SELECT *, CASE WHEN "startsAt" > CURRENT_TIMESTAMP THEN 'FUTURE' WHEN "endsAt" IS NOT NULL AND "endsAt" <= CURRENT_TIMESTAMP THEN 'EXPIRED' ELSE 'CURRENT' END AS "effectiveState" FROM scoped
        WHERE (${type}::text IS NULL OR "scopeType" = ${type})
