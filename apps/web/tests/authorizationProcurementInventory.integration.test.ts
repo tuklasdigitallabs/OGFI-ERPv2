@@ -1788,6 +1788,7 @@ describe("procurement and inventory authorization boundaries", () => {
         fiscalYearId: ids.fiscalYearId,
         name: "Scoped draft budget",
         status: "ACTIVE",
+        approvedAt: new Date("2026-01-01T00:00:00.000Z"),
         createdByUserId: ids.userId,
         lines: {
           create: [
@@ -1826,6 +1827,7 @@ describe("procurement and inventory authorization boundaries", () => {
         fiscalYearId: ids.foreignFiscalYearId,
         name: "Foreign draft budget",
         status: "ACTIVE",
+        approvedAt: new Date("2026-01-01T00:00:00.000Z"),
         createdByUserId: ids.userId,
       },
     });
