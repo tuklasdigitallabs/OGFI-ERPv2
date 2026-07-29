@@ -107,6 +107,39 @@ columns non-null, add a client-only selector, or present a read-only label as if
 required workflow were complete. The implementation decision must include a
 transactional selected-scope lookup contract, pair validation, migration/backfill or
 legacy disclosure, approval/audit snapshot semantics, and UAT/training impact.
+
+### OD-18 — Purchase Request budget-line brand/location hierarchy and eligibility semantics
+
+**Status:** Open — do not infer the policy from lookup predicates.
+
+`DEC-0251` confirms the independent parent `Budget` tenant/company no-disclosure
+fence for the browser-facing Purchase Request draft-options read. It does not
+confirm whether a budget line with a null brand and/or null location is eligible for
+each requester scope, whether a location implies or must match a brand, whether
+brand and location predicates must always be conjunctive, or how company-level
+locations shared by multiple brands should select budget lines.
+
+Before policy-dependent Purchase Request lookup, selected-ID retention, draft
+creation validation, approval matching, reporting, or production enforcement changes,
+the authorized business/architecture council must confirm:
+
+1. The canonical ownership and compatibility relationship among Company, Brand,
+   Location, Budget, and BudgetLine, including Head Office, main warehouse, and
+   commissary locations that may serve multiple brands.
+2. The intended semantics for null brand/location dimensions: global/company-wide,
+   inherited, wildcard, prohibited, or another explicitly governed state.
+3. Whether eligibility is a strict brand-and-location conjunction, a hierarchy-aware
+   match, or a separately configured compatibility rule, and how a session without a
+   selected brand behaves.
+4. Whether selected budget lines retain eligibility after scope changes and which
+   records/reports preserve the chosen dimension snapshot.
+5. Required migration, legacy-data disclosure, authorization, regression test, and
+   UAT evidence for the adopted policy.
+
+Until confirmed, preserve the independent tenant/company parent relation fence,
+server-side permission/location enforcement, and active-status checks. Do not widen
+budget-line visibility, convert null dimensions to an undocumented wildcard, or claim
+that the current query conjunction is approved operating policy.
 11. Maximum eligible-recipient cardinality for role-assigned approval steps, when explicit user assignment is mandatory, and the safe operational response when the limit is exceeded. The current service filters live permission, scope, and segregation-of-duties conflicts, but no undocumented fixed cap may be hardcoded. Production configuration must bound notification fanout and user-row locking without stranding valid approval routes.
 
 12. **Stock-count recount recovery (`DEC-0061`, open):** Decide whether an approved-but-unposted generated `COUNT_VARIANCE` adjustment can be explicitly voided for a recount, including the required authority, reason/evidence, approval-instance termination, audit, and notification behavior; otherwise it remains a hard recount blocker. Decide whether a recount may retain its original cutoff only while the inventory-location movement freeze has remained continuously active. The safe default is: if movement occurred or no freeze was active, cancel/close the unposted count and begin a new count session with a new cutoff; a posted adjustment always requires the established full-document reversal before a new corrective count session. These rules must be confirmed before production enforcement or Count Variance activation.

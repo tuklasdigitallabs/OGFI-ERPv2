@@ -85,6 +85,10 @@ describe("procurement and inventory authorization boundaries", () => {
     adjacentCompanyCategoryId: randomUUID(),
     itemId: randomUUID(),
     adjacentCompanyItemId: randomUUID(),
+    fiscalYearId: randomUUID(),
+    foreignFiscalYearId: randomUUID(),
+    scopedBudgetId: randomUUID(),
+    foreignBudgetId: randomUUID(),
   };
 
   let prisma: PrismaClient;
@@ -337,6 +341,28 @@ describe("procurement and inventory authorization boundaries", () => {
         idleExpiresAt: new Date(Date.now() + 30 * 60_000),
         absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
       },
+    });
+    await prisma.fiscalYear.createMany({
+      data: [
+        {
+          id: ids.fiscalYearId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          code: `AZI-FY-${suffix}`,
+          name: "Authorization Inventory Fiscal Year",
+          startDate: new Date("2026-01-01T00:00:00.000Z"),
+          endDate: new Date("2026-12-31T00:00:00.000Z"),
+        },
+        {
+          id: ids.foreignFiscalYearId,
+          tenantId: ids.foreignTenantId,
+          companyId: ids.foreignCompanyId,
+          code: `AZI-FY-FOR-${suffix}`,
+          name: "Foreign Authorization Inventory Fiscal Year",
+          startDate: new Date("2026-01-01T00:00:00.000Z"),
+          endDate: new Date("2026-12-31T00:00:00.000Z"),
+        },
+      ],
     });
     configureAuthenticatedRequest({
       sessionToken,
@@ -1749,6 +1775,97 @@ describe("procurement and inventory authorization boundaries", () => {
       "PERMISSION_DENIED",
     );
     expect(await workflowMutationSnapshot()).toEqual(before);
+  });
+
+  it("AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE", async () => {
+    const purchaseRequests = await import("../src/server/services/purchaseRequests");
+    await prisma.budget.create({
+      data: {
+        id: ids.scopedBudgetId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        publicReference: `AZI-BUDGET-${suffix}`,
+        fiscalYearId: ids.fiscalYearId,
+        name: "Scoped draft budget",
+        status: "ACTIVE",
+        createdByUserId: ids.userId,
+        lines: {
+          create: [
+            {
+              tenantId: ids.tenantId,
+              companyId: ids.companyId,
+              lineNumber: 1,
+              code: `AZI-SCOPED-${suffix}`,
+              name: "Scoped draft line",
+              locationId: ids.locationId,
+              periodStart: new Date("2026-01-01T00:00:00.000Z"),
+              periodEnd: new Date("2026-12-31T00:00:00.000Z"),
+              status: "ACTIVE",
+            },
+            {
+              tenantId: ids.tenantId,
+              companyId: ids.companyId,
+              lineNumber: 2,
+              code: `AZI-ADJACENT-${suffix}`,
+              name: "Adjacent-location draft line",
+              locationId: ids.adjacentLocationId,
+              periodStart: new Date("2026-01-01T00:00:00.000Z"),
+              periodEnd: new Date("2026-12-31T00:00:00.000Z"),
+              status: "ACTIVE",
+            },
+          ],
+        },
+      },
+    });
+    await prisma.budget.create({
+      data: {
+        id: ids.foreignBudgetId,
+        tenantId: ids.foreignTenantId,
+        companyId: ids.foreignCompanyId,
+        publicReference: `AZI-FOREIGN-BUDGET-${suffix}`,
+        fiscalYearId: ids.foreignFiscalYearId,
+        name: "Foreign draft budget",
+        status: "ACTIVE",
+        createdByUserId: ids.userId,
+      },
+    });
+    await prisma.budgetLine.create({
+      data: {
+        budgetId: ids.foreignBudgetId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        lineNumber: 1,
+        code: `AZI-FOREIGN-PARENT-${suffix}`,
+        name: "Locally scoped line with foreign parent",
+        locationId: ids.locationId,
+        periodStart: new Date("2026-01-01T00:00:00.000Z"),
+        periodEnd: new Date("2026-12-31T00:00:00.000Z"),
+        status: "ACTIVE",
+      },
+    });
+
+    const before = await prisma.auditEvent.count({ where: { tenantId: ids.tenantId } });
+    await expect(purchaseRequests.getPurchaseRequestDraftOptions(session)).rejects.toThrow(
+      "PERMISSION_DENIED",
+    );
+    expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })).toBe(before);
+
+    const revoke = await grantPermission("purchasing.purchase_request.create");
+    try {
+      const options = await purchaseRequests.getPurchaseRequestDraftOptions(session);
+      expect(options.budgetLines).toEqual([
+        {
+          id: expect.any(String),
+          label: `AZI-SCOPED-${suffix} / Scoped draft line`,
+          helper: `AZI-BUDGET-${suffix} / Scoped draft budget`,
+        },
+      ]);
+      expect(JSON.stringify(options.budgetLines)).not.toContain(`AZI-ADJACENT-${suffix}`);
+      expect(JSON.stringify(options.budgetLines)).not.toContain(`AZI-FOREIGN-BUDGET-${suffix}`);
+    } finally {
+      await revoke();
+    }
+    expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })).toBe(before);
   });
 
   it("AUTHZ-PI-ATTACHMENT-LINK-MISSING-PERMISSION-DENIAL-AUDIT-NO-LINK", async () => {

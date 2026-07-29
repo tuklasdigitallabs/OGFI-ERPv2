@@ -33840,6 +33840,45 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/purchaseRequests.ts#getPurchaseRequestDraftOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseRequestCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-create-permission",
+      "tenant-company-parent-budget-query",
+      "selected-location-budget-line-query"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE"
+    ],
+    "noMutationControls": [
+      "Budget",
+      "BudgetLine",
+      "AuditEvent"
+    ]
+  },
+  {
     "id": "server/services/purchaseRequests.ts#listPurchaseRequestMyTaskPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseRequestSubmit",

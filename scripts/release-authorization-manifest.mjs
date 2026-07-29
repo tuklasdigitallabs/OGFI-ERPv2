@@ -102,6 +102,9 @@ const highRiskActionPattern =
 const highRiskDisclosurePattern =
   /^(build.*export|download|export|getApprovalRuleVersionForComposer|getInventoryBalanceDashboardRead|getUnreadNotificationCount|listApprovalRuleComposerOptions|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
 const standardServiceEntrypointNames = new Set(["verifyPassword"]);
+const reviewedHighRiskServiceEntrypointNames = new Set([
+  "getPurchaseRequestDraftOptions",
+]);
 const reviewedNonCallableServiceReexports = new Set([
   "server/services/expansionProjects.ts|./expansionProjectTypes|expansionProjectTypes|expansionProjectTypes",
 ]);
@@ -144,6 +147,7 @@ function isHighRiskSurfaceName(name) {
 function isHighRiskServiceEntrypoint(name, source) {
   if (standardServiceEntrypointNames.has(name)) return false;
   return (
+    reviewedHighRiskServiceEntrypointNames.has(name) ||
     isHighRiskSurfaceName(name) ||
     /\.(?:create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(
       source,

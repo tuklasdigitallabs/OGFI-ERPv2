@@ -1235,7 +1235,13 @@ export async function getPurchaseRequestDraftOptions(session: SessionContext) {
     prisma.budgetLine.findMany({
       where: {
         ...scope,
-        budget: { status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] } },
+        budget: {
+          is: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] },
+          },
+        },
         OR: [{ locationId: null }, { locationId: session.context.locationId }],
         ...(session.context.brandId
           ? { AND: [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }] }

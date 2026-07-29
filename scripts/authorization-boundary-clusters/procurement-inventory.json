@@ -55,6 +55,13 @@
       "coveredControls": ["exact draft creation invocation", "valid header and line input", "live permission", "no request, approval, or audit mutation"]
     },
     {
+      "id": "AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE",
+      "kind": "REAL_POSTGRESQL_READ_BOUNDARY",
+      "coveredControls": ["exact draft-options invocation", "live create permission", "tenant and company parent-budget scope", "selected-location scope", "foreign parent budget non-disclosure", "no audit mutation"]
+    },
+    {
       "id": "AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION",
       "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
       "testName": "AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION",
@@ -174,6 +181,7 @@
 
     {"surfaceId":"server/services/purchaseRequests.ts#addPurchaseRequestComment","classification":"PUBLIC_BOUNDARY","adapterIds":["record-location-non-enumeration"],"caseIds":["AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION"],"noMutationControls":["PurchaseRequestComment","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/purchaseRequests.ts#createDraftPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["live-create-permission"],"caseIds":["AUTHZ-PI-PURCHASE-REQUEST-CREATE-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#getPurchaseRequestDraftOptions","classification":"PUBLIC_BOUNDARY","adapterIds":["live-create-permission","tenant-company-parent-budget-query","selected-location-budget-line-query"],"caseIds":["AUTHZ-PI-PR-DRAFT-OPTIONS-AUTHORIZATION-AND-SCOPE-NO-DISCLOSURE"],"noMutationControls":["Budget","BudgetLine","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile","classification":"PUBLIC_BOUNDARY","adapterIds":["live-read-permission","tenant-company-request-location-scope","closed-dashboard-profile"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfilePage","classification":"PUBLIC_BOUNDARY","adapterIds":["live-read-permission","tenant-company-request-location-scope","closed-dashboard-profile","server-pagination"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/purchaseRequests.ts#submitPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","record-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","ApprovalInstance","AuditEvent"],"status":"COVERED"},
