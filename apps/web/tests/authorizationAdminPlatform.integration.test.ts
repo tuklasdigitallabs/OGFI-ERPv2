@@ -1624,6 +1624,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
   it("AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION", async () => {
     const session = await getConfiguredContext(actorEmail);
     const tenantAuditId = randomUUID();
+    const companyAuditId = randomUUID();
     await prisma.auditEvent.create({
       data: {
         id: tenantAuditId,
@@ -1635,8 +1636,22 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         entityId: randomUUID(),
       },
     });
+    await prisma.auditEvent.create({
+      data: {
+        id: companyAuditId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        actorUserId: ids.targetUserId,
+        eventType: "authorization.company_audit_fixture",
+        entityType: "AuthorizationFixture",
+        entityId: randomUUID(),
+      },
+    });
     expect(
       await getCoreAdminAuditEventDetail(session, tenantAuditId),
+    ).not.toBeNull();
+    expect(
+      await getCoreAdminAuditEventDetail(session, companyAuditId),
     ).not.toBeNull();
     expect(
       (
@@ -1665,10 +1680,20 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         await getCoreAdminAuditEventDetail(session, tenantAuditId),
       ).toBeNull();
       expect(
+        await getCoreAdminAuditEventDetail(session, companyAuditId),
+      ).not.toBeNull();
+      expect(
         await listCoreAdminAuditEvents(session, {
           eventType: "authorization.tenant_audit_fixture",
         }),
       ).toEqual([]);
+      expect(
+        (
+          await listCoreAdminAuditEvents(session, {
+            eventType: "authorization.company_audit_fixture",
+          })
+        ).map((event) => event.id),
+      ).toContain(companyAuditId);
       await expect(
         listCoreAdminUserAuditEventPage(session, ids.targetUserId, {
           pageSize: 10,
@@ -1676,6 +1701,9 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       ).rejects.toThrow("PERMISSION_DENIED");
       expect(
         await prisma.auditEvent.findUnique({ where: { id: tenantAuditId } }),
+      ).not.toBeNull();
+      expect(
+        await prisma.auditEvent.findUnique({ where: { id: companyAuditId } }),
       ).not.toBeNull();
     } finally {
       await prisma.rolePermission.create({

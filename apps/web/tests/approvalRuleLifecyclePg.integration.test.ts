@@ -361,10 +361,10 @@ describe.skipIf(!databaseEnabled).sequential(
       ]);
       await expect(
         prisma.$executeRawUnsafe('TRUNCATE TABLE "ApprovalRule" CASCADE'),
-      ).rejects.toThrow("ApprovalRule versions are append-only");
+      ).rejects.toThrow("permission denied for table ApprovalRule");
       await expect(
         prisma.$executeRawUnsafe('TRUNCATE TABLE "ApprovalRuleStep"'),
-      ).rejects.toThrow("ApprovalRuleStep definitions are immutable");
+      ).rejects.toThrow("permission denied for table ApprovalRuleStep");
       await expect(Promise.all([
         prisma.approvalRule.count({ where: { tenantId: ids.tenant } }),
         prisma.approvalRuleStep.count({ where: { approvalRule: { tenantId: ids.tenant } } }),

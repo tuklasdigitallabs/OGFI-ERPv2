@@ -5103,7 +5103,6 @@ async function resolveCoreAdminAuditWhere(
   filters: CoreAdminAuditEventFilters,
 ) {
   await requirePermission(session, permissions.coreAdminister);
-  await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   const canViewTenantAudit = (
     await getGrantedPermissionCodes(session)
@@ -5233,6 +5232,7 @@ export async function listCoreAdminUserAuditEventPage(
   userId: string,
   input: Omit<CoreAdminAuditEventPageInput, "actorUserId"> = {},
 ) {
+  await assertCanAdministerTenantRoles(session);
   await assertTargetUserInCurrentCompany(session, userId);
   return listCoreAdminAuditEventPage(session, { ...input, actorUserId: userId });
 }

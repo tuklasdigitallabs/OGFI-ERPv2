@@ -89,7 +89,7 @@ describe.skipIf(!databaseEnabled)(
       await prisma.rolePermission.createMany({ data: [ { roleId: ids.actorRole, permissionId: core.id }, { roleId: ids.actorRole, permissionId: tenantRoleAdmin.id } ] });
 
       for (let index = 0; index < 30; index += 1) {
-        const permission = await prisma.permission.create({ data: { tenantId: ids.tenant, code: `dec0200.permission.${String(index).padStart(2, "2")}.${suffix}`, module: "dec0200", action: `view_${index}` }, select: { id: true, code: true } });
+        const permission = await prisma.permission.create({ data: { tenantId: ids.tenant, code: `dec0200.permission.${String(index)}.${suffix}`, module: "dec0200", action: `view_${index}` }, select: { id: true, code: true } });
         tenantPermissionIds.push(permission.id);
       }
       for (let index = 0; index < 2; index += 1) {
@@ -133,15 +133,8 @@ describe.skipIf(!databaseEnabled)(
 
     afterAll(async () => {
       if (!prisma) return;
-      await prisma.rolePermission.deleteMany({ where: { roleId: { in: [ids.actorRole, ids.roleA, ids.roleB, ids.futureRole, ids.expiredRole, ids.inactiveRole, ids.globalRole, ids.otherRole] } } });
-      await prisma.userRoleAssignment.deleteMany({ where: { userId: { in: [ids.actor, ids.target] } } });
-      await prisma.userScopeAssignment.deleteMany({ where: { userId: { in: [ids.actor, ids.target] } } });
-      await prisma.permission.deleteMany({ where: { id: { in: [...tenantPermissionIds, ...globalPermissionIds, ...otherPermissionIds, ...excludedPermissionIds] } } });
-      await prisma.role.deleteMany({ where: { id: { in: [ids.actorRole, ids.roleA, ids.roleB, ids.futureRole, ids.expiredRole, ids.inactiveRole, ids.globalRole, ids.otherRole] } } });
-      await prisma.location.deleteMany({ where: { id: ids.location } });
-      await prisma.user.deleteMany({ where: { id: { in: [ids.actor, ids.target] } } });
-      await prisma.company.deleteMany({ where: { id: { in: [ids.company, ids.otherCompany] } } });
-      await prisma.tenant.deleteMany({ where: { id: { in: [ids.tenant, ids.otherTenant] } } });
+      // The disposable runner tears down this database. Retaining fixture rows
+      // avoids deleting immutable AuditEvent-linked history during cleanup.
       await prisma.$disconnect();
     });
 
