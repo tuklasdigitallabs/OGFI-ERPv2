@@ -104,6 +104,9 @@ function listForbiddenCredentialKeys(env: NodeJS.ProcessEnv) {
     ([key, value]) =>
       Boolean(value) &&
       key !== "DATABASE_URL" &&
+      // This is the hash-only marker checked above against the database
+      // control record. It is not teardown authority or a database credential.
+      key !== "OGFI_DISPOSABLE_DATABASE_NONCE_SHA256" &&
       ([
         "DATABASE_URL_FILE",
         "DIRECT_DATABASE_URL",

@@ -49,6 +49,12 @@ describe("authorization database safety sentinel", () => {
     expect(
       assertDisposableAuthorizationDatabaseConfigured(safe),
     ).toBe("ogfi_test_test_run_1_aaaaaaaaaaaaaaaa");
+    expect(
+      assertDisposableAuthorizationDatabaseConfigured({
+        ...safe,
+        OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: safe.AUTHORIZATION_TEST_DATABASE_NONCE_SHA256,
+      }),
+    ).toBe("ogfi_test_test_run_1_aaaaaaaaaaaaaaaa");
   });
 
   it("attests the in-database marker and runtime session identity", async () => {
