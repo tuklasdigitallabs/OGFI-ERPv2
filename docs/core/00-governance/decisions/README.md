@@ -93,6 +93,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0252-CI-PRODUCTION-AUTHENTICATED-BROWSER-LANE.md` — separate exact-SHA CI-only production-authenticated browser lane; implementation and evidence pending
 - `DEC-0253-SOURCE-ONLY-CONTROLLER-INTEGRITY-AND-RECOVERY-CLOSURE.md` — versioned immutable artifact-manifest admission with keyed service-image, Compose, and identity bindings plus fail-closed journal structural/history integrity; source-only, with maintenance actuator and all operational evidence deferred
 - `DEC-0254-TWO-STAGE-RELEASE-PROVENANCE-BINDING.md` — V2 baked pre-image identity limited to the full canonical commit SHA and immutable release-archive digest, with detached post-build binding to exact Compose and keyed final OCI service-image digests; source-only, with all operational activity and release credit excluded
+- `DEC-0255-RELEASE-ARCHIVE-V1-COMMIT-TREE-CONTRACT.md` — direct exact-full-commit-tree raw USTAR `release-archive/v1`, SHA-256 over its uncompressed bytes as the artifact digest, and strict verification before any future Docker context extraction/build; source-only, with all operational activity and release credit excluded
 
 ## Suggested future decision records
 
