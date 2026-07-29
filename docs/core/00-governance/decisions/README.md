@@ -94,6 +94,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0253-SOURCE-ONLY-CONTROLLER-INTEGRITY-AND-RECOVERY-CLOSURE.md` — versioned immutable artifact-manifest admission with keyed service-image, Compose, and identity bindings plus fail-closed journal structural/history integrity; source-only, with maintenance actuator and all operational evidence deferred
 - `DEC-0254-TWO-STAGE-RELEASE-PROVENANCE-BINDING.md` — V2 baked pre-image identity limited to the full canonical commit SHA and immutable release-archive digest, with detached post-build binding to exact Compose and keyed final OCI service-image digests; source-only, with all operational activity and release credit excluded
 - `DEC-0255-RELEASE-ARCHIVE-V1-COMMIT-TREE-CONTRACT.md` — direct exact-full-commit-tree raw USTAR `release-archive/v1`, SHA-256 over its uncompressed bytes as the artifact digest, and strict verification before any future Docker context extraction/build; source-only, with all operational activity and release credit excluded
+- `DEC-0256-RELEASE-ARCHIVE-SOURCE-HARDENING-AND-EXTRACTION-DEFERRAL.md` — harden only the source-only `release-archive/v1` producer/verifier with trusted Git/repository, bounded resources, secure staging, and hermetic CI controls; archive extraction, Docker context, and build require a separate decision and remain unauthorized
 
 ## Suggested future decision records
 

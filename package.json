@@ -105,6 +105,7 @@
     "release:archive:create": "node scripts/release-archive-v1.mjs create",
     "release:archive:verify": "node scripts/release-archive-v1.mjs verify",
     "test:release-archive": "node --test scripts/release-archive-v1.test.mjs",
+    "test:release-archive-authority": "node --test scripts/release-archive-v1-authority.test.mjs",
     "release:authorization-manifest": "node scripts/release-authorization-manifest.mjs --write-evidence",
     "release:go-no-go": "node scripts/release-go-no-go.mjs",
     "evidence:hostinger:validate": "node scripts/evidence-hostinger-contract.mjs",

@@ -46,6 +46,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:secret-review
+      - run: pnpm test:release-archive-authority
+      - run: pnpm test:release-archive
       - run: pnpm release:tools:test
       - run: pnpm test:disposable-db-lifecycle
       - run: pnpm release:migration-review
