@@ -986,7 +986,13 @@ async function lockOvertimeForLifecycleMutation(
      FOR SHARE OF location
   `;
   if (locationRows.length !== 1) throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
-  await assertScopedLocation(session, scopeLocationId);
+  // This lock precedes the scoped read for lifecycle serialization. Preserve
+  // the public non-enumeration contract: a caller outside the record location
+  // must not learn that the overtime record exists.
+  const scope = await loadWorkforceScopeSnapshot(session);
+  if (!scope.locationsById.has(scopeLocationId)) {
+    throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
+  }
   return source;
 }
 
@@ -3827,7 +3833,7 @@ export async function reviewAttendanceImportBatch(
     const lockedLines = await tx.$queryRaw<Array<{ id: string; tenantId: string; companyId: string; locationId: string }>>`
       SELECT line.id, line."tenantId", line."companyId", line."locationId"
         FROM "AttendanceImportLine" line
-       WHERE line."batchId" = ${batch.id}::uuid
+       WHERE line."attendanceImportBatchId" = ${batch.id}::uuid
        ORDER BY line."sourceRowNumber", line.id
        FOR UPDATE
     `;
