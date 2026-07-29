@@ -1052,6 +1052,7 @@ describe("projects and operations database-backed authorization boundaries", () 
       const toggleChecklistForm = new FormData();
       toggleChecklistForm.set("checklistItemId", ids.checklistItemId);
       toggleChecklistForm.set("isCompleted", "true");
+      toggleChecklistForm.set("expectedVersion", "1");
       await expect(
         projectTasks.toggleProjectTaskChecklistItem(toggleChecklistForm),
       ).rejects.toThrow("PROJECT_NOT_FOUND");
