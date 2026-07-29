@@ -2175,6 +2175,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The web application now has a dedicated dynamic `/.well-known/ogfi-release` route. It returns candidate identity only from a build-baked manifest and echoes a bounded probe nonce with no-store headers; the checked-in unbuilt manifest fails closed with `503`. Web typecheck passes. Caddy fence stamping, immutable build-manifest generation/verification, controller probing, hosted execution, and external evidence remain pending; this does not advance release readiness.
 - Caddy now removes any upstream `X-OGFI-Proxy-Fence` value and stamps its configured controller fence only for that identity route; the authority source contract passes **5/5**. An unset fence, manifest generation, controller verification, and all hosted evidence remain pending and receive no release credit.
+- CI contract correction pending execution: the no-tenant/no-user release-identity route is now explicitly classified as a public, probe-safe route in the authorization manifest, rather than being left unclassified. The CI disposable authorization/E2E runners also no longer receive stale fixed integration identity variables before they generate their per-run database, runtime-role, and nonce identity. The existing transfer receipt assertion now matches the working in-form pending action. No release or browser credit is claimed until the current CI run passes.
 
 ### Shared-VPS Nginx edge amendment — July 28, 2026
 

@@ -1194,6 +1194,9 @@ export function buildAuthorizationSurfaceManifest() {
     "app/api/readiness/route.ts",
     "app/health/route.ts",
     "app/readiness/route.ts",
+    // Probe-safe release provenance: unavailable unless the build-baked identity
+    // and bounded nonce are valid, and never exposes tenant or user data.
+    "app/.well-known/ogfi-release/route.ts",
   ]);
   const controlledEvidenceRoutes = new Map([
     [

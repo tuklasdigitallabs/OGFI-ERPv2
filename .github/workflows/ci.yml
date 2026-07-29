@@ -61,24 +61,14 @@ jobs:
       - run: pnpm --filter @ogfi/database test
       - run: pnpm --filter @ogfi/worker test
       - run: pnpm --filter @ogfi/ui test
+      # The disposable runner creates a per-run database, role, and nonce. Do
+      # not pre-set its integration sentinel for the preceding unit-test pass.
       - run: pnpm test:authorization
-        env:
-          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
-          AUTHORIZATION_TEST_DATABASE: ogfi_ci
-          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
-        env:
-          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
-          AUTHORIZATION_TEST_DATABASE: ogfi_ci
-          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
       - name: Restore Next.js generated type reference
         run: git restore -- apps/web/next-env.d.ts
       - run: pnpm release:authorization-manifest
-        env:
-          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
-          AUTHORIZATION_TEST_DATABASE: ogfi_ci
-          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
       - name: Upload CI verification evidence
         if: always()
         uses: actions/upload-artifact@v4

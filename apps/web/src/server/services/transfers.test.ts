@@ -788,8 +788,9 @@ describe("inventory transfer foundation rules", () => {
     expect(detailPage).toContain('size="workspace"');
     expect(detailPage).toContain('bodyScroll="auto"');
     expect(detailPage).toContain('key={`receive-transfer-${transfer.status}-${transfer.receipts.length}');
-    expect(detailPage).toContain('footer={({ pending }) =>');
-    expect(detailPage).toContain('form={`transfer-receipt-form-${transfer.id}`}');
+    expect(detailPage).toContain('id={`transfer-receipt-form-${transfer.id}`}');
+    expect(detailPage).toContain('<PendingActionButton\n                    label="Post Receipt"');
+    expect(detailPage).toContain('pendingLabel="Posting Receipt…"');
     expect(detailPage).toContain("No receivable lines remain.");
     expect(detailPage).toContain("min-h-11");
     expect(detailPage).toContain("grid-cols-2 gap-3 rounded-md border");
