@@ -85,6 +85,7 @@ jobs:
           certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password || true
           certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n "ogfi-production-auth-e2e" -i "$tls_dir/ca.crt"
           {
+            write_secret() { printf '%s=%s\n' "$1" "$2"; }
             echo "NODE_ENV=production"
             echo "APP_ENV=production"
             echo "DEPLOYMENT_ENVIRONMENT=production"
@@ -92,9 +93,9 @@ jobs:
             echo "AUTH_TRUSTED_PROXY_MODE=caddy_single_hop"
             echo "APP_URL=https://127.0.0.1:3443"
             echo "AUTH_ARGON2_MAX_CONCURRENCY=1"
-            echo "AUTH_SECRET=$(openssl rand -hex 32)"
+            write_secret AUTH_SECRET "$(openssl rand -hex 32)"
             echo "AUTH_THROTTLE_HMAC_KEY=$(openssl rand -hex 32)"
-            echo "APP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+            write_secret APP_ENCRYPTION_KEY "$(openssl rand -base64 32)"
             echo "APP_ENCRYPTION_KEY_VERSION=1"
             echo "SMTP_HOST=127.0.0.1"
             echo "SMTP_PORT=465"
