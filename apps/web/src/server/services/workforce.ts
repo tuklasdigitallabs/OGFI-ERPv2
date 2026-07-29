@@ -1043,7 +1043,13 @@ async function lockLeaveForLegacyLifecycleMutation(
      FOR SHARE OF location
   `;
   if (locationRows.length !== 1) throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
-  await assertScopedLocation(session, scopeLocationId);
+  // This lock precedes the scoped read for lifecycle serialization. Preserve
+  // the public non-enumeration contract of getScopedLeaveOrThrow: a caller
+  // outside the record location must not learn that the leave request exists.
+  const scope = await loadWorkforceScopeSnapshot(session);
+  if (!scope.locationsById.has(scopeLocationId)) {
+    throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
+  }
   const graphRows = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT ai.id
       FROM "ApprovalInstance" ai

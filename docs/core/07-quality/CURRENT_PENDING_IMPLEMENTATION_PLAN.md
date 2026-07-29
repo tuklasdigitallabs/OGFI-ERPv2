@@ -91,6 +91,7 @@ These items must be completed once at platform level. A workspace must not be ce
 - Production-mode authenticated `next start` E2E is not waived: `DEC-0044` assigns that unresolved gate to SPF-001 and SPF-009. It requires ephemeral tenant-qualified password/MFA fixtures and loopback HTTPS and may not be satisfied by production demo auth or weakened trusted-origin, secure-cookie, session, or authorization checks.
 - Knowledge-base, glossary, Core Administration helper text, roles/permissions, security/audit model, data dictionary, decision index, and changelog were aligned with the implemented behavior.
 - SPF-004 is complete. Its closure does not close SPF-001 or SPF-009 and does not authorize production release; production-authenticated `next start` E2E, branch protection, deployment, recovery, and final release evidence remain under their assigned gates.
+- Exact-candidate revalidation correction: the hosted wrong-location leave-approval adapter test found that the serialized legacy lock emitted `WORKFORCE_LOCATION_SCOPE_DENIED` before the established scoped-read guard could return `WORKFORCE_LEAVE_REQUEST_NOT_FOUND`. The lock now preserves the latter non-enumerating response after it has locked the tenant/company source and validated the active location. The test continues to prove status/audit no-mutation. This restores the documented direct-action boundary without weakening scope enforcement; hosted authorization revalidation remains required before SPF-004 receives renewed closure credit.
 
 ## 3. Controlled Evidence Upload and Storage
 
