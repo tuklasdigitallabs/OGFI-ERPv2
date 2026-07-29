@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import releaseIdentity from "../../../../release-identity.json";
 
 export const dynamic = "force-dynamic";
 
 const SHA = /^[a-f0-9]{40}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
-const IMAGE = /^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$/;
 const NONCE = /^[A-Za-z0-9_-]{32,128}$/;
 
 export function GET(request: NextRequest) {
@@ -14,13 +14,17 @@ export function GET(request: NextRequest) {
     return NextResponse.json({ status: "unavailable" }, { status: 503, headers: noStoreHeaders() });
   }
   return NextResponse.json(
-    { schemaVersion: 1, commitSha: releaseIdentity.commitSha, artifactSha256: releaseIdentity.artifactSha256, webImageDigest: releaseIdentity.webImageDigest, probe: nonce },
+    { schemaVersion: 2, commitSha: releaseIdentity.commitSha, artifactSha256: releaseIdentity.artifactSha256, identityManifestSha256: identityManifestSha256(releaseIdentity), probe: nonce },
     { headers: noStoreHeaders() },
   );
 }
 
 function validIdentity(value: typeof releaseIdentity) {
-  return value.schemaVersion === 1 && SHA.test(value.commitSha) && DIGEST.test(value.artifactSha256) && IMAGE.test(value.webImageDigest);
+  return value.schemaVersion === 2 && SHA.test(value.commitSha) && DIGEST.test(value.artifactSha256);
+}
+
+function identityManifestSha256(value: typeof releaseIdentity) {
+  return createHash("sha256").update(`{"artifactSha256":${JSON.stringify(value.artifactSha256)},"commitSha":${JSON.stringify(value.commitSha)},"schemaVersion":${value.schemaVersion}}`).digest("hex");
 }
 
 function noStoreHeaders() {

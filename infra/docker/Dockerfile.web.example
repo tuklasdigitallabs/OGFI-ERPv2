@@ -16,11 +16,30 @@ RUN pnpm --filter @ogfi/database generate
 ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096
 RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" pnpm --filter @ogfi/web build
 
+FROM deps AS release-build
+COPY . .
+ARG RELEASE_COMMIT_SHA
+ARG RELEASE_ARTIFACT_SHA256
+ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096
+RUN test -n "${RELEASE_COMMIT_SHA}" && test -n "${RELEASE_ARTIFACT_SHA256}" && RELEASE_COMMIT_SHA="${RELEASE_COMMIT_SHA}" RELEASE_ARTIFACT_SHA256="${RELEASE_ARTIFACT_SHA256}" node scripts/generate-release-identity.mjs
+RUN pnpm --filter @ogfi/database generate
+RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" pnpm --filter @ogfi/web build
+
 FROM base AS runner
 ENV NODE_ENV=production
 RUN apk add --no-cache util-linux
 RUN addgroup -S ogfi && adduser -S ogfi -G ogfi
 COPY --from=build /app /app
+RUN chown -R ogfi:ogfi /app
+USER ogfi
+EXPOSE 3000
+CMD ["pnpm", "--filter", "@ogfi/web", "start"]
+
+FROM base AS release-runner
+ENV NODE_ENV=production
+RUN apk add --no-cache util-linux
+RUN addgroup -S ogfi && adduser -S ogfi -G ogfi
+COPY --from=release-build /app /app
 RUN chown -R ogfi:ogfi /app
 USER ogfi
 EXPOSE 3000
