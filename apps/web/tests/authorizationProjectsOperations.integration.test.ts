@@ -1678,6 +1678,14 @@ describe("projects and operations database-backed authorization boundaries", () 
           session,
           scanInput,
         );
+      expect(first.reminders.map(({ reminderKind }) => reminderKind).sort()).toEqual([
+        "BRANCH_CHECKLIST_EXCEPTION",
+        "BRANCH_CHECKLIST_REVIEW_READY",
+        "FOOD_SAFETY_EXCEPTION",
+        "FOOD_SAFETY_REVIEW_READY",
+        "MAINTENANCE_FOLLOW_UP",
+        "OPERATIONAL_INCIDENT_OPEN",
+      ]);
       expect(first.scannedExceptionCount).toBe(6);
       expect(second.scannedExceptionCount).toBe(6);
 
