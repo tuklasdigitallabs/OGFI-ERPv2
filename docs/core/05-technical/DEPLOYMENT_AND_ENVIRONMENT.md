@@ -161,11 +161,11 @@ Use the manual `Staging Release Rehearsal` GitHub Actions workflow for release c
 The SSH-held staging deploy and rollback paths were rejected by the amended
 `DEC-0248`. `pnpm release:staging:deploy` and
 `pnpm release:staging:rollback` intentionally exit `78` without host mutation.
-The 2026-07-28 source checkpoint adds only a root-installable controller
-template: hostile request admission that reads approval records only from the
-root-owned `/var/spool/ogfi-release/approved` spool, not a deploy-writable
-incoming path; a fixed fence unit; an fsync journal; and maintenance-only
-recovery. It is neither a root installation nor hosted
+The 2026-07-29 source hardening binds admission to an unexpired, unrevoked root
+approval of the exact canonical action, candidate, and rollback input; reads
+bounded regular spool files through no-follow descriptors; permits only legal
+durable journal transitions; and provides a separate same-fence recovery unit.
+It is neither a root installation nor hosted
 evidence, and it does not provide migration, snapshot, cutover, served-SHA,
 smoke, or rollback helpers. Do not select `deploy_to_staging` until the complete
 root-owned one-service request-spool, credential-isolation, same-fence
@@ -267,11 +267,12 @@ known legacy checksum must be restored or rebuilt from approved exact history.
 The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not decide whether PostgreSQL is a Hostinger host service or a separately approved private container. Its future first-use and restore execution requires the DEC-0248 service plus a separately authorized cluster-administrator ceremony; it is not an authorized deployment path today. The exact controlled-role graph permits only the migrator as a member of the owner with `SET` true, `ADMIN` false, and inherited owner privileges false; every other incoming, outgoing, option-drift, or nested edge touching owner, migrator, or runtime fails closed and is not silently repaired. Application traffic must remain stopped until the future split verifiers prove ownership, membership, ACL, and append-only contracts. Unexpected schemas or objects, unsafe ownership/default ACLs, or any unapproved callable `SECURITY DEFINER` routine are a release **NO-GO**.
 
 The ledger preflight and Prisma deployment remain separate database connections
-and are not transactionally atomic. The 2026-07-28 DEC-0248 source foundation
-now includes a controller template with hostile admission, a fixed fence unit,
-an fsync journal, and maintenance-only recovery. Admission reads approval records
-only from the root-owned `/var/spool/ogfi-release/approved` spool, not a
-deploy-writable incoming path. It has no root install, hosted
+and are not transactionally atomic. The 2026-07-29 DEC-0248 source foundation
+now binds hostile admission to the exact canonical approved input, reads bounded
+regular spool files through no-follow descriptors, restricts durable journal
+transitions, and has a separate same-fence recovery unit. Admission reads
+approval records only from the root-owned `/var/spool/ogfi-release/approved`
+spool, not a deploy-writable incoming path. It has no root install, hosted
 execution, migration/snapshot/cutover/served-SHA/smoke/rollback helper, or
 accepted recovery evidence. The amended `DEC-0248` accepts a host fence only
 when one root-owned service/cgroup owns admission through verified cutover or

@@ -289,12 +289,13 @@ trigger is a hard gate rather than a scorecard preference.
   2026-07-27. The requested Code Spark and exact GPT-5.4 models were unavailable;
   the closest permitted GPT-5.6 specialists were used without relaxing hard
   gates.
-- 2026-07-28 source-foundation checkpoint: a root-installable controller template
-  adds hostile request admission from approval records held only in the
-  root-owned `/var/spool/ogfi-release/approved` spool, not a deploy-writable
-  incoming path; a fixed fence unit; an fsync journal; and maintenance-only
-  recovery. It is not root-installed or hosted-tested and adds no migration,
-  snapshot, cutover, served-SHA, smoke, or rollback helper. The
+- 2026-07-29 source-hardening checkpoint: the controller admission is bound to
+  an unexpired, unrevoked root approval of the exact canonical action, candidate,
+  and rollback input; bounded spool reads use no-follow descriptors; journal
+  phases are transition-checked; and `ogfi-release-recovery.service` obtains the
+  same fixed fence before durable maintenance recovery. This remains a disabled
+  source template, not a root-installed or hosted-tested release path, and adds
+  no migration, snapshot, cutover, served-SHA, smoke, or rollback helper. The
   strict status suite remains **NO-GO** with 31 blocking gates and 32 final-review
   blockers; no readiness conclusion changes.
 

@@ -22,12 +22,15 @@ accepts an incoming request only when its matching approval record is present in
 the separate root-only `/var/spool/ogfi-release/approved` spool; the incoming
 directory can never authorize its own request.
 
-The source controller currently implements only hostile-request admission and
-durable fail-closed recovery primitives. It has no migration, snapshot,
-cutover, Compose, smoke, rollback, or credential helper implementation, so an
-admitted request always ends in maintenance-required state. This is intentional:
-hosted deployment remains prohibited until those helpers, their isolated
-credential mounts, and installed-host evidence are approved.
+The source controller currently implements hostile-request admission bound to an
+unexpired root approval of the exact canonical candidate, durable legal journal
+transitions, and fail-closed maintenance recovery. `ogfi-release-recovery.service`
+is a separate root-only boot/start recovery entrypoint that uses the same fixed
+fence. It has no migration, snapshot, cutover, Compose, smoke, rollback, or
+credential helper implementation, so an admitted request always ends in
+maintenance-required state. This is intentional: hosted deployment remains
+prohibited until those helpers, their isolated credential mounts, and
+installed-host evidence are approved.
 
 Install the accompanying tmpfiles template first. Keep the existing
 `release-staging-*` and database migration tombstones disabled until the full

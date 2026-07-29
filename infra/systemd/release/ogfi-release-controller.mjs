@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
+  constants,
+  fstatSync,
   fsyncSync,
-  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -17,6 +18,18 @@ const REQUEST_ID_PATTERN = /^[a-z0-9][a-z0-9-]{15,79}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const TERMINAL_PHASES = new Set(["VERIFIED", "ROLLED_BACK", "MAINTENANCE_REQUIRED"]);
+const MAX_REQUEST_BYTES = 64 * 1024;
+const JOURNAL_TRANSITIONS = new Map([
+  [null, new Set(["ADMITTED"])],
+  ["ADMITTED", new Set(["ARTIFACT_VERIFIED", "MAINTENANCE_REQUIRED"])],
+  ["ARTIFACT_VERIFIED", new Set(["SNAPSHOT_VERIFIED", "MAINTENANCE_REQUIRED"])],
+  ["SNAPSHOT_VERIFIED", new Set(["MIGRATION_STARTED", "MAINTENANCE_REQUIRED"])],
+  ["MIGRATION_STARTED", new Set(["MIGRATION_VERIFIED", "MAINTENANCE_REQUIRED"])],
+  ["MIGRATION_VERIFIED", new Set(["CUTOVER_STARTED", "MAINTENANCE_REQUIRED"])],
+  ["CUTOVER_STARTED", new Set(["SERVED_IDENTITY_VERIFIED", "MAINTENANCE_REQUIRED"])],
+  ["SERVED_IDENTITY_VERIFIED", new Set(["SMOKE_VERIFIED", "MAINTENANCE_REQUIRED"])],
+  ["SMOKE_VERIFIED", new Set(["VERIFIED", "MAINTENANCE_REQUIRED"])],
+]);
 
 export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -67,14 +80,35 @@ export function validateReleaseRequest(request) {
   return request;
 }
 
-function readRegularJson(path, label) {
-  const link = lstatSync(path);
-  if (!link.isFile() || link.isSymbolicLink() || link.nlink !== 1) throw new Error(`${label}_UNSAFE`);
-  const content = readFileSync(path, "utf8");
+export function requestApprovalBinding(request) {
+  return {
+    schemaVersion: request.schemaVersion,
+    requestId: request.requestId,
+    action: request.action,
+    candidate: request.candidate,
+    ...(request.rollback ? { rollback: request.rollback } : {}),
+  };
+}
+
+function readRegularJson(path, label, { maxBytes = MAX_REQUEST_BYTES } = {}) {
+  let descriptor;
   try {
-    return JSON.parse(content);
-  } catch {
-    throw new Error(`${label}_JSON_INVALID`);
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > maxBytes || (stat.mode & 0o022) !== 0) {
+      throw new Error(`${label}_UNSAFE`);
+    }
+    const content = readFileSync(descriptor, "utf8");
+    try {
+      return JSON.parse(content);
+    } catch {
+      throw new Error(`${label}_JSON_INVALID`);
+    }
+  } catch (error) {
+    if (error?.code === "ELOOP") throw new Error(`${label}_UNSAFE`);
+    throw error;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
@@ -110,6 +144,16 @@ function durableWrite(path, content, { syncParentDirectory = syncDirectory } = {
 }
 
 export function appendJournal(stateRoot, event, options) {
+  let previous = null;
+  try {
+    previous = readCurrentJournal(stateRoot);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  const allowed = JOURNAL_TRANSITIONS.get(previous?.phase ?? null);
+  if (!allowed?.has(event.phase) || (previous && previous.requestId !== event.requestId)) {
+    throw new Error("OGFI_RELEASE_JOURNAL_TRANSITION_INVALID");
+  }
   const record = { ...event, recordedAtUtc: new Date().toISOString() };
   const eventPath = join(stateRoot, "events.ndjson");
   mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
@@ -135,7 +179,16 @@ export function admitRequest({ incomingRoot, approvedRoot, admittedRoot, stateRo
   if (request.requestId !== requestId) throw new Error("OGFI_RELEASE_REQUEST_ID_MISMATCH");
   const approvalPath = assertUnderRoot(join(approvedRoot, `${requestId}.approval.json`), approvedRoot);
   const approval = readRegularJson(approvalPath, "OGFI_RELEASE_APPROVAL");
-  if (sha256(canonicalJson(approval)) !== request.approvalDigest || approval.requestId !== requestId || approval.approved !== true) {
+  const binding = requestApprovalBinding(request);
+  const now = Date.now();
+  if (
+    sha256(canonicalJson(approval)) !== request.approvalDigest ||
+    approval.schemaVersion !== 1 || approval.requestId !== requestId || approval.approved !== true ||
+    approval.action !== request.action || approval.canonicalRequestSha256 !== sha256(canonicalJson(binding)) ||
+    canonicalJson(approval.candidate) !== canonicalJson(request.candidate) ||
+    !Number.isFinite(Date.parse(approval.expiresAtUtc ?? "")) || Date.parse(approval.expiresAtUtc) <= now ||
+    approval.revoked === true
+  ) {
     throw new Error("OGFI_RELEASE_APPROVAL_INVALID");
   }
   const admittedPath = join(admittedRoot, `${requestId}.json`);
@@ -176,7 +229,10 @@ export function recoverIncompleteRelease({ stateRoot, enterMaintenance = () => {
     current = readCurrentJournal(stateRoot);
   } catch (error) {
     if (error?.code === "ENOENT") return { recovered: false, state: null };
-    throw error;
+    enterMaintenance({ phase: "JOURNAL_AMBIGUOUS", reason: error.message });
+    const state = { phase: "MAINTENANCE_REQUIRED", reason: "JOURNAL_AMBIGUOUS", recordedAtUtc: new Date().toISOString() };
+    durableWrite(join(stateRoot, "ambiguous-maintenance.json"), `${canonicalJson(state)}\n`, journalOptions);
+    return { recovered: true, state };
   }
   if (TERMINAL_PHASES.has(current.phase)) return { recovered: false, state: current };
   enterMaintenance(current);
