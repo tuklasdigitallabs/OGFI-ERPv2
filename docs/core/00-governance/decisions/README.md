@@ -91,6 +91,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0250-NGINX-SINGLE-HOP-SHARED-VPS-EDGE.md` — exact-host shared-VPS Nginx public edge, root-owned cutover fragment/fence, one-hop trusted-header replacement, and direct-backend isolation; source preview only and production NO-GO pending hosted evidence
 - `DEC-0251-PR-DRAFT-BUDGET-PUBLIC-BOUNDARY.md` — HIGH public-boundary protection for Purchase Request draft budget metadata, with parent Budget tenant/company predicates and required database no-disclosure evidence; brand/location hierarchy policy remains open
 - `DEC-0252-CI-PRODUCTION-AUTHENTICATED-BROWSER-LANE.md` — separate exact-SHA CI-only production-authenticated browser lane; implementation and evidence pending
+- `DEC-0253-SOURCE-ONLY-CONTROLLER-INTEGRITY-AND-RECOVERY-CLOSURE.md` — versioned immutable artifact-manifest admission with keyed service-image, Compose, and identity bindings plus fail-closed journal structural/history integrity; source-only, with maintenance actuator and all operational evidence deferred
 
 ## Suggested future decision records
 
