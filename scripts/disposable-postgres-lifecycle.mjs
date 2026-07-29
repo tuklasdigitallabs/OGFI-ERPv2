@@ -158,6 +158,9 @@ export function buildRuntimeEnvironment(sourceEnv, runtimeUrl, identity, adminUr
     AUTHORIZATION_TEST_RUN_ID: identity.runId,
     AUTHORIZATION_TEST_RUNTIME_ROLE: identity.runtimeRole,
     AUTHORIZATION_TEST_DATABASE_NONCE_SHA256: identity.nonceSha256,
+    OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME: identity.databaseName,
+    OGFI_DISPOSABLE_DATABASE_RUN_ID: identity.runId,
+    OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: identity.nonceSha256,
   };
 }
 

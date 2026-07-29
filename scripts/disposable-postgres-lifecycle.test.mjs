@@ -172,12 +172,12 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       "ALTERNATE_DATABASE_URL",
       "DATABASE_PASSWORD",
       "POSTGRES_USER",
-      "OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME",
-      "OGFI_DISPOSABLE_DATABASE_RUN_ID",
-      "OGFI_DISPOSABLE_DATABASE_NONCE_SHA256",
     ]) {
       assert.equal(child[key], undefined, `${key} is absent`);
     }
+    assert.equal(child.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME, identity.databaseName);
+    assert.equal(child.OGFI_DISPOSABLE_DATABASE_RUN_ID, identity.runId);
+    assert.equal(child.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256, identity.nonceSha256);
     assert.equal(child.DIRECT_DATABASE_URL, "");
   });
 

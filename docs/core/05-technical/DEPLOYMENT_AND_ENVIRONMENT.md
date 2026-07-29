@@ -161,6 +161,14 @@ Use the manual `Staging Release Rehearsal` GitHub Actions workflow for release c
 The SSH-held staging deploy and rollback paths were rejected by the amended
 `DEC-0248`. `pnpm release:staging:deploy` and
 `pnpm release:staging:rollback` intentionally exit `78` without host mutation.
+`DEC-0252` adds a separate CI-only production-authenticated browser lane: it
+uses a nonce-attested disposable PostgreSQL database, runtime-only local
+password and TOTP fixtures, the already-built `next start` artifact, and a
+loopback Nginx-to-pinned-Caddy chain with a per-run browser-trusted certificate.
+It rejects demo authentication, direct application access, non-HTTPS origins,
+and TLS-bypass flags. It is exact-candidate SPF-001/SPF-009 browser evidence
+only; it does not authorize staging deployment or replace hosted recovery,
+backup, rollback, or UAT proof.
 The 2026-07-29 source hardening binds admission to an unexpired, unrevoked root
 approval of the exact canonical action, candidate, and rollback input; reads
 bounded regular spool files through no-follow descriptors; permits only legal

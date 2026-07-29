@@ -1,0 +1,21 @@
+{
+	admin off
+	servers {
+		protocols h1 h2
+		trusted_proxies static 127.0.0.1/32
+		trusted_proxies_strict
+	}
+}
+
+# This CI-only loopback hop mirrors the reviewed application-edge contract.
+# Nginx is the TLS edge; Caddy is the sole app-adjacent trusted proxy.
+http://127.0.0.1:3101 {
+	reverse_proxy 127.0.0.1:3102 {
+		header_up -Forwarded
+		header_up -X-Real-IP
+		header_up -X-Forwarded-For
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {http.request.host}
+	}
+}

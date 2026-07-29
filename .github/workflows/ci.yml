@@ -66,6 +66,61 @@ jobs:
       - run: pnpm test:authorization
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - name: Configure isolated production-authenticated browser runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libnss3-tools
+          tls_dir="$(mktemp -d)"
+          # Docker bind mounts must traverse the directory; the private key
+          # itself remains owner-readable only.
+          chmod 755 "$tls_dir"
+          openssl genrsa -out "$tls_dir/ca.key" 3072
+          openssl req -x509 -new -sha256 -key "$tls_dir/ca.key" -days 1 -subj "/CN=OGFI CI Production Auth CA" -out "$tls_dir/ca.crt"
+          openssl genrsa -out "$tls_dir/tls.key" 2048
+          chmod 600 "$tls_dir/ca.key" "$tls_dir/tls.key"
+          openssl req -new -sha256 -key "$tls_dir/tls.key" -subj "/CN=127.0.0.1" -out "$tls_dir/tls.csr"
+          printf '%s\n' 'subjectAltName=IP:127.0.0.1' 'basicConstraints=CA:FALSE' 'keyUsage=digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > "$tls_dir/tls.ext"
+          openssl x509 -req -in "$tls_dir/tls.csr" -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$tls_dir/tls.crt" -days 1 -sha256 -extfile "$tls_dir/tls.ext"
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password || true
+          certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n "ogfi-production-auth-e2e" -i "$tls_dir/ca.crt"
+          {
+            echo "NODE_ENV=production"
+            echo "APP_ENV=production"
+            echo "DEPLOYMENT_ENVIRONMENT=production"
+            echo "AUTH_MODE=local"
+            echo "AUTH_TRUSTED_PROXY_MODE=caddy_single_hop"
+            echo "APP_URL=https://127.0.0.1:3443"
+            echo "AUTH_ARGON2_MAX_CONCURRENCY=1"
+            echo "AUTH_SECRET=$(openssl rand -hex 32)"
+            echo "AUTH_THROTTLE_HMAC_KEY=$(openssl rand -hex 32)"
+            echo "APP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+            echo "APP_ENCRYPTION_KEY_VERSION=1"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=465"
+            echo "SMTP_USERNAME=ci-production-auth"
+            echo "SMTP_PASSWORD=$(openssl rand -hex 32)"
+            echo "SMTP_FROM=ci-production-auth@example.test"
+            echo "SMTP_SECURITY=implicit"
+            echo "NEXT_DIST_DIR=.next-production-authenticated-e2e"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_DIR=$tls_dir"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CA_FILE=$tls_dir/ca.crt"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CERT_FILE=$tls_dir/tls.crt"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_KEY_FILE=$tls_dir/tls.key"
+            echo "OGFI_PRODUCTION_AUTH_E2E_FIXTURE_FILE=$tls_dir/fixture.json"
+            echo "NODE_EXTRA_CA_CERTS=$tls_dir/ca.crt"
+          } >> "$GITHUB_ENV"
+      - run: pnpm test:production-authenticated-e2e-proxy
+      - run: pnpm test:e2e:production-authenticated
+      - name: Remove production-authenticated browser material
+        if: always()
+        run: |
+          certutil -d "sql:$HOME/.pki/nssdb" -D -n "ogfi-production-auth-e2e" || true
+          case "${OGFI_PRODUCTION_AUTH_E2E_TLS_DIR:-}" in
+            /tmp/*) rm -rf -- "$OGFI_PRODUCTION_AUTH_E2E_TLS_DIR" ;;
+            "") true ;;
+            *) echo "Unexpected production-authenticated TLS cleanup path" >&2; exit 1 ;;
+          esac
       - name: Restore Next.js generated type reference
         run: git restore -- apps/web/next-env.d.ts
       - run: pnpm release:authorization-manifest

@@ -90,6 +90,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0249-SERVED-IDENTITY-PROVENANCE-AND-PUBLIC-PROBE-CONTRACT.md` — immutable build-baked provenance, no-store nonce-bound public identity, Caddy edge fence re-stamping, and required external per-address HTTPS evidence before smoke
 - `DEC-0250-NGINX-SINGLE-HOP-SHARED-VPS-EDGE.md` — exact-host shared-VPS Nginx public edge, root-owned cutover fragment/fence, one-hop trusted-header replacement, and direct-backend isolation; source preview only and production NO-GO pending hosted evidence
 - `DEC-0251-PR-DRAFT-BUDGET-PUBLIC-BOUNDARY.md` — HIGH public-boundary protection for Purchase Request draft budget metadata, with parent Budget tenant/company predicates and required database no-disclosure evidence; brand/location hierarchy policy remains open
+- `DEC-0252-CI-PRODUCTION-AUTHENTICATED-BROWSER-LANE.md` — separate exact-SHA CI-only production-authenticated browser lane; implementation and evidence pending
 
 ## Suggested future decision records
 
