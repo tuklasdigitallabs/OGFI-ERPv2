@@ -383,7 +383,7 @@ describe("controlled evidence database authorization matrix", () => {
           controlledEvidenceAttachmentId: controlledLinkIds.get(sourceType)!,
         }),
         `${sourceType} download`,
-      ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     }
   });
 
