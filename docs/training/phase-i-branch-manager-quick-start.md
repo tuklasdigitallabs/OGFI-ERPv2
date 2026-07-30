@@ -3,7 +3,7 @@
 **Audience:** Branch Managers and Assistant Branch Managers  
 **Duration:** 45-60 minutes  
 **Prerequisites:** Active branch scope, Purchase Request, approval, transfer, wastage, inventory view, dashboard, and notification access as assigned  
-**Related knowledge-base articles:** Creating a Purchase Request; Reviewing and approving a Purchase Request; Requesting stock when a branch item is low; Receiving a warehouse transfer; Logging wastage; Understanding the dashboard, My Tasks, and notifications
+**Related knowledge-base articles:** Understanding the Inventory Control Pilot; Creating a Purchase Request; Reviewing and approving a Purchase Request; Requesting stock when a branch item is low; Receiving a warehouse transfer; Logging wastage; Understanding the dashboard, My Tasks, and notifications
 
 ## Learning objectives
 
@@ -15,17 +15,19 @@ By the end of this module, participants can:
 - Request internal stock through transfer before purchasing.
 - Receive transferred stock and record discrepancy evidence.
 - Use dashboard cards and notifications to open source records.
+- Distinguish pilot-scope inventory work from visible `Deferred` workflows without treating either label as new authority or a production GO decision.
 
 ## Demonstration flow
 
 1. Sign in and switch to the assigned branch.
-2. Open `Operations Dashboard` and explain read-only source-record cards.
-3. Create a draft Purchase Request and submit it for approval.
-4. Show the truthful `Approval Inbox` unavailable state. Explain that approvers must follow the source-workflow owner or administrator guidance until normalized routing is explicitly activated; do not simulate or promise an actionable Inbox queue.
-5. Open `Inventory -> Transfers` and create a transfer request for available warehouse stock.
-6. Open a dispatched transfer and receive accepted, rejected, damaged, or short quantities as applicable.
-7. Log a wastage report with reason and evidence reference.
-8. Review audit history and notifications created by the workflow.
+2. Confirm the `Inventory Control Pilot` header badge, then explain that visible `Deferred` destinations remain outside the pilot and still use existing permissions.
+3. Open `Operations Dashboard` and explain read-only source-record cards.
+4. Create a draft Purchase Request and submit it for approval.
+5. Show the truthful `Approval Inbox` unavailable state. Explain that approvers must follow the source-workflow owner or administrator guidance until normalized routing is explicitly activated; do not simulate or promise an actionable Inbox queue.
+6. Open `Inventory -> Transfers` and create a transfer request for available warehouse stock.
+7. Open a dispatched transfer and receive accepted, rejected, damaged, or short quantities as applicable.
+8. Log a wastage report with reason and evidence reference.
+9. Review audit history and notifications created by the workflow.
 
 ## Practice exercise
 
@@ -50,6 +52,7 @@ If a mobile action is confusing or cramped, record it in the pilot defect log wi
 - Missing approval button: verify assignment, scope, and self-approval controls.
 - Transfer discrepancy without evidence reference: enter the required reason and evidence reference before receipt posting.
 - Treating dashboard card as an action: open the source record before acting.
+- Treating `Inventory Control Pilot` or `Deferred` as permission or release approval: verify the user's assigned access and the named release decision separately.
 
 ## Completion check
 

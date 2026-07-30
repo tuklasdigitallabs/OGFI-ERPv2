@@ -3,7 +3,7 @@
 **Audience:** Warehouse staff, storekeepers, and inventory custodians  
 **Duration:** 60 minutes  
 **Prerequisites:** Active warehouse or branch inventory scope, transfer, receiving, stock count, wastage, inventory ledger, and evidence-reference access as assigned  
-**Related knowledge-base articles:** Viewing current stock balances; Viewing inventory movement history; Creating a transfer request; Dispatching warehouse transfers; Receiving warehouse transfers; Running stock counts; Logging wastage; Understanding Stock Adjustments
+**Related knowledge-base articles:** Understanding the Inventory Control Pilot; Viewing current stock balances; Viewing inventory movement history; Creating a transfer request; Dispatching warehouse transfers; Receiving warehouse transfers; Running stock counts; Logging wastage; Understanding Stock Adjustments
 
 ## Learning objectives
 
@@ -15,17 +15,19 @@ By the end of this module, participants can:
 - Receive a transfer at the destination location.
 - Run and submit a stock count.
 - Log wastage and understand when Stock Adjustment is required.
+- Distinguish Inventory Control Pilot work from visible `Deferred` workflows without treating a label as permission or production approval.
 
 ## Demonstration flow
 
 1. Sign in and confirm the assigned warehouse or branch location.
-2. Open `Inventory -> Stock Balances` and search for an item.
-3. Open `Inventory Ledger` and trace a posted source movement.
-4. Open `Transfers`, dispatch a requested transfer from the source location, then review movement impact.
-5. Switch to the destination location and receive the dispatched transfer.
-6. Schedule, start, enter, and submit a stock count.
-7. Log a wastage report with reason and evidence reference.
-8. Review a Stock Adjustment and explain approval, posting, and reversal boundaries.
+2. Confirm the `Inventory Control Pilot` header badge and explain that authorized deferred destinations remain visible but outside the pilot release scope.
+3. Open `Inventory -> Stock Balances` and search for an item.
+4. Open `Inventory Ledger` and trace a posted source movement.
+5. Open `Transfers`, dispatch a requested transfer from the source location, then review movement impact.
+6. Switch to the destination location and receive the dispatched transfer.
+7. Schedule, start, enter, and submit a stock count.
+8. Log a wastage report with reason and evidence reference.
+9. Review a Stock Adjustment and explain approval, posting, and reversal boundaries.
 
 ## Practice exercise
 
@@ -50,6 +52,7 @@ If a mobile action is confusing or cramped, record it in the pilot defect log wi
 - Receiving from the wrong location: switch to the destination location first.
 - Expecting transfer request submission to move stock: stock changes only after dispatch and receipt posting.
 - Trying to edit posted inventory records: use reversal or approved correction workflow.
+- Treating the pilot or `Deferred` label as access authority: confirm the assigned role, location, workflow state, and release decision separately.
 
 ## Completion check
 

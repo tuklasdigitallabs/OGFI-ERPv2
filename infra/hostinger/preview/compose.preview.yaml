@@ -32,6 +32,7 @@ services:
     environment:
       NODE_ENV: production
       APP_ENV: uat
+      OGFI_RELEASE_PROFILE: inventory_control_pilot
       AUTH_TRUSTED_PROXY_MODE: nginx_single_hop
       # Conservative controlled-UAT capacity pending hosted load calibration.
       AUTH_ARGON2_MAX_CONCURRENCY: "1"

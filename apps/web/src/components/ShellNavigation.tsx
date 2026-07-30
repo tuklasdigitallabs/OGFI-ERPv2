@@ -106,6 +106,7 @@ export type NavSection = {
   id: string;
   label: string;
   icon: LucideIcon;
+  releaseStatus?: "Deferred";
   items: Array<{
     label: string;
     href?: string;
@@ -113,6 +114,7 @@ export type NavSection = {
     badge?: string;
     icon: LucideIcon;
     disabled?: boolean;
+    releaseStatus?: "Deferred";
   }>;
 };
 
@@ -145,6 +147,7 @@ export function getNavigationSections(
   canUseFinance = false,
   canUseWorkforce = false,
   canViewEvidenceRetention = false,
+  inventoryControlPilot = false,
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -177,7 +180,7 @@ export function getNavigationSections(
         },
   ];
 
-  return [
+  const sections: NavSection[] = [
     {
       id: "overview",
       label: "Overview",
@@ -873,6 +876,32 @@ export function getNavigationSections(
       ],
     },
   ];
+
+  if (!inventoryControlPilot) {
+    return sections;
+  }
+
+  const deferredSectionIds = new Set([
+    "phase-1-5",
+    "restaurant-ops",
+    "workforce",
+    "marketing",
+    "expansion",
+    "finance",
+  ]);
+
+  return sections.map((section) =>
+    deferredSectionIds.has(section.id)
+      ? {
+          ...section,
+          releaseStatus: "Deferred",
+          items: section.items.map((item) => ({
+            ...item,
+            releaseStatus: "Deferred",
+          })),
+        }
+      : section,
+  );
 }
 
 export function getMobilePreviewRailItems(sections: NavSection[]) {
@@ -1141,7 +1170,11 @@ function NavItem({
       </span>
     </>
   );
-  const title = item.badge ? `${item.label} (${item.badge})` : item.label;
+  const titleParts = [item.badge, item.releaseStatus].filter(Boolean);
+  const title =
+    titleParts.length > 0
+      ? `${item.label} (${titleParts.join(", ")})`
+      : item.label;
 
   if (item.disabled || !item.href) {
     return (
@@ -1189,6 +1222,7 @@ export function ShellNavigation({
   canUseFinance,
   canUseWorkforce,
   canViewEvidenceRetention,
+  inventoryControlPilot,
   children,
 }: {
   session: SessionContext;
@@ -1215,6 +1249,7 @@ export function ShellNavigation({
   canUseFinance: boolean;
   canUseWorkforce: boolean;
   canViewEvidenceRetention: boolean;
+  inventoryControlPilot: boolean;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -1248,6 +1283,7 @@ export function ShellNavigation({
         canUseFinance,
         canUseWorkforce,
         canViewEvidenceRetention,
+        inventoryControlPilot,
       ),
     [
       canAdminister,
@@ -1272,6 +1308,7 @@ export function ShellNavigation({
       canUseFinance,
       canUseWorkforce,
       canViewEvidenceRetention,
+      inventoryControlPilot,
     ],
   );
   const mobileOperationalItems = getMobileOperationalNavItems({
@@ -1373,13 +1410,22 @@ export function ShellNavigation({
             return (
               <div key={section.id} className="mb-2">
                 <button
+                  aria-label={
+                    section.releaseStatus
+                      ? `${section.label} (${section.releaseStatus})`
+                      : section.label
+                  }
                   className={`shell-nav-section flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-control)] px-3 py-2 text-left text-xs font-bold transition-colors ${
                     collapsed ? "justify-center" : "justify-between"
                   } ${sectionHighlighted ? "is-active" : ""}`}
                   onClick={() => selectSection(section.id)}
                   aria-expanded={!collapsed && open}
                   aria-controls={`${section.id}-links`}
-                  title={section.label}
+                  title={
+                    section.releaseStatus
+                      ? `${section.label} (${section.releaseStatus})`
+                      : section.label
+                  }
                   type="button"
                 >
                   <span className="flex min-w-0 items-center gap-2">
@@ -1392,6 +1438,11 @@ export function ShellNavigation({
                       <span className="truncate">{section.label}</span>
                     ) : null}
                   </span>
+                  {!collapsed && section.releaseStatus ? (
+                    <span className="ml-auto shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-inset ring-amber-200">
+                      {section.releaseStatus}
+                    </span>
+                  ) : null}
                   {!collapsed ? (
                     <ChevronDown
                       aria-hidden="true"
@@ -1478,7 +1529,12 @@ export function ShellNavigation({
                   href={item.href}
                   onClick={() => setMobileNavigationOpen(false)}
                 >
-                  {item.label}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.releaseStatus ? (
+                    <span className="ml-2 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-inset ring-amber-200">
+                      {item.releaseStatus}
+                    </span>
+                  ) : null}
                 </a>
               ))}
             </div>

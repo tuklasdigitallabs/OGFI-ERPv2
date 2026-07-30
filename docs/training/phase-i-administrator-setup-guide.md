@@ -3,7 +3,7 @@
 **Audience:** System administrators and authorized implementation leads  
 **Duration:** 60-90 minutes  
 **Prerequisites:** Core administration permission, user/role/scope setup access, approval-rule visibility, release-readiness access, master-data access, reports, and audit export access as assigned  
-**Related knowledge-base articles:** Signing in and selecting your location; Managing user access and controlled scopes; Managing privileged MFA evidence; Managing Evidence Retention And Placing A Legal Hold; Session invalidation and reauthentication; Managing break-glass access; Managing Release Readiness Gates; Why can't I see my branch, warehouse, or request?; Why can't I approve this request?; Uploading supporting documents or photo evidence; How to export a report
+**Related knowledge-base articles:** Signing in and selecting your location; Understanding the Inventory Control Pilot; Managing user access and controlled scopes; Managing privileged MFA evidence; Managing Evidence Retention And Placing A Legal Hold; Session invalidation and reauthentication; Managing break-glass access; Managing Release Readiness Gates; Why can't I see my branch, warehouse, or request?; Why can't I approve this request?; Uploading supporting documents or photo evidence; How to export a report
 
 ## Learning objectives
 
@@ -17,6 +17,7 @@ By the end of this module, participants can:
 - Distinguish confidential evidence-register view access from privileged legal-hold placement.
 - Distinguish Supplier workspace authority from the additional `Supplier confidential access` clearance.
 - Review release-readiness gates, security counters, and external-security proof references without treating the ERP page as release approval.
+- Explain that the Inventory Control Pilot and `Deferred` labels classify release scope without granting, removing, or replacing server-enforced access.
 
 ## Demonstration flow
 
@@ -48,6 +49,8 @@ By the end of this module, participants can:
 19. Explain the current privileged-MFA requirement and the preservation-only boundary: no hold release or physical purge is available.
 
 ## Practice exercise
+
+Before changing access, compare two authorized test users in an Inventory Control Pilot environment. Confirm the header badge, verify that deferred destinations remain visible only where each user's existing access permits them, and show that a `Deferred` marker is not a reason to broaden a role or scope assignment. Confirm that no pilot or production GO is inferred from the badge.
 
 Troubleshoot a user who cannot see a warehouse and cannot approve a Purchase Request. Identify whether the issue is role permission, scope assignment, approval-step assignment, source-record status, or self-approval.
 

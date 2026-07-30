@@ -33,6 +33,7 @@ import {
   type SessionContext,
 } from "@/server/services/context";
 import { getAuthMode } from "@/server/services/authentication";
+import { isInventoryControlPilot } from "@/server/services/releaseProfile";
 
 async function switchLocationContext(formData: FormData) {
   "use server";
@@ -117,6 +118,7 @@ export function AppShell({
   const canAccessFinance = canUseFinance(session.permissionCodes);
   const canAccessWorkforce = canUseWorkforce(session.permissionCodes);
   const usesLocalAuthentication = getAuthMode() === "local";
+  const inventoryControlPilot = isInventoryControlPilot();
 
   return (
     <ShellNavigation
@@ -143,6 +145,7 @@ export function AppShell({
       canUseMaintenance={canAccessMaintenance}
       canUseFinance={canAccessFinance}
       canUseWorkforce={canAccessWorkforce}
+      inventoryControlPilot={inventoryControlPilot}
       session={session}
     >
       <header className="shell-top-header bg-white/90 backdrop-blur-xl md:sticky md:top-0 md:z-10">
@@ -156,6 +159,11 @@ export function AppShell({
               <Badge tone="success" size="sm">
                 {session.context.locationType}
               </Badge>
+              {inventoryControlPilot ? (
+                <Badge tone="warning" size="sm">
+                  Inventory Control Pilot
+                </Badge>
+              ) : null}
             </div>
             <h1 className="page-title text-slate-950">{title}</h1>
             <p className="page-subtitle mt-1 max-w-2xl">{subtitle}</p>
