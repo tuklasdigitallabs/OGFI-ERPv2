@@ -98,6 +98,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0257-EXACT-CANDIDATE-AUTHORIZATION-REGRESSION-REPAIR.md` — company-local Core Admin audit reads split from tenant-wide live-role authorization, truthful Approval Rule `TRUNCATE` privilege expectation, and fixture-only User Access repair with audit history, grants, revocation, and non-enumeration preserved
 - [`DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md`](DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md) — bounded connected Phase I inventory-control pilot for one warehouse, one or two branches, and selected high-risk SKUs; shadow UAT first and operational stock-of-record use only after exact-candidate, cutover, recovery, and human signoff gates
 - [`DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md`](DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md) — synthetic local-only manifest, positively attested disposable fixture, and canonical exact/adversarial evidence without operational policy or authority
+- [`DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md`](DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md) — mandatory normalized approval for admitted pilot transfers and attempt-grained ordinary count review, with exact family keys, segregation, fail-closed scope, immutable cycles, and activation gates
 
 ## Suggested future decision records
 

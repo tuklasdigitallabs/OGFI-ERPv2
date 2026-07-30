@@ -6,6 +6,7 @@ import {
   deriveSyntheticPilotUuid,
   verifySyntheticPilotManifestEnvelope,
 } from "../../../scripts/inventory-pilot-synthetic-manifest.mjs";
+import { assertSafeSyntheticFixtureDatabaseName } from "../../../scripts/inventory-pilot-synthetic-boundary.mjs";
 
 const envelope = JSON.parse(fs.readFileSync(new URL("../../../scripts/fixtures/inventory-pilot.synthetic.local-only.json", import.meta.url), "utf8"));
 const { digest } = verifySyntheticPilotManifestEnvelope(envelope);
@@ -52,7 +53,12 @@ async function assertDisposableMarker(client) {
   const parsed = new URL(process.env.DATABASE_URL ?? "");
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(parsed.hostname)) fail("DATABASE_HOST_NOT_LOOPBACK");
   const databaseName = decodeURIComponent(parsed.pathname.slice(1));
-  if (databaseName !== process.env.AUTHORIZATION_TEST_DATABASE || !/^ogfi_test_[a-z0-9_]+_[a-f0-9]{16}$/.test(databaseName)) fail("DATABASE_IDENTITY_MISMATCH");
+  try {
+    assertSafeSyntheticFixtureDatabaseName(databaseName);
+  } catch {
+    fail("DATABASE_NAME_UNSAFE");
+  }
+  if (databaseName !== process.env.AUTHORIZATION_TEST_DATABASE) fail("DATABASE_IDENTITY_MISMATCH");
   if (decodeURIComponent(parsed.username) !== process.env.AUTHORIZATION_TEST_RUNTIME_ROLE) fail("DATABASE_ROLE_MISMATCH");
   const rows = await client.$queryRawUnsafe(`
     SELECT current_database()::text AS "currentDatabase",
@@ -249,8 +255,9 @@ async function validate(client) {
   ]);
   const scopeKey = (entry) => `${entry.userId}:${entry.scopeType}:${entry.scopeId}`;
   assertExact(scopes.sort((a, b) => asciiCompare(scopeKey(a), scopeKey(b))), expectedScopes.sort((a, b) => asciiCompare(scopeKey(a), scopeKey(b))), "USER_SCOPE_ASSIGNMENTS");
-  const rules = await client.approvalRule.findMany({ where: { tenantId: uuid(scope.tenant.id), companyId: uuid(scope.company.id), transactionType: { in: manifest.approvalExpectations.persistedKeys }, routeKey: "DEFAULT" }, include: { steps: true } });
-  if (rules.length !== manifest.approvalExpectations.persistedKeys.length) fail("APPROVAL_RULE_COUNT");
+  const rules = await client.approvalRule.findMany({ where: { tenantId: uuid(scope.tenant.id), companyId: uuid(scope.company.id) }, include: { steps: true } });
+  const expectedRuleIds = manifest.approvalExpectations.persistedKeys.map((transactionType) => uuid(approvalRuleLogicalId(transactionType)));
+  assertExact(rules.map(({ id }) => id).sort(asciiCompare), expectedRuleIds.sort(asciiCompare), "APPROVAL_RULE_SET");
   for (const rule of rules) {
     const logicalRuleId = approvalRuleLogicalId(rule.transactionType);
     const expectedRuleId = uuid(logicalRuleId);
@@ -286,23 +293,116 @@ async function validate(client) {
     }], `APPROVAL_RULE_${rule.transactionType}_STEPS`);
     assertExact(rule.scopeFilters, { authority: manifest.authority, sourceDecisionId: manifest.sourceDecisionId, manifestDigest: digest }, `APPROVAL_RULE_${rule.transactionType}_PROVENANCE`);
   }
-  const movementCount = await client.inventoryMovement.count({ where: { tenantId } });
-  const balanceCount = await client.inventoryBalance.count({ where: { tenantId } });
-  const policyCount = await client.companyPolicySetting.count({ where: { tenantId } });
-  if (movementCount !== 0 || balanceCount !== 0 || policyCount !== 0) fail("FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE");
+  const prohibitedStateCounts = {
+    purchaseRequests: await client.purchaseRequest.count({ where: { tenantId } }),
+    purchaseOrders: await client.purchaseOrder.count({ where: { tenantId } }),
+    goodsReceipts: await client.goodsReceipt.count({ where: { tenantId } }),
+    inventoryTransfers: await client.inventoryTransfer.count({ where: { tenantId } }),
+    stockCountSessions: await client.stockCountSession.count({ where: { tenantId } }),
+    wastageReports: await client.wastageReport.count({ where: { tenantId } }),
+    stockAdjustments: await client.stockAdjustment.count({ where: { tenantId } }),
+    approvalInstances: await client.approvalInstance.count({ where: { tenantId } }),
+    notifications: await client.notification.count({ where: { tenantId } }),
+    auditEvents: await client.auditEvent.count({ where: { tenantId } }),
+    inventoryMovements: await client.inventoryMovement.count({ where: { tenantId } }),
+    inventoryBalances: await client.inventoryBalance.count({ where: { tenantId } }),
+    companyPolicySettings: await client.companyPolicySetting.count({ where: { tenantId } }),
+  };
+  if (Object.values(prohibitedStateCounts).some((count) => count !== 0)) {
+    fail(`FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE:${JSON.stringify(prohibitedStateCounts)}`);
+  }
   return { actors: actorIds.length, approvalRules: rules.length, digest, roles: roleIds.length, scopes: scopes.length };
 }
 
 async function proveAdversarialRejection() {
-  const target = manifest.accessGraph.actors.find(({ id }) => id === "synthetic-actor-no-role");
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.userRoleAssignment.create({ data: { id: uuid("synthetic-adversarial-extra-assignment"), userId: uuid(target.id), roleId: uuid("synthetic-role-read-only-auditor") } });
-      await validate(tx);
-    });
-    fail("ADVERSARIAL_EXTRA_ASSIGNMENT_ACCEPTED");
-  } catch (error) {
-    if (!String(error).includes("USER_ROLE_ASSIGNMENTS_DRIFT")) throw error;
+  const scope = manifest.scope;
+  const tenantId = uuid(scope.tenant.id);
+  const companyId = uuid(scope.company.id);
+  const warehouseLocation = scope.physicalLocations.find(({ kind }) => kind === "MAIN_WAREHOUSE");
+  const branchLocation = scope.physicalLocations.find(({ kind }) => kind === "BRANCH");
+  const warehouseInventoryLocation = scope.inventoryLocations.find(({ locationId }) => locationId === warehouseLocation.id);
+  const item = manifest.inventoryCatalog.selectedItems[0];
+  const actor = manifest.accessGraph.actors.find(({ id }) => id === "synthetic-actor-inventory-requester");
+  const noRoleActor = manifest.accessGraph.actors.find(({ id }) => id === "synthetic-actor-no-role");
+  const expectedRuleId = uuid(approvalRuleLogicalId(manifest.approvalExpectations.persistedKeys[0]));
+
+  const cases = [
+    {
+      name: "EXTRA_ROLE_ASSIGNMENT",
+      expected: "USER_ROLE_ASSIGNMENTS_DRIFT",
+      mutate: (tx) => tx.userRoleAssignment.create({ data: { id: uuid("synthetic-adversarial-extra-assignment"), userId: uuid(noRoleActor.id), roleId: uuid("synthetic-role-read-only-auditor") } }),
+    },
+    {
+      name: "CROSS_SCOPE_ASSIGNMENT",
+      expected: "USER_SCOPE_ASSIGNMENTS_DRIFT",
+      mutate: (tx) => tx.userScopeAssignment.create({ data: { id: uuid("synthetic-adversarial-cross-scope"), userId: uuid(actor.id), scopeType: "LOCATION", scopeId: uuid(scope.adjacentDenialControls.location.id), accessLevel: "VIEW", startsAt: fixtureEffectiveAt } }),
+    },
+    {
+      name: "EXTRA_PERMISSION",
+      expected: "ROLE_PERMISSION_synthetic-role-read-only-auditor_DRIFT",
+      mutate: async (tx) => {
+        const role = manifest.accessGraph.roles.find(({ id }) => id === "synthetic-role-read-only-auditor");
+        const permission = await tx.permission.findFirstOrThrow({ where: { code: { notIn: role.permissionAllowlist } }, select: { id: true } });
+        return tx.rolePermission.create({ data: { roleId: uuid(role.id), permissionId: permission.id } });
+      },
+    },
+    {
+      name: "EXTRA_APPROVAL_RULE",
+      expected: "APPROVAL_RULE_SET_DRIFT",
+      mutate: (tx) => tx.approvalRule.create({ data: { id: uuid("synthetic-adversarial-extra-rule"), tenantId, companyId, transactionType: "SyntheticUnexpected", routeKey: "DEFAULT", lineageId: uuid("synthetic-adversarial-extra-rule") } }),
+    },
+    {
+      name: "EXTRA_APPROVAL_ROUTE",
+      expected: "APPROVAL_RULE_SET_DRIFT",
+      mutate: (tx) => tx.approvalRule.create({ data: { id: uuid("synthetic-adversarial-extra-route"), tenantId, companyId, transactionType: "PURCHASE_REQUEST", routeKey: "PR_EMERGENCY", lineageId: uuid("synthetic-adversarial-extra-route") } }),
+    },
+    {
+      name: "OPERATIONAL_TRANSACTION",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.inventoryTransfer.create({ data: { id: uuid("synthetic-adversarial-transfer"), tenantId, companyId, publicReference: "SYN-ADVERSARIAL-TRANSFER", sourceLocationId: uuid(warehouseLocation.id), destinationLocationId: uuid(branchLocation.id), requestedByUserId: uuid(actor.id), transferType: "REPLENISHMENT", purpose: "Adversarial rollback proof" } }),
+    },
+    {
+      name: "APPROVAL_INSTANCE",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.approvalInstance.create({ data: { id: uuid("synthetic-adversarial-approval-instance"), tenantId, companyId, documentType: manifest.approvalExpectations.persistedKeys[0], documentId: uuid("synthetic-adversarial-document"), approvalRuleId: expectedRuleId } }),
+    },
+    {
+      name: "INVENTORY_BALANCE",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.inventoryBalance.create({ data: { id: uuid("synthetic-adversarial-balance"), tenantId, companyId, inventoryLocationId: uuid(warehouseInventoryLocation.id), itemId: uuid(item.id), baseUomId: uuid(item.baseUomId), qtyOnHand: "1" } }),
+    },
+    {
+      name: "INVENTORY_MOVEMENT",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.inventoryMovement.create({ data: { id: uuid("synthetic-adversarial-movement"), tenantId, companyId, inventoryLocationId: uuid(warehouseInventoryLocation.id), itemId: uuid(item.id), movementType: "OPENING_BALANCE_IN", occurredAt: fixtureEffectiveAt, enteredQuantity: "1", enteredUomId: uuid(item.baseUomId), quantityDeltaBaseUom: "1", baseUomId: uuid(item.baseUomId), sourceDocumentType: "SyntheticAdversarial", sourceDocumentId: uuid("synthetic-adversarial-document"), sourceEventKey: "synthetic-adversarial-movement", postedByUserId: uuid(actor.id) } }),
+    },
+    {
+      name: "COMPANY_POLICY",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.companyPolicySetting.create({ data: { id: uuid("synthetic-adversarial-policy"), tenantId, companyId, key: "synthetic.adversarial", category: "INVENTORY", label: "Synthetic adversarial", description: "Rollback proof only", value: true, defaultValue: false, valueType: "BOOLEAN", sourceDecisionId: "DEC-0259" } }),
+    },
+    {
+      name: "NOTIFICATION",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.notification.create({ data: { id: uuid("synthetic-adversarial-notification"), tenantId, companyId, locationId: uuid(branchLocation.id), recipientUserId: uuid(actor.id), notificationType: "SYNTHETIC", title: "Synthetic adversarial", body: "Rollback proof only", deepLink: "/synthetic", entityType: "Synthetic", entityId: uuid("synthetic-adversarial-document"), sourceEventKey: "synthetic-adversarial-notification" } }),
+    },
+    {
+      name: "AUDIT_EVENT",
+      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      mutate: (tx) => tx.auditEvent.create({ data: { id: uuid("synthetic-adversarial-audit"), tenantId, companyId, actorUserId: uuid(actor.id), eventType: "SYNTHETIC_ADVERSARIAL", entityType: "Synthetic", entityId: uuid("synthetic-adversarial-document") } }),
+    },
+  ];
+
+  for (const adversarialCase of cases) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await adversarialCase.mutate(tx);
+        await validate(tx);
+      });
+      fail(`ADVERSARIAL_${adversarialCase.name}_ACCEPTED`);
+    } catch (error) {
+      if (!String(error).includes(adversarialCase.expected)) throw error;
+    }
   }
 }
 

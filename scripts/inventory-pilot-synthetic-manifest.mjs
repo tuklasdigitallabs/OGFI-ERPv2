@@ -228,7 +228,9 @@ export function digestSyntheticPilotManifest(manifest) { return createHash("sha2
 export function deriveSyntheticPilotUuid(logicalId) {
   id(logicalId, "logicalId");
   const hex = createHash("sha256").update(`DEC-0259:${logicalId}`, "utf8").digest("hex").slice(0, 32).split("");
-  hex[12] = "5";
+  // RFC 9562 version 8 identifies this as an application-defined SHA-256
+  // derivation rather than incorrectly presenting it as namespace UUIDv5.
+  hex[12] = "8";
   hex[16] = ["8", "9", "a", "b"][Number.parseInt(hex[16], 16) % 4];
   const value = hex.join("");
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;

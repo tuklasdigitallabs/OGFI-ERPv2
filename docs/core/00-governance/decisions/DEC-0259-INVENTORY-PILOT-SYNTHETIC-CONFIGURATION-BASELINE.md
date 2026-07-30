@@ -210,7 +210,7 @@ browser, hosted recovery, human UAT, or owner-signoff gates.
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Implement the synthetic manifest, disposable fixture, validator, canonical digest, exact-match proof, and adversarial cases. | Engineering / QA | Current local-only baseline slice | Implemented locally; allowed-model independent re-review pending |
+| Implement the synthetic manifest, disposable fixture, validator, canonical digest, exact-match proof, and adversarial cases. | Engineering / QA | Current local-only baseline slice | Complete locally; independent re-review GO on 2026-07-30 |
 | Confirm the exact warehouse, branches, high-risk SKU cohort, named actors, roles, approvers, thresholds, evidence rules, count cadence, tolerances, opening values, and owners. | Product / Operations / Inventory / Security | Before operational configuration | Blocking |
 | Define and enforce operational pilot SKU scope without treating presentation classification as authorization. | Product / Architecture / Security / Engineering | Before shadow-to-operational promotion | Blocking |
 | Complete the required transfer and ordinary stock-count approval-family decision and runtime coverage. | Product / Operations / Controls / Engineering | Before operational routing activation | Blocking |
@@ -237,15 +237,23 @@ browser, hosted recovery, human UAT, or owner-signoff gates.
   parent-confirmed hybrid conclusion on 2026-07-30. Code Spark and GPT-5.4-mini
   were unavailable in the active toolset, so the council used the closest
   permitted GPT-5.6 role fallbacks without weakening any hard gate.
-- Local implementation evidence on 2026-07-30: 13 manifest/canonicalization/
+- Local implementation evidence on 2026-07-30: 14 manifest/canonicalization/
   boundary cases passed; a fresh positively attested PostgreSQL 17 database
   applied all 141 migrations and passed seed, role-contract, authentication-
   throttle, and 17 append-only-history cases; repeat provisioning and exact
   validation proved 10 actors, 10 roles, 32 scopes, and eight sealed test routes;
-  an injected extra role assignment was rejected and rolled back; no synthetic
-  inventory movement, balance, or company-policy row existed; teardown left only
-  the PostgreSQL template databases. This evidence remains test-only and awaits
-  independent re-review by an owner-permitted Code Spark or GPT-5.4-mini agent.
+  transactional probes rejected and rolled back extra role/scope/permission/rule/
+  route state plus operational transfer, approval-instance, inventory-balance,
+  inventory-movement, company-policy, notification, and audit rows. Exact zero-
+  state assertions also covered procurement, receiving, transfers, counts,
+  wastage, adjustments, approval instances, notifications, audit, inventory, and
+  policy. Teardown left only the PostgreSQL template databases and the temporary
+  Docker container was removed.
+- Independent QA re-review returned **GO** for closing this synthetic baseline
+  only, with no Blocking or High findings. Code Spark and GPT-5.4-mini were not
+  selectable, so the owner-authorized GPT-5.6 fallback was used and recorded.
+  The review grants no operational configuration, approval-runtime activation,
+  stock authority, UAT credit, deployment authority, or Phase I completion.
 
 ## Supersession
 

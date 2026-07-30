@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { inflateRawSync } from "node:zlib";
 
-import { extractApprovalRuleCatalogTransactionTypes, findForbiddenSyntheticManifestImports } from "./inventory-pilot-synthetic-boundary.mjs";
+import { assertSafeSyntheticFixtureDatabaseName, extractApprovalRuleCatalogTransactionTypes, findForbiddenSyntheticManifestImports } from "./inventory-pilot-synthetic-boundary.mjs";
 import { canonicalizeSyntheticPilotManifest, deriveSyntheticPilotUuid, digestSyntheticPilotManifest, validateSyntheticPilotManifest, verifySyntheticPilotManifestEnvelope } from "./inventory-pilot-synthetic-manifest.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -138,9 +138,23 @@ test("the selected-item cap is explicitly a synthetic test resource bound", () =
   assert.throws(() => validateSyntheticPilotManifest(aboveBound), /SYNTHETIC_TEST_RESOURCE_BOUND_5/);
 });
 
-test("logical fixture identifiers derive stable RFC-compatible UUIDs", () => {
-  assert.equal(deriveSyntheticPilotUuid("synthetic-tenant-001"), "f5273e87-5d7a-5a12-806a-daa292b16b28");
-  assert.match(deriveSyntheticPilotUuid("synthetic-company-001"), /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+test("logical fixture identifiers derive stable application-defined version 8 UUIDs", () => {
+  assert.equal(deriveSyntheticPilotUuid("synthetic-tenant-001"), "f5273e87-5d7a-8a12-806a-daa292b16b28");
+  assert.match(deriveSyntheticPilotUuid("synthetic-company-001"), /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.notEqual(deriveSyntheticPilotUuid("synthetic-company-001"), deriveSyntheticPilotUuid("synthetic-company-002"));
   assert.throws(() => deriveSyntheticPilotUuid("real-company"), /stable synthetic/);
+});
+
+test("rejects every production-like disposable fixture database name", () => {
+  assert.equal(
+    assertSafeSyntheticFixtureDatabaseName("ogfi_test_inventory_0123456789abcdef"),
+    "ogfi_test_inventory_0123456789abcdef",
+  );
+  for (const token of ["prod", "production", "live", "shared", "stage", "staging", "pilot", "uat"]) {
+    assert.throws(
+      () => assertSafeSyntheticFixtureDatabaseName(`ogfi_test_${token}_0123456789abcdef`),
+      /DATABASE_NAME_UNSAFE/,
+      token,
+    );
+  }
 });
