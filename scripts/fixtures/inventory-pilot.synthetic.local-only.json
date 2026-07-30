@@ -1,0 +1,106 @@
+{
+  "digest": "920b4503fcb64db6481e61bc1d1676b2b61fea43fe1dec558c2ce3a3b93342ec",
+  "manifest": {
+    "schemaVersion": 1,
+    "authority": "TEST_ONLY",
+    "environment": "DISPOSABLE_LOCAL",
+    "sourceDecisionId": "DEC-0259",
+    "classification": {
+      "synthetic": true,
+      "fixtureOnly": true,
+      "localOnly": true,
+      "disposable": true,
+      "nonAuthoritative": true
+    },
+    "resourceBounds": {
+      "selectedItems": "SYNTHETIC_TEST_RESOURCE_BOUND_5",
+      "identifierContract": "DETERMINISTIC_LOGICAL_ID_TO_UUID"
+    },
+    "scope": {
+      "tenant": { "id": "synthetic-tenant-001" },
+      "company": { "id": "synthetic-company-001", "tenantId": "synthetic-tenant-001" },
+      "brand": { "id": "synthetic-brand-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001" },
+      "physicalLocations": [
+        { "id": "synthetic-warehouse-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "brandId": null, "kind": "MAIN_WAREHOUSE" },
+        { "id": "synthetic-branch-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "brandId": "synthetic-brand-001", "kind": "BRANCH" },
+        { "id": "synthetic-branch-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "brandId": "synthetic-brand-001", "kind": "BRANCH" }
+      ],
+      "inventoryLocations": [
+        { "id": "synthetic-inventory-location-warehouse-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "locationId": "synthetic-warehouse-001" },
+        { "id": "synthetic-inventory-location-branch-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "locationId": "synthetic-branch-001" },
+        { "id": "synthetic-inventory-location-branch-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "locationId": "synthetic-branch-002" }
+      ],
+      "adjacentDenialControls": {
+        "tenant": { "id": "synthetic-denial-tenant-001" },
+        "company": { "id": "synthetic-denial-company-001", "tenantId": "synthetic-tenant-001" },
+        "location": { "id": "synthetic-denial-location-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-denial-company-001", "kind": "BRANCH" }
+      }
+    },
+    "inventoryCatalog": {
+      "suppliers": [
+        { "id": "synthetic-supplier-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001" },
+        { "id": "synthetic-supplier-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001" }
+      ],
+      "category": { "id": "synthetic-category-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001" },
+      "unitsOfMeasure": [
+        { "id": "synthetic-uom-base-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "kind": "BASE" },
+        { "id": "synthetic-uom-purchase-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "kind": "PURCHASE" }
+      ],
+      "selectedItems": [
+        { "id": "synthetic-item-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "categoryId": "synthetic-category-001", "baseUomId": "synthetic-uom-base-001" },
+        { "id": "synthetic-item-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "categoryId": "synthetic-category-001", "baseUomId": "synthetic-uom-base-001" }
+      ],
+      "conversions": [
+        { "id": "synthetic-conversion-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "itemId": "synthetic-item-001", "baseUomId": "synthetic-uom-base-001", "purchaseUomId": "synthetic-uom-purchase-001" },
+        { "id": "synthetic-conversion-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "itemId": "synthetic-item-002", "baseUomId": "synthetic-uom-base-001", "purchaseUomId": "synthetic-uom-purchase-001" }
+      ],
+      "supplierItems": [
+        { "id": "synthetic-supplier-item-001", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "supplierId": "synthetic-supplier-001", "itemId": "synthetic-item-001", "purchaseUomId": "synthetic-uom-purchase-001", "conversionId": "synthetic-conversion-001" },
+        { "id": "synthetic-supplier-item-002", "tenantId": "synthetic-tenant-001", "companyId": "synthetic-company-001", "supplierId": "synthetic-supplier-002", "itemId": "synthetic-item-002", "purchaseUomId": "synthetic-uom-purchase-001", "conversionId": "synthetic-conversion-002" }
+      ]
+    },
+    "accessGraph": {
+      "roles": [
+        { "id": "synthetic-role-purchasing-requester", "permissionAllowlist": ["purchasing.purchase_request.create", "purchasing.purchase_request.submit", "purchasing.quote.manage", "purchasing.purchase_order.create", "purchasing.purchase_order.submit", "purchasing.purchase_order.close_remaining", "purchasing.purchase_order.amend"] },
+        { "id": "synthetic-role-purchasing-approver", "permissionAllowlist": ["purchasing.purchase_request.approve", "purchasing.quote.approve", "purchasing.purchase_order.approve"] },
+        { "id": "synthetic-role-purchasing-poster", "permissionAllowlist": ["purchasing.purchase_order.issue"] },
+        { "id": "synthetic-role-inventory-requester", "permissionAllowlist": ["inventory.wastage.create", "inventory.wastage.submit", "inventory.stock_adjustment.create", "inventory.stock_adjustment.submit", "inventory.stock_count.create", "inventory.stock_count.enter", "inventory.stock_count.submit"] },
+        { "id": "synthetic-role-inventory-approver", "permissionAllowlist": ["inventory.wastage.approve", "inventory.stock_adjustment.approve", "inventory.stock_count.review"] },
+        { "id": "synthetic-role-inventory-poster", "permissionAllowlist": ["inventory.wastage.post", "inventory.stock_adjustment.post", "inventory.receiving.post"] },
+        { "id": "synthetic-role-transfer-dispatcher", "permissionAllowlist": ["inventory.transfer.dispatch"] },
+        { "id": "synthetic-role-transfer-receiver", "permissionAllowlist": ["inventory.transfer.receive"] },
+        { "id": "synthetic-role-count-performer", "permissionAllowlist": ["inventory.stock_count.enter", "inventory.stock_count.submit"] },
+        { "id": "synthetic-role-read-only-auditor", "permissionAllowlist": ["inventory.balance.view", "inventory.ledger.view", "inventory.transfer.view", "inventory.stock_count.view", "inventory.wastage.view", "inventory.stock_adjustment.view", "inventory.receiving.view", "purchasing.purchase_order.view"] }
+      ],
+      "actors": [
+        { "id": "synthetic-actor-purchasing-requester", "roleIds": ["synthetic-role-purchasing-requester"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001", "synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-inventory-requester", "roleIds": ["synthetic-role-inventory-requester"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001", "synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-approver", "roleIds": ["synthetic-role-purchasing-approver", "synthetic-role-inventory-approver"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001", "synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-poster", "roleIds": ["synthetic-role-purchasing-poster", "synthetic-role-inventory-poster"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001", "synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-transfer-dispatcher", "roleIds": ["synthetic-role-transfer-dispatcher"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001"] },
+        { "id": "synthetic-actor-transfer-receiver", "roleIds": ["synthetic-role-transfer-receiver"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-count-performer", "roleIds": ["synthetic-role-count-performer"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-read-only-auditor", "roleIds": ["synthetic-role-read-only-auditor"], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-warehouse-001", "synthetic-branch-001", "synthetic-branch-002"] },
+        { "id": "synthetic-actor-no-role", "roleIds": [], "companyIds": ["synthetic-company-001"], "locationIds": ["synthetic-branch-001"] },
+        { "id": "synthetic-actor-out-of-scope", "roleIds": ["synthetic-role-read-only-auditor"], "companyIds": ["synthetic-denial-company-001"], "locationIds": ["synthetic-denial-location-001"] }
+      ]
+    },
+    "approvalExpectations": {
+      "persistedKeys": ["PURCHASE_REQUEST", "QuotationRecommendation", "PurchaseOrder", "PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "WastageReport", "StockAdjustment", "StockCountVarianceAdjustment"],
+      "missingConceptualFamilies": [
+        { "conceptualFamily": "TRANSFER_REQUEST", "persistedKey": null },
+        { "conceptualFamily": "ORDINARY_STOCK_COUNT", "persistedKey": null }
+      ],
+      "familyDutyMappings": [
+        { "persistedKey": "PURCHASE_REQUEST", "requesterActorId": "synthetic-actor-purchasing-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "QuotationRecommendation", "requesterActorId": "synthetic-actor-purchasing-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "PurchaseOrder", "requesterActorId": "synthetic-actor-purchasing-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "PurchaseOrderBalanceClosure", "requesterActorId": "synthetic-actor-purchasing-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "PurchaseOrderAmendment", "requesterActorId": "synthetic-actor-purchasing-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "WastageReport", "requesterActorId": "synthetic-actor-inventory-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "StockAdjustment", "requesterActorId": "synthetic-actor-inventory-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] },
+        { "persistedKey": "StockCountVarianceAdjustment", "requesterActorId": "synthetic-actor-inventory-requester", "approverActorId": "synthetic-actor-approver", "posterActorId": "synthetic-actor-poster", "prohibitedOverlaps": ["requester:approver", "requester:poster", "approver:poster"] }
+      ]
+    }
+  }
+}

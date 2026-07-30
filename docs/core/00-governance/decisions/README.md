@@ -97,6 +97,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0256-RELEASE-ARCHIVE-SOURCE-HARDENING-AND-EXTRACTION-DEFERRAL.md` — harden only the source-only `release-archive/v1` producer/verifier with trusted Git/repository, bounded resources, secure staging, and hermetic CI controls; archive extraction, Docker context, and build require a separate decision and remain unauthorized
 - `DEC-0257-EXACT-CANDIDATE-AUTHORIZATION-REGRESSION-REPAIR.md` — company-local Core Admin audit reads split from tenant-wide live-role authorization, truthful Approval Rule `TRUNCATE` privilege expectation, and fixture-only User Access repair with audit history, grants, revocation, and non-enumeration preserved
 - [`DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md`](DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md) — bounded connected Phase I inventory-control pilot for one warehouse, one or two branches, and selected high-risk SKUs; shadow UAT first and operational stock-of-record use only after exact-candidate, cutover, recovery, and human signoff gates
+- [`DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md`](DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md) — synthetic local-only manifest, positively attested disposable fixture, and canonical exact/adversarial evidence without operational policy or authority
 
 ## Suggested future decision records
 

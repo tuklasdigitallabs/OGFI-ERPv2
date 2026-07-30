@@ -221,6 +221,28 @@ Until confirmed, the DEC-0246 façade and executor remain non-operational,
 `APPROVAL_ROUTING_V1_ENABLED` remains false, and neither maintenance execution nor
 `DRAIN_CLEAN` is authorized.
 
+20. **Inventory Pilot transfer and ordinary-count approval semantics (`DEC-0258`, open):**
+Before adding either family to the normalized approval catalog or activating pilot
+routing, authorized Operations, Inventory, Product, and Security owners must
+confirm: (a) whether every Transfer Request requires approval or which
+company/location/value/risk policy makes approval required; (b) whether ordinary
+Stock Count submission requires a distinct approval instance, manager review is
+the approval authority, or only material variance/correction requires normalized
+approval; (c) the exact persisted transaction keys, source statuses, submission,
+return, rejection, cancellation, approval, dispatch/review, and resubmission
+transitions; (d) the named or role-based approver eligibility, company/location
+scope, no-self/prohibited-actor rules, and separation from dispatch, receipt,
+count entry, variance approval, and posting; and (e) compatibility treatment for
+existing `REQUESTED`, `SUBMITTED`, `REVIEWED`, in-flight, and terminal records.
+Current Transfer submission moves directly from `DRAFT` to `REQUESTED`, while
+ordinary Stock Count submission moves from `IN_PROGRESS` to `SUBMITTED` and a
+separate permission-gated manager review moves it to `REVIEWED`; neither creates
+a normalized approval instance. `StockCountVarianceAdjustment` is a different,
+already-cataloged correction family and must not be treated as ordinary count
+approval. Until this policy is confirmed through the deliberation protocol, no
+new transaction key, producer, source transition, catalog option, activation, or
+pilot-readiness credit is authorized.
+
 ## 6. Change request format
 
 Every policy change request should include:
