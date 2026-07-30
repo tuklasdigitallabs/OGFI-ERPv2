@@ -202,7 +202,7 @@ describe("controlled evidence database authorization matrix", () => {
     });
 
     await prisma.supplier.create({ data: { id: ids.supplier, tenantId: ids.tenant, companyId: ids.company, supplierCode: `EV-S-${suffix}`, legalName: `Evidence Supplier ${suffix}` } });
-    await prisma.purchaseRequest.create({ data: { id: ids.purchaseRequest, publicReference: `EV-PR-${suffix}`, tenantId: ids.tenant, companyId: ids.company, requestLocationId: ids.location, requesterUserId: ids.user, requiredDate: fixtureDate, urgency: "NORMAL", justification: "Controlled quotation evidence matrix", status: "APPROVED" } });
+    await prisma.purchaseRequest.create({ data: { id: ids.purchaseRequest, publicReference: `EV-PR-${suffix}`, tenantId: ids.tenant, companyId: ids.company, requestLocationId: ids.adjacentLocation, requesterUserId: ids.user, requiredDate: fixtureDate, urgency: "NORMAL", justification: "Controlled quotation evidence matrix", status: "APPROVED" } });
     await prisma.quotationRequest.create({ data: { id: ids.quotationRequest, tenantId: ids.tenant, companyId: ids.company, publicReference: `EV-QR-${suffix}`, purchaseRequestId: ids.purchaseRequest, status: "OPEN", requiredDate: fixtureDate, createdByUserId: ids.user } });
     await prisma.supplierQuotation.create({ data: { id: ids.supplierQuotation, quotationRequestId: ids.quotationRequest, tenantId: ids.tenant, companyId: ids.company, supplierId: ids.supplier, quoteReference: `EV-SQ-${suffix}`, quoteDate: fixtureDate, currencyCode: "PHP", totalAmount: 1 } });
     remember("SUPPLIER_QUOTATION", ids.supplierQuotation);
@@ -377,6 +377,12 @@ describe("controlled evidence database authorization matrix", () => {
           sourceRecordId: sourceIds.get(sourceType)!,
         }),
         `${sourceType} list`,
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+      await expect(
+        downloadControlledEvidenceAttachmentForSession(session, {
+          controlledEvidenceAttachmentId: controlledLinkIds.get(sourceType)!,
+        }),
+        `${sourceType} download`,
       ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
     }
   });
