@@ -79,6 +79,95 @@ describe("approval inbox controls", () => {
     ]);
   });
 
+  test("DEC-0260 terminal adapters use normalized authority and preserve inventory review boundaries", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+
+    expect(serviceSource).toContain("approveInventoryTransferApproval");
+    expect(serviceSource).toContain("closeInventoryTransferApproval");
+    expect(serviceSource).toContain("approveStockCountAttemptReviewApproval");
+    expect(serviceSource).toContain("requireNormalizedTerminalApprovalAuthority");
+    expect(serviceSource).toContain("lockNormalizedApprovalLifecycleGraph");
+    expect(serviceSource).toContain("assertExactTerminalApprovalScopeGroups");
+    expect(serviceSource).toContain("assertInventoryTransferTerminalIntentLineage");
+    expect(serviceSource).toContain("assertStockCountAttemptReviewTerminalIntentLineage");
+    expect(serviceSource).toContain("INVENTORY_TRANSFER_APPROVAL_INTENT_NOT_FOUND");
+    expect(serviceSource).toContain("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_INTENT_NOT_FOUND");
+    expect(serviceSource).toContain(
+      "INVENTORY_PILOT_APPROVAL_ERRORS.CONFIGURATION_STALE"
+    );
+    expect(serviceSource).toContain("permissions.transferApprove");
+    expect(serviceSource).toContain("permissions.stockCountReview");
+    expect(serviceSource).toContain("STOCK_COUNT_ATTEMPT_REVIEW_RETURN_NOT_SUPPORTED");
+    expect(serviceSource).toContain("STOCK_COUNT_ATTEMPT_REVIEW_REJECT_NOT_SUPPORTED");
+    expect(serviceSource).toContain('status: "REQUESTED"');
+    expect(serviceSource).toContain('status: "REVIEWED"');
+    expect(serviceSource).toContain("noInventoryMovement: true");
+    expect(serviceSource).toContain("noStockAdjustment: true");
+    expect(serviceSource).toContain("recordApprovalOutcomeNotification");
+  });
+
+  test("DEC-0261 terminal adapters lock the exact typed intent before graph mutation", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+    const transferApprove = extractFunctionSource(
+      serviceSource,
+      "approveInventoryTransferApproval"
+    );
+    const transferClose = extractFunctionSource(
+      serviceSource,
+      "closeInventoryTransferApproval"
+    );
+    const countApprove = extractFunctionSource(
+      serviceSource,
+      "approveStockCountAttemptReviewApproval"
+    );
+
+    for (const handler of [transferApprove, transferClose]) {
+      expect(handler).toContain("assertInventoryTransferTerminalIntentLineage");
+      expect(handler.indexOf("assertInventoryTransferTerminalIntentLineage")).toBeLessThan(
+        handler.indexOf("lockNormalizedApprovalLifecycleGraph")
+      );
+    }
+    expect(countApprove).toContain("assertStockCountAttemptReviewTerminalIntentLineage");
+    expect(countApprove.indexOf("assertStockCountAttemptReviewTerminalIntentLineage")).toBeLessThan(
+      countApprove.indexOf("lockNormalizedApprovalLifecycleGraph")
+    );
+    expect(serviceSource).toContain('FROM "InventoryTransferApprovalSubmissionIntent" intent');
+    expect(serviceSource).toContain('FROM "StockCountReviewSubmissionIntent" intent');
+    expect(serviceSource).not.toContain("FOR UPDATE OF intent");
+    expect(serviceSource).toContain('stage: "REVALIDATE"');
+  });
+
+  test("inventory-pilot terminal residue checks keep the immutable ledger read-only", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+    const transferSource = extractFunctionSource(
+      serviceSource,
+      "lockInventoryTransferTerminalApprovalSource"
+    );
+    const countSource = extractFunctionSource(
+      serviceSource,
+      "lockStockCountAttemptReviewSource"
+    );
+
+    for (const source of [transferSource, countSource]) {
+      expect(source).toContain('FROM "InventoryMovement" movement');
+      expect(source).toContain('SELECT 1 AS "exists" FROM "InventoryMovement" movement');
+      expect(source).toContain("LIMIT 1");
+      expect(source).not.toContain("FOR SHARE OF movement");
+      expect(source).toContain("append-only");
+      expect(source).toContain("scoped,");
+      expect(source).toContain("read-only");
+    }
+    expect(transferSource.indexOf("FOR UPDATE OF t")).toBeLessThan(
+      transferSource.indexOf('FROM "InventoryMovement" movement')
+    );
+    expect(countSource.indexOf("FOR UPDATE OF session")).toBeLessThan(
+      countSource.indexOf('FROM "InventoryMovement" movement')
+    );
+    expect(countSource.indexOf("FOR UPDATE OF attempt")).toBeLessThan(
+      countSource.indexOf('FROM "InventoryMovement" movement')
+    );
+  });
+
   test("purchase request and order approvals project warning-mode budget commitments", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
 

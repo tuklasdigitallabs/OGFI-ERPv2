@@ -50,6 +50,18 @@ export const approvalRuleCatalog = [
     routeKeys: defaultRoute,
   },
   {
+    transactionType: "InventoryTransfer",
+    label: "Inventory Transfer",
+    requiredPermissionCode: permissions.transferApprove,
+    routeKeys: defaultRoute,
+  },
+  {
+    transactionType: "StockCountAttemptReview",
+    label: "Stock Count Review",
+    requiredPermissionCode: permissions.stockCountReview,
+    routeKeys: defaultRoute,
+  },
+  {
     transactionType: "WastageReport",
     label: "Wastage Report",
     requiredPermissionCode: permissions.wastageApprove,

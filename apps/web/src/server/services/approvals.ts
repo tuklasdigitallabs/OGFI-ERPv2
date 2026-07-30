@@ -62,6 +62,11 @@ import {
   assertPaymentRequestApprovalPolicyConfirmed
 } from "./approvalDecisionMode";
 import { acquireApprovalProducerBarrierShared } from "./approvalProducerBarrier";
+import {
+  classifyInventoryTransferForPilotApproval,
+  classifyStockCountAttemptForPilotApproval,
+  INVENTORY_PILOT_APPROVAL_ERRORS
+} from "./inventoryPilotApprovalPolicy";
 
 type LockedPurchaseRequestApprovalSource = {
   id: string;
@@ -7326,6 +7331,16 @@ export async function approveApproval(formData: FormData) {
     return;
   }
 
+  if (approval.documentType === "InventoryTransfer") {
+    await approveInventoryTransferApproval(formData);
+    return;
+  }
+
+  if (approval.documentType === "StockCountAttemptReview") {
+    await approveStockCountAttemptReviewApproval(formData);
+    return;
+  }
+
   if (approval.documentType === "BudgetRevision") {
     await approveBudgetRevision(formData);
     return;
@@ -7458,6 +7473,19 @@ export async function returnApproval(formData: FormData) {
       "stock_adjustment.returned"
     );
     return;
+  }
+
+  if (approval.documentType === "InventoryTransfer") {
+    await closeInventoryTransferApproval(
+      formData,
+      "RETURNED",
+      "inventory_transfer.returned"
+    );
+    return;
+  }
+
+  if (approval.documentType === "StockCountAttemptReview") {
+    throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_RETURN_NOT_SUPPORTED");
   }
 
   if (approval.documentType === "BudgetRevision") {
@@ -7622,6 +7650,19 @@ export async function rejectApproval(formData: FormData) {
       "stock_adjustment.rejected"
     );
     return;
+  }
+
+  if (approval.documentType === "InventoryTransfer") {
+    await closeInventoryTransferApproval(
+      formData,
+      "REJECTED",
+      "inventory_transfer.rejected"
+    );
+    return;
+  }
+
+  if (approval.documentType === "StockCountAttemptReview") {
+    throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_REJECT_NOT_SUPPORTED");
   }
 
   if (approval.documentType === "BudgetRevision") {
@@ -11772,5 +11813,802 @@ async function closeStockAdjustmentWithDecision(
         }
       }
     });
+  });
+}
+
+type PendingTerminalApproval = {
+  id: string;
+  documentId: string;
+  currentStepOrder: number | null;
+  steps: Array<{ id: string; stepOrder: number }>;
+};
+
+async function findActionableTerminalApproval(
+  session: SessionContext,
+  approvalInstanceId: string,
+  documentType: "InventoryTransfer" | "StockCountAttemptReview"
+) {
+  const approval = await prisma.approvalInstance.findFirst({
+    where: {
+      id: approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType,
+      status: "PENDING"
+    },
+    select: {
+      id: true,
+      documentId: true,
+      currentStepOrder: true,
+      steps: {
+        where: { status: "PENDING" },
+        select: { id: true, stepOrder: true },
+        take: 1
+      }
+    }
+  }) as PendingTerminalApproval | null;
+  const step = approval?.steps[0];
+  if (!approval || !step || approval.currentStepOrder !== step.stepOrder) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+  return { approval, step };
+}
+
+function requireNormalizedTerminalApprovalAuthority(
+  family: "InventoryTransfer" | "StockCountAttemptReview"
+) {
+  // These DEC-0260 producers are normalized-v1 only. A disabled routing
+  // runtime must fail closed rather than quietly consulting legacy authority.
+  if (!normalizedApprovalRoutingEnabled()) {
+    throw new Error(
+      family === "InventoryTransfer"
+        ? "INVENTORY_TRANSFER_APPROVAL_ROUTING_V1_REQUIRED"
+        : "STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_ROUTING_V1_REQUIRED"
+    );
+  }
+}
+
+async function assertExactTerminalApprovalScopeGroups(
+  tx: TransactionClient,
+  input: {
+    approvalInstanceStepId: string;
+    companyId: string;
+    expectedLocationIds: string[];
+  }
+) {
+  const rows = await tx.$queryRaw<Array<{
+    groupOrder: number;
+    targetMatchMode: string;
+    scopeType: string;
+    companyId: string;
+    brandId: string | null;
+    locationId: string | null;
+  }>>(Prisma.sql`
+    SELECT scope_group."groupOrder", scope_group."targetMatchMode"::text AS "targetMatchMode",
+           target."scopeType"::text AS "scopeType", target."companyId",
+           target."brandId", target."locationId"
+      FROM "ApprovalInstanceStepScopeGroup" scope_group
+      JOIN "ApprovalInstanceStepScopeTarget" target
+        ON target."scopeGroupId" = scope_group.id
+     WHERE scope_group."approvalInstanceStepId" = ${input.approvalInstanceStepId}::uuid
+     ORDER BY scope_group."groupOrder" ASC, target.id ASC
+     FOR UPDATE OF scope_group, target
+  `);
+  const expected = [...input.expectedLocationIds];
+  if (
+    rows.length !== expected.length ||
+    rows.some((row, index) =>
+      row.groupOrder !== index + 1 ||
+      row.targetMatchMode !== "ANY" ||
+      row.scopeType !== "LOCATION" ||
+      row.companyId !== input.companyId ||
+      row.brandId !== null ||
+      row.locationId !== expected[index]
+    )
+  ) {
+    throw new Error("APPROVAL_SOURCE_SCOPE_MISMATCH");
+  }
+}
+
+type LockedTerminalTransfer = {
+  id: string;
+  publicReference: string;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  requestedByUserId: string;
+  status: string;
+  version: number;
+  dispatchedAt: Date | null;
+  receivedAt: Date | null;
+  dispatchedByUserId: string | null;
+  receivedByUserId: string | null;
+};
+
+type LockedTerminalTransferLine = {
+  id: string;
+  itemId: string;
+  sourceInventoryLocationId: string;
+  destinationInventoryLocationId: string;
+  dispatchedQty: unknown;
+  receivedQty: unknown;
+  rejectedQty: unknown;
+  damagedQty: unknown;
+  discrepancyQty: unknown;
+};
+
+const inventoryPilotTerminalIntentErrors = {
+  transferNotFound: "INVENTORY_TRANSFER_APPROVAL_INTENT_NOT_FOUND",
+  transferLineageConflict: "INVENTORY_TRANSFER_APPROVAL_INTENT_LINEAGE_CONFLICT",
+  stockCountNotFound: "STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_INTENT_NOT_FOUND",
+  stockCountLineageConflict:
+    "STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_INTENT_LINEAGE_CONFLICT"
+} as const;
+
+async function lockInventoryTransferTerminalApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  transferId: string
+) {
+  const rows = await tx.$queryRaw<LockedTerminalTransfer[]>(Prisma.sql`
+    SELECT t.id, t."publicReference", t."sourceLocationId", t."destinationLocationId",
+           t."requestedByUserId", t.status, t.version, t."dispatchedAt",
+           t."receivedAt", t."dispatchedByUserId", t."receivedByUserId"
+      FROM "InventoryTransfer" t
+     WHERE t.id = ${transferId}::uuid
+       AND t."tenantId" = ${session.context.tenantId}::uuid
+       AND t."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF t
+  `);
+  const transfer = rows[0];
+  if (!transfer || transfer.status !== "PENDING_APPROVAL") {
+    throw new Error("INVENTORY_TRANSFER_NOT_PENDING_APPROVAL");
+  }
+  const endpointIds = [transfer.sourceLocationId, transfer.destinationLocationId].sort();
+  if (endpointIds[0] === endpointIds[1]) {
+    throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
+  }
+  const locations = await tx.$queryRaw<Array<{ id: string; name: string; status: string }>>(Prisma.sql`
+    SELECT location.id, location.name, location.status::text AS status
+      FROM "Location" location
+     WHERE location.id IN (${Prisma.join(endpointIds.map((id) => Prisma.sql`${id}::uuid`))})
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+     ORDER BY location.id ASC
+     FOR SHARE OF location
+  `);
+  if (locations.length !== 2 || locations.some((location) => location.status !== "ACTIVE")) {
+    throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
+  }
+  const lines = await tx.$queryRaw<LockedTerminalTransferLine[]>(Prisma.sql`
+    SELECT line.id, line."itemId", line."sourceInventoryLocationId", line."destinationInventoryLocationId",
+           line."dispatchedQty", line."receivedQty", line."rejectedQty",
+           line."damagedQty", line."discrepancyQty"
+      FROM "InventoryTransferLine" line
+     WHERE line."inventoryTransferId" = ${transfer.id}::uuid
+       AND line."tenantId" = ${session.context.tenantId}::uuid
+       AND line."companyId" = ${session.context.companyId}::uuid
+     ORDER BY line."lineNumber" ASC, line.id ASC
+     FOR UPDATE OF line
+  `);
+  if (lines.length === 0 || lines.some((line) => [
+    line.dispatchedQty,
+    line.receivedQty,
+    line.rejectedQty,
+    line.damagedQty,
+    line.discrepancyQty
+  ].some((quantity) => Number(quantity) !== 0))) {
+    throw new Error("TRANSFER_TERMINAL_APPROVAL_RESIDUE_CONFLICT");
+  }
+  const inventoryLocationIds = [...new Set(lines.flatMap((line) => [
+    line.sourceInventoryLocationId,
+    line.destinationInventoryLocationId
+  ]))].sort();
+  const inventoryLocations = await tx.$queryRaw<Array<{ id: string; locationId: string; status: string }>>(Prisma.sql`
+    SELECT inventory_location.id, inventory_location."locationId",
+           inventory_location.status::text AS status
+      FROM "InventoryLocation" inventory_location
+     WHERE inventory_location.id IN (${Prisma.join(inventoryLocationIds.map((id) => Prisma.sql`${id}::uuid`))})
+       AND inventory_location."tenantId" = ${session.context.tenantId}::uuid
+       AND inventory_location."companyId" = ${session.context.companyId}::uuid
+     ORDER BY inventory_location.id ASC
+     FOR SHARE OF inventory_location
+  `);
+  if (
+    inventoryLocations.length !== inventoryLocationIds.length ||
+    inventoryLocations.some((location) => location.status !== "ACTIVE")
+  ) {
+    throw new Error("TRANSFER_TERMINAL_APPROVAL_SCOPE_CONFLICT");
+  }
+  const inventoryLocationById = new Map(inventoryLocations.map((location) => [location.id, location]));
+  if (lines.some((line) =>
+    inventoryLocationById.get(line.sourceInventoryLocationId)?.locationId !== transfer.sourceLocationId ||
+    inventoryLocationById.get(line.destinationInventoryLocationId)?.locationId !== transfer.destinationLocationId
+  )) {
+    throw new Error("TRANSFER_TERMINAL_APPROVAL_SCOPE_CONFLICT");
+  }
+  const [receipts, movements] = await Promise.all([
+    tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT receipt.id FROM "InventoryTransferReceipt" receipt
+       WHERE receipt."inventoryTransferId" = ${transfer.id}::uuid
+         AND receipt."tenantId" = ${session.context.tenantId}::uuid
+         AND receipt."companyId" = ${session.context.companyId}::uuid
+       ORDER BY receipt.id ASC FOR SHARE OF receipt
+    `),
+    // InventoryMovement is append-only and the restricted runtime role has
+    // SELECT, but deliberately not a row-locking privilege, on the ledger.
+    // The transfer and its lines are already locked above; every legitimate
+    // transfer posting path serializes on that source before it can create a
+    // movement. That source lock therefore makes this scoped, read-only
+    // residue check stable without attempting an impossible ledger row lock.
+    tx.$queryRaw<Array<{ exists: number }>>(Prisma.sql`
+      SELECT 1 AS "exists" FROM "InventoryMovement" movement
+       WHERE movement."sourceDocumentType" = 'InventoryTransfer'
+         AND movement."sourceDocumentId" = ${transfer.id}::uuid
+         AND movement."tenantId" = ${session.context.tenantId}::uuid
+         AND movement."companyId" = ${session.context.companyId}::uuid
+       LIMIT 1
+    `)
+  ]);
+  if (
+    receipts.length > 0 || movements.length > 0 || transfer.dispatchedAt ||
+    transfer.receivedAt || transfer.dispatchedByUserId || transfer.receivedByUserId
+  ) {
+    throw new Error("TRANSFER_TERMINAL_APPROVAL_RESIDUE_CONFLICT");
+  }
+  const sourceLocation = locations.find((location) => location.id === transfer.sourceLocationId);
+  if (!sourceLocation) throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
+  return { transfer, lines, sourceLocationName: sourceLocation.name };
+}
+
+async function assertInventoryTransferTerminalIntentLineage(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approval: PendingTerminalApproval;
+    transfer: LockedTerminalTransfer;
+    lines: readonly LockedTerminalTransferLine[];
+  }
+) {
+  const intents = await tx.$queryRaw<Array<{
+    inventoryTransferId: string;
+    sourceVersionBefore: number;
+    sourceVersionAfter: number;
+    sourceCanonicalHash: string;
+    configurationRevisionId: string;
+    configurationRevisionNumber: number;
+    configurationDigest: string;
+    activationEventId: string;
+    activationFamily: string;
+    activationStatus: string;
+    activationGeneration: number;
+    approvalInstanceId: string;
+    approvalDocumentType: string;
+  }>>(Prisma.sql`
+    SELECT intent."inventoryTransferId", intent."sourceVersionBefore", intent."sourceVersionAfter",
+           intent."sourceCanonicalHash", intent."configurationRevisionId",
+           intent."configurationRevisionNumber", intent."configurationDigest",
+           intent."activationEventId", intent."activationFamily"::text AS "activationFamily",
+           intent."activationStatus"::text AS "activationStatus", intent."activationGeneration",
+           intent."approvalInstanceId", intent."approvalDocumentType"
+      FROM "InventoryTransferApprovalSubmissionIntent" intent
+     WHERE intent."tenantId" = ${session.context.tenantId}::uuid
+       AND intent."companyId" = ${session.context.companyId}::uuid
+       AND intent."inventoryTransferId" = ${input.transfer.id}::uuid
+       AND intent."approvalInstanceId" = ${input.approval.id}::uuid
+  `);
+  const intent = intents[0];
+  if (!intent || intents.length !== 1) {
+    throw new Error(inventoryPilotTerminalIntentErrors.transferNotFound);
+  }
+  if (
+    intent.inventoryTransferId !== input.transfer.id ||
+    intent.approvalInstanceId !== input.approval.id ||
+    intent.approvalDocumentType !== "InventoryTransfer" ||
+    intent.sourceVersionBefore + 1 !== intent.sourceVersionAfter ||
+    intent.sourceVersionAfter !== input.transfer.version ||
+    !/^[a-f0-9]{64}$/.test(intent.sourceCanonicalHash) ||
+    intent.activationFamily !== "InventoryTransfer" ||
+    intent.activationStatus !== "ACTIVE" ||
+    intent.activationGeneration < 1
+  ) {
+    throw new Error(inventoryPilotTerminalIntentErrors.transferLineageConflict);
+  }
+  const attestation = await classifyInventoryTransferForPilotApproval({
+    tx,
+    stage: "REVALIDATE",
+    transfer: {
+      id: input.transfer.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      version: input.transfer.version,
+      status: input.transfer.status,
+      sourceLocationId: input.transfer.sourceLocationId,
+      destinationLocationId: input.transfer.destinationLocationId,
+      lines: input.lines.map((line) => ({
+        id: line.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        itemId: line.itemId,
+        sourceInventoryLocationId: line.sourceInventoryLocationId,
+        destinationInventoryLocationId: line.destinationInventoryLocationId
+      }))
+    }
+  });
+  if (
+    attestation.configurationRevisionId !== intent.configurationRevisionId ||
+    attestation.configurationRevisionNumber !== intent.configurationRevisionNumber ||
+    attestation.configurationDigest !== intent.configurationDigest ||
+    attestation.activationEventId !== intent.activationEventId ||
+    attestation.activationGeneration !== intent.activationGeneration
+  ) {
+    throw new Error(INVENTORY_PILOT_APPROVAL_ERRORS.CONFIGURATION_STALE);
+  }
+}
+
+async function approveInventoryTransferApproval(formData: FormData) {
+  const session = await requireSessionContext();
+  requireNormalizedTerminalApprovalAuthority("InventoryTransfer");
+  await requirePermission(session, permissions.transferApprove);
+  const values = decisionSchema.parse(Object.fromEntries(formData));
+  const { approval, step } = await findActionableTerminalApproval(
+    session, values.approvalInstanceId, "InventoryTransfer"
+  );
+  await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      documentType: "InventoryTransfer"
+    });
+    const { transfer, lines, sourceLocationName } = await lockInventoryTransferTerminalApprovalSource(tx, session, approval.documentId);
+    await requirePermission(session, permissions.transferApprove);
+    assertNotSelfApproval(transfer.requestedByUserId, session.user.id);
+    await assertInventoryTransferTerminalIntentLineage(tx, session, {
+      approval,
+      transfer,
+      lines
+    });
+    const graph = await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      approvalInstanceId: approval.id, documentType: "InventoryTransfer", documentId: transfer.id
+    });
+    if (graph.currentStepOrder !== step.stepOrder || !graph.steps.some((lockedStep) => lockedStep.id === step.id && lockedStep.status === "PENDING")) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await assertExactTerminalApprovalScopeGroups(tx, {
+      approvalInstanceStepId: step.id, companyId: session.context.companyId,
+      expectedLocationIds: [transfer.sourceLocationId, transfer.destinationLocationId]
+    });
+    const decision = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.transferApprove, locationId: transfer.sourceLocationId,
+      remarks: values.remarks, prohibitedApproverUserIds: [transfer.requestedByUserId],
+      notification: {
+        recipientUserIds: [transfer.requestedByUserId], publicReference: transfer.publicReference,
+        locationName: sourceLocationName, entityLabel: "Inventory transfer"
+      },
+      audit: {
+        eventType: "inventory_transfer.approval_step_approved", entityType: "InventoryTransfer",
+        entityId: transfer.id, metadata: { sourceMutationDeferred: true, noInventoryMovement: true }
+      }
+    });
+    if (!decision.isFinalStep) return;
+    const updated = await tx.inventoryTransfer.updateMany({
+      where: {
+        id: transfer.id, tenantId: session.context.tenantId, companyId: session.context.companyId,
+        sourceLocationId: transfer.sourceLocationId, destinationLocationId: transfer.destinationLocationId,
+        status: "PENDING_APPROVAL", version: transfer.version
+      },
+      data: { status: "REQUESTED", version: { increment: 1 } }
+    });
+    if (updated.count !== 1) throw new Error("TRANSFER_APPROVAL_SOURCE_CAS_CONFLICT");
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id,
+      eventType: "inventory_transfer.approved", entityType: "InventoryTransfer", entityId: transfer.id,
+      beforeData: { status: "PENDING_APPROVAL", version: transfer.version },
+      afterData: { status: "REQUESTED", version: transfer.version + 1 },
+      metadata: { approvalInstanceId: approval.id, remarks: values.remarks ?? null, noInventoryMovement: true, noCustodyMutation: true }
+    } });
+  });
+}
+
+async function closeInventoryTransferApproval(
+  formData: FormData,
+  status: "RETURNED" | "REJECTED",
+  eventType: string
+) {
+  const session = await requireSessionContext();
+  requireNormalizedTerminalApprovalAuthority("InventoryTransfer");
+  await requirePermission(session, permissions.transferApprove);
+  const values = remarksRequiredSchema.parse(Object.fromEntries(formData));
+  const { approval, step } = await findActionableTerminalApproval(
+    session, values.approvalInstanceId, "InventoryTransfer"
+  );
+  await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      documentType: "InventoryTransfer"
+    });
+    const { transfer, lines, sourceLocationName } = await lockInventoryTransferTerminalApprovalSource(tx, session, approval.documentId);
+    await requirePermission(session, permissions.transferApprove);
+    assertNotSelfApproval(transfer.requestedByUserId, session.user.id);
+    await assertInventoryTransferTerminalIntentLineage(tx, session, {
+      approval,
+      transfer,
+      lines
+    });
+    const graph = await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      approvalInstanceId: approval.id, documentType: "InventoryTransfer", documentId: transfer.id
+    });
+    if (graph.currentStepOrder !== step.stepOrder || !graph.steps.some((lockedStep) => lockedStep.id === step.id && lockedStep.status === "PENDING")) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await assertExactTerminalApprovalScopeGroups(tx, {
+      approvalInstanceStepId: step.id, companyId: session.context.companyId,
+      expectedLocationIds: [transfer.sourceLocationId, transfer.destinationLocationId]
+    });
+    const decision = await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.transferApprove, locationId: transfer.sourceLocationId,
+      remarks: values.remarks, prohibitedApproverUserIds: [transfer.requestedByUserId], decisionStatus: status,
+      notification: {
+        recipientUserIds: [transfer.requestedByUserId], publicReference: transfer.publicReference,
+        locationName: sourceLocationName, entityLabel: "Inventory transfer"
+      },
+      audit: { eventType, entityType: "InventoryTransfer", entityId: transfer.id }
+    });
+    const updated = await tx.inventoryTransfer.updateMany({
+      where: {
+        id: transfer.id, tenantId: session.context.tenantId, companyId: session.context.companyId,
+        sourceLocationId: transfer.sourceLocationId, destinationLocationId: transfer.destinationLocationId,
+        status: "PENDING_APPROVAL", version: transfer.version
+      },
+      data: { status, version: { increment: 1 } }
+    });
+    if (updated.count !== 1) throw new Error("TRANSFER_APPROVAL_SOURCE_CAS_CONFLICT");
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id,
+      eventType, entityType: "InventoryTransfer", entityId: transfer.id,
+      beforeData: { status: "PENDING_APPROVAL", version: transfer.version },
+      afterData: { status, version: transfer.version + 1 },
+      metadata: { approvalInstanceId: approval.id, remarks: values.remarks, actedAt: decision.actedAt, noInventoryMovement: true, noCustodyMutation: true }
+    } });
+  });
+}
+
+type LockedStockCountReviewSource = {
+  sessionId: string;
+  inventoryLocationId: string;
+  sessionStatus: string;
+  sessionVersion: number;
+  sessionCreatedByUserId: string;
+  sessionAssignedToUserId: string | null;
+  currentAttemptId: string | null;
+  attemptId: string;
+  attemptStatus: string;
+  attemptVersion: number;
+  attemptCreatedByUserId: string;
+  attemptAssignedToUserId: string | null;
+  publicReference: string;
+  locationId: string;
+  locationName: string;
+};
+
+type LockedStockCountReviewLine = {
+  id: string;
+  itemId: string;
+  inventoryLocationId: string;
+  countedByUserId: string | null;
+};
+
+async function lockStockCountAttemptReviewSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  attemptId: string
+) {
+  const sessionRows = await tx.$queryRaw<LockedStockCountReviewSource[]>(Prisma.sql`
+    SELECT session.id AS "sessionId", session."inventoryLocationId", session.status AS "sessionStatus",
+           session.version AS "sessionVersion", session."createdByUserId" AS "sessionCreatedByUserId",
+           session."assignedToUserId" AS "sessionAssignedToUserId", session."currentAttemptId",
+           attempt.id AS "attemptId", attempt.status AS "attemptStatus", attempt.version AS "attemptVersion",
+           attempt."createdByUserId" AS "attemptCreatedByUserId", attempt."assignedToUserId" AS "attemptAssignedToUserId",
+           session."publicReference", location."locationId", location_parent.name AS "locationName"
+      FROM "StockCountSession" session
+      JOIN "StockCountAttempt" attempt
+        ON attempt.id = ${attemptId}::uuid
+       AND attempt."stockCountSessionId" = session.id
+       AND attempt."tenantId" = session."tenantId"
+       AND attempt."companyId" = session."companyId"
+       AND attempt."inventoryLocationId" = session."inventoryLocationId"
+      JOIN "InventoryLocation" location
+        ON location.id = session."inventoryLocationId"
+       AND location."tenantId" = session."tenantId"
+       AND location."companyId" = session."companyId"
+      JOIN "Location" location_parent
+        ON location_parent.id = location."locationId"
+       AND location_parent."tenantId" = session."tenantId"
+       AND location_parent."companyId" = session."companyId"
+     WHERE session."tenantId" = ${session.context.tenantId}::uuid
+       AND session."companyId" = ${session.context.companyId}::uuid
+       AND session."currentAttemptId" = ${attemptId}::uuid
+     FOR UPDATE OF session
+     FOR SHARE OF location, location_parent
+  `);
+  const source = sessionRows[0];
+  if (
+    !source || source.sessionStatus !== "SUBMITTED" || source.attemptStatus !== "SUBMITTED" ||
+    source.currentAttemptId !== source.attemptId
+  ) {
+    throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_NOT_ACTIONABLE");
+  }
+  const exactAttemptRows = await tx.$queryRaw<Array<{
+    id: string;
+    stockCountSessionId: string;
+    inventoryLocationId: string;
+    status: string;
+    version: number;
+    createdByUserId: string;
+    assignedToUserId: string | null;
+  }>>(Prisma.sql`
+    SELECT attempt.id, attempt."stockCountSessionId", attempt."inventoryLocationId",
+           attempt.status, attempt.version, attempt."createdByUserId", attempt."assignedToUserId"
+      FROM "StockCountAttempt" attempt
+     WHERE attempt.id = ${source.attemptId}::uuid
+       AND attempt."stockCountSessionId" = ${source.sessionId}::uuid
+       AND attempt."tenantId" = ${session.context.tenantId}::uuid
+       AND attempt."companyId" = ${session.context.companyId}::uuid
+       AND attempt."inventoryLocationId" = ${source.inventoryLocationId}::uuid
+     FOR UPDATE OF attempt
+  `);
+  const exactAttempt = exactAttemptRows[0];
+  if (
+    !exactAttempt || exactAttempt.status !== "SUBMITTED" ||
+    exactAttempt.version !== source.attemptVersion ||
+    exactAttempt.createdByUserId !== source.attemptCreatedByUserId ||
+    exactAttempt.assignedToUserId !== source.attemptAssignedToUserId
+  ) {
+    throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_NOT_ACTIONABLE");
+  }
+  const attempts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT attempt.id FROM "StockCountAttempt" attempt
+     WHERE attempt."stockCountSessionId" = ${source.sessionId}::uuid
+       AND attempt."tenantId" = ${session.context.tenantId}::uuid
+       AND attempt."companyId" = ${session.context.companyId}::uuid
+     ORDER BY attempt."attemptNumber" ASC, attempt.id ASC
+     FOR UPDATE OF attempt
+  `);
+  if (!attempts.some((attempt) => attempt.id === source.attemptId)) {
+    throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+  }
+  const lines = await tx.$queryRaw<LockedStockCountReviewLine[]>(Prisma.sql`
+    SELECT line.id, line."itemId", line."inventoryLocationId", line."countedByUserId"
+      FROM "StockCountAttemptLine" line
+      JOIN "StockCountAttempt" attempt ON attempt.id = line."stockCountAttemptId"
+     WHERE attempt."stockCountSessionId" = ${source.sessionId}::uuid
+       AND attempt."tenantId" = ${session.context.tenantId}::uuid
+       AND attempt."companyId" = ${session.context.companyId}::uuid
+       AND line."tenantId" = ${session.context.tenantId}::uuid
+       AND line."companyId" = ${session.context.companyId}::uuid
+     ORDER BY attempt."attemptNumber" ASC, line."lineNumber" ASC, line.id ASC
+     FOR UPDATE OF attempt, line
+  `);
+  const prohibitedActorIds = new Set<string>([
+    source.sessionCreatedByUserId,
+    source.attemptCreatedByUserId
+  ]);
+  if (source.sessionAssignedToUserId) prohibitedActorIds.add(source.sessionAssignedToUserId);
+  if (source.attemptAssignedToUserId) prohibitedActorIds.add(source.attemptAssignedToUserId);
+  for (const line of lines) if (line.countedByUserId) prohibitedActorIds.add(line.countedByUserId);
+  if (prohibitedActorIds.has(session.user.id)) throw new Error("SELF_APPROVAL_BLOCKED");
+  const [adjustments, movements] = await Promise.all([
+    tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT adjustment.id FROM "StockAdjustment" adjustment
+       WHERE adjustment."tenantId" = ${session.context.tenantId}::uuid
+         AND adjustment."companyId" = ${session.context.companyId}::uuid
+         AND (adjustment."sourceStockCountSessionId" = ${source.sessionId}::uuid
+           OR adjustment."sourceStockCountAttemptId" = ${source.attemptId}::uuid)
+       ORDER BY adjustment.id ASC FOR SHARE OF adjustment
+    `),
+    // InventoryMovement is append-only and the restricted runtime role must
+    // remain unable to take a row lock on it. The session, current attempt,
+    // and attempt lines are already locked above; the stock-count posting
+    // paths serialize on those rows before creating any residue. This scoped,
+    // read-only existence check therefore preserves the terminal invariant.
+    tx.$queryRaw<Array<{ exists: number }>>(Prisma.sql`
+      SELECT 1 AS "exists" FROM "InventoryMovement" movement
+       WHERE movement."tenantId" = ${session.context.tenantId}::uuid
+         AND movement."companyId" = ${session.context.companyId}::uuid
+         AND movement."sourceDocumentId" IN (${source.sessionId}::uuid, ${source.attemptId}::uuid)
+       LIMIT 1
+    `)
+  ]);
+  if (adjustments.length > 0 || movements.length > 0) {
+    throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_POSTING_RESIDUE_CONFLICT");
+  }
+  return { source, lines, prohibitedActorIds: [...prohibitedActorIds] };
+}
+
+async function assertStockCountAttemptReviewTerminalIntentLineage(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approval: PendingTerminalApproval;
+    source: LockedStockCountReviewSource;
+    lines: readonly LockedStockCountReviewLine[];
+  }
+) {
+  const intents = await tx.$queryRaw<Array<{
+    stockCountAttemptId: string;
+    stockCountSessionId: string;
+    attemptVersionBefore: number;
+    attemptVersionAfter: number;
+    sessionVersionBefore: number;
+    sessionVersionAfter: number;
+    evidenceCanonicalHash: string;
+    configurationRevisionId: string;
+    configurationRevisionNumber: number;
+    configurationDigest: string;
+    activationEventId: string;
+    activationFamily: string;
+    activationStatus: string;
+    activationGeneration: number;
+    approvalInstanceId: string;
+    approvalDocumentType: string;
+  }>>(Prisma.sql`
+    SELECT intent."stockCountAttemptId", intent."stockCountSessionId",
+           intent."attemptVersionBefore", intent."attemptVersionAfter",
+           intent."sessionVersionBefore", intent."sessionVersionAfter",
+           intent."evidenceCanonicalHash", intent."configurationRevisionId",
+           intent."configurationRevisionNumber", intent."configurationDigest",
+           intent."activationEventId", intent."activationFamily"::text AS "activationFamily",
+           intent."activationStatus"::text AS "activationStatus", intent."activationGeneration",
+           intent."approvalInstanceId", intent."approvalDocumentType"
+      FROM "StockCountReviewSubmissionIntent" intent
+     WHERE intent."tenantId" = ${session.context.tenantId}::uuid
+       AND intent."companyId" = ${session.context.companyId}::uuid
+       AND intent."stockCountAttemptId" = ${input.source.attemptId}::uuid
+       AND intent."stockCountSessionId" = ${input.source.sessionId}::uuid
+       AND intent."approvalInstanceId" = ${input.approval.id}::uuid
+  `);
+  const intent = intents[0];
+  if (!intent || intents.length !== 1) {
+    throw new Error(inventoryPilotTerminalIntentErrors.stockCountNotFound);
+  }
+  if (
+    intent.stockCountAttemptId !== input.source.attemptId ||
+    intent.stockCountSessionId !== input.source.sessionId ||
+    intent.approvalInstanceId !== input.approval.id ||
+    intent.approvalDocumentType !== "StockCountAttemptReview" ||
+    intent.attemptVersionBefore + 1 !== intent.attemptVersionAfter ||
+    intent.sessionVersionBefore + 1 !== intent.sessionVersionAfter ||
+    intent.attemptVersionAfter !== input.source.attemptVersion ||
+    intent.sessionVersionAfter !== input.source.sessionVersion ||
+    !/^[a-f0-9]{64}$/.test(intent.evidenceCanonicalHash) ||
+    intent.activationFamily !== "StockCountAttemptReview" ||
+    intent.activationStatus !== "ACTIVE" ||
+    intent.activationGeneration < 1
+  ) {
+    throw new Error(inventoryPilotTerminalIntentErrors.stockCountLineageConflict);
+  }
+  const attestation = await classifyStockCountAttemptForPilotApproval({
+    tx,
+    stage: "REVALIDATE",
+    count: {
+      session: {
+        id: input.source.sessionId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        version: input.source.sessionVersion,
+        status: input.source.sessionStatus,
+        inventoryLocationId: input.source.inventoryLocationId,
+        locationId: input.source.locationId,
+        currentAttemptId: input.source.currentAttemptId
+      },
+      attempt: {
+        id: input.source.attemptId,
+        stockCountSessionId: input.source.sessionId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        version: input.source.attemptVersion,
+        status: input.source.attemptStatus,
+        inventoryLocationId: input.source.inventoryLocationId,
+        lines: input.lines.map((line) => ({
+          id: line.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: line.inventoryLocationId,
+          itemId: line.itemId
+        }))
+      }
+    }
+  });
+  if (
+    attestation.configurationRevisionId !== intent.configurationRevisionId ||
+    attestation.configurationRevisionNumber !== intent.configurationRevisionNumber ||
+    attestation.configurationDigest !== intent.configurationDigest ||
+    attestation.activationEventId !== intent.activationEventId ||
+    attestation.activationGeneration !== intent.activationGeneration
+  ) {
+    throw new Error(INVENTORY_PILOT_APPROVAL_ERRORS.CONFIGURATION_STALE);
+  }
+}
+
+async function approveStockCountAttemptReviewApproval(formData: FormData) {
+  const session = await requireSessionContext();
+  requireNormalizedTerminalApprovalAuthority("StockCountAttemptReview");
+  await requirePermission(session, permissions.stockCountReview);
+  const values = decisionSchema.parse(Object.fromEntries(formData));
+  const { approval, step } = await findActionableTerminalApproval(
+    session, values.approvalInstanceId, "StockCountAttemptReview"
+  );
+  await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      documentType: "StockCountAttemptReview"
+    });
+    const { source, lines, prohibitedActorIds } = await lockStockCountAttemptReviewSource(tx, session, approval.documentId);
+    await requirePermission(session, permissions.stockCountReview);
+    await assertStockCountAttemptReviewTerminalIntentLineage(tx, session, {
+      approval,
+      source,
+      lines
+    });
+    const graph = await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      approvalInstanceId: approval.id, documentType: "StockCountAttemptReview", documentId: source.attemptId
+    });
+    if (graph.currentStepOrder !== step.stepOrder || !graph.steps.some((lockedStep) => lockedStep.id === step.id && lockedStep.status === "PENDING")) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await assertExactTerminalApprovalScopeGroups(tx, {
+      approvalInstanceStepId: step.id, companyId: session.context.companyId,
+      expectedLocationIds: [source.locationId]
+    });
+    const decision = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.stockCountReview, locationId: source.locationId,
+      remarks: values.remarks, prohibitedApproverUserIds: prohibitedActorIds,
+      notification: {
+        recipientUserIds: [source.sessionCreatedByUserId, source.attemptCreatedByUserId],
+        publicReference: source.publicReference, locationName: source.locationName,
+        entityLabel: "Stock count review"
+      },
+      audit: {
+        eventType: "stock_count.attempt_review_step_approved", entityType: "StockCountAttempt",
+        entityId: source.attemptId, metadata: { sourceMutationDeferred: true, noInventoryMovement: true, noStockAdjustment: true }
+      }
+    });
+    if (!decision.isFinalStep) return;
+    const reviewedAt = decision.actedAt;
+    const attemptUpdated = await tx.stockCountAttempt.updateMany({
+      where: {
+        id: source.attemptId, stockCountSessionId: source.sessionId,
+        tenantId: session.context.tenantId, companyId: session.context.companyId,
+        inventoryLocationId: source.inventoryLocationId, status: "SUBMITTED", version: source.attemptVersion
+      },
+      data: {
+        status: "REVIEWED", reviewedAt, reviewedByUserId: session.user.id,
+        ...(values.remarks ? { reviewNotes: values.remarks } : {}), version: { increment: 1 }
+      }
+    });
+    if (attemptUpdated.count !== 1) throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+    const sessionUpdated = await tx.stockCountSession.updateMany({
+      where: {
+        id: source.sessionId, tenantId: session.context.tenantId, companyId: session.context.companyId,
+        inventoryLocationId: source.inventoryLocationId, currentAttemptId: source.attemptId,
+        status: "SUBMITTED", version: source.sessionVersion
+      },
+      data: {
+        status: "REVIEWED", reviewedAt, reviewedByUserId: session.user.id,
+        ...(values.remarks ? { reviewNotes: values.remarks } : {}), version: { increment: 1 }
+      }
+    });
+    if (sessionUpdated.count !== 1) throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id,
+      eventType: "stock_count.attempt_review_approved", entityType: "StockCountAttempt", entityId: source.attemptId,
+      beforeData: { sessionStatus: "SUBMITTED", attemptStatus: "SUBMITTED", sessionVersion: source.sessionVersion, attemptVersion: source.attemptVersion },
+      afterData: { sessionStatus: "REVIEWED", attemptStatus: "REVIEWED", sessionVersion: source.sessionVersion + 1, attemptVersion: source.attemptVersion + 1 },
+      metadata: { approvalInstanceId: approval.id, remarks: values.remarks ?? null, noInventoryMovement: true, noStockAdjustment: true }
+    } });
   });
 }

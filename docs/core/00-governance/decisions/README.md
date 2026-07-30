@@ -99,6 +99,8 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - [`DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md`](DEC-0258-INVENTORY-CONTROL-PILOT-RELEASE-SCOPE.md) — bounded connected Phase I inventory-control pilot for one warehouse, one or two branches, and selected high-risk SKUs; shadow UAT first and operational stock-of-record use only after exact-candidate, cutover, recovery, and human signoff gates
 - [`DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md`](DEC-0259-INVENTORY-PILOT-SYNTHETIC-CONFIGURATION-BASELINE.md) — synthetic local-only manifest, positively attested disposable fixture, and canonical exact/adversarial evidence without operational policy or authority
 - [`DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md`](DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md) — mandatory normalized approval for admitted pilot transfers and attempt-grained ordinary count review, with exact family keys, segregation, fail-closed scope, immutable cycles, and activation gates
+- [`DEC-0261-INVENTORY-PILOT-RELATIONAL-CLASSIFIER-ACTIVATION-AND-SUBMISSION-INTENTS.md`](DEC-0261-INVENTORY-PILOT-RELATIONAL-CLASSIFIER-ACTIVATION-AND-SUBMISSION-INTENTS.md) — sealed relational pilot revisions, exact endpoint/item classification, family-specific CAS activation events, source versions, and append-only typed approval-submission intents
+- [`DEC-0262-SUBMITTED-STOCK-COUNT-CANCELLATION-GUARD.md`](DEC-0262-SUBMITTED-STOCK-COUNT-CANCELLATION-GUARD.md) — exact additive `SUBMITTED -> CANCELLED` stock-count attempt guard exception with immutable evidence, atomic graph/session/attempt settlement, version fencing, and zero inventory movement
 
 ## Suggested future decision records
 

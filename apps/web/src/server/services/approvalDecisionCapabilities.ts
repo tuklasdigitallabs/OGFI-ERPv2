@@ -60,6 +60,18 @@ const approvalDecisionFamilyContracts = {
     rejectLabel: "Reject Purchase Order Amendment",
     supportsSupplementalEvidence: false,
   },
+  InventoryTransfer: {
+    decisions: ["APPROVE", "RETURN", "REJECT"],
+    approveLabel: "Approve Inventory Transfer",
+    rejectLabel: "Reject Inventory Transfer",
+    supportsSupplementalEvidence: false,
+  },
+  StockCountAttemptReview: {
+    decisions: ["APPROVE"],
+    approveLabel: "Approve Stock Count",
+    rejectLabel: "Reject Stock Count",
+    supportsSupplementalEvidence: false,
+  },
   WastageReport: {
     decisions: ["APPROVE", "RETURN", "REJECT"],
     approveLabel: "Approve Wastage Report",
@@ -155,7 +167,7 @@ export const canonicalApprovalDecisionCapabilities = deepFreeze(Object.fromEntri
   readonly CanonicalApprovalDecisionKind[]
 >);
 
-export const APPROVAL_DECISION_CAPABILITY_VERSION = "1";
+export const APPROVAL_DECISION_CAPABILITY_VERSION = "2";
 
 const paymentApprovalPolicyReason =
   "Approval is unavailable until Finance confirms the Payment Request invoice-eligibility and capacity policy. Return or reject remain available.";

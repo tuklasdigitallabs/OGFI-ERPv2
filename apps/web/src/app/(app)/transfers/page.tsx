@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
@@ -331,11 +332,16 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                     >
                       View Details
                     </ButtonLink>
-                    {transfer.status === "DRAFT" && canSubmitTransfers ? (
+                    {["DRAFT", "RETURNED"].includes(transfer.status) && canSubmitTransfers ? (
                       <form action={submitTransferAction}>
                         <input name="id" type="hidden" value={transfer.id} />
+                        <input
+                          name="idempotencyKey"
+                          type="hidden"
+                          value={`ui:transfer-approval:${randomUUID()}`}
+                        />
                         <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
-                          Submit Request
+                          {transfer.status === "RETURNED" ? "Resubmit Request" : "Submit Request"}
                         </button>
                       </form>
                     ) : null}

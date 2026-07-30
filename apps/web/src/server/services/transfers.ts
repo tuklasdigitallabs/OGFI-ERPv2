@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
@@ -20,6 +20,21 @@ import {
   type DashboardTaskCursor,
   type DashboardTaskFilter
 } from "./dashboardTasks";
+import { recordWorkflowNotifications } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import {
+  terminatePendingApprovalForCancellation
+} from "./approvalCancellation";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
+import {
+  classifyInventoryTransferForPilotApproval,
+  INVENTORY_PILOT_APPROVAL_ERRORS,
+  inventoryPilotCanonicalJson
+} from "./inventoryPilotApprovalPolicy";
 
 const optionalDateSchema = z
   .string()
@@ -51,7 +66,10 @@ type TransferLineDraft = {
 };
 
 const transferActionSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().uuid(),
+  // Legacy transfers do not require this field while the pilot is disabled.
+  // An admitted approval submission requires it below, after classification.
+  idempotencyKey: z.string().trim().min(16).max(200).optional()
 });
 
 const receiveTransferSchema = z.object({
@@ -196,6 +214,188 @@ type TransferReceiptHashLine = {
   evidenceReference: string | null;
 };
 
+type TransferApprovalSubmissionHashLine = {
+  id: string;
+  itemId: string;
+  sourceInventoryLocationId: string;
+  destinationInventoryLocationId: string;
+  lineNumber: number;
+  requestedQty: Prisma.Decimal;
+  uomId: string;
+  description: string;
+  notes: string | null;
+};
+
+type TransferApprovalSubmissionSource = {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  requestedByUserId: string;
+  publicReference: string;
+  transferType: string;
+  purpose: string;
+  requiredByDate: Date | null;
+  status: string;
+  version: number;
+  lines: TransferApprovalSubmissionHashLine[];
+};
+
+type LockedTransferApprovalSubmissionSource =
+  TransferApprovalSubmissionSource & { updatedAt: Date };
+
+function canonicalTransferApprovalQuantity(value: Prisma.Decimal) {
+  return value.toFixed(6);
+}
+
+/**
+ * The intent pins the editable, pre-transition source image. This deliberately
+ * excludes generated timestamps and presentation-only relations so a retry can
+ * prove the exact business source rather than an incidental database shape.
+ */
+export function inventoryTransferApprovalSourceCanonicalJson(
+  transfer: TransferApprovalSubmissionSource
+) {
+  return inventoryPilotCanonicalJson({
+    schemaVersion: 1,
+    documentType: "InventoryTransfer",
+    id: transfer.id,
+    tenantId: transfer.tenantId,
+    companyId: transfer.companyId,
+    sourceLocationId: transfer.sourceLocationId,
+    destinationLocationId: transfer.destinationLocationId,
+    requestedByUserId: transfer.requestedByUserId,
+    publicReference: transfer.publicReference,
+    transferType: transfer.transferType,
+    purpose: transfer.purpose,
+    requiredByDate: transfer.requiredByDate?.toISOString() ?? null,
+    status: transfer.status,
+    version: transfer.version,
+    lines: [...transfer.lines]
+      .sort((left, right) =>
+        left.lineNumber - right.lineNumber || left.id.localeCompare(right.id)
+      )
+      .map((line) => ({
+        id: line.id,
+        itemId: line.itemId,
+        sourceInventoryLocationId: line.sourceInventoryLocationId,
+        destinationInventoryLocationId: line.destinationInventoryLocationId,
+        lineNumber: line.lineNumber,
+        requestedQty: canonicalTransferApprovalQuantity(line.requestedQty),
+        uomId: line.uomId,
+        description: line.description,
+        notes: line.notes ?? null
+      }))
+  });
+}
+
+export function hashInventoryTransferApprovalSource(
+  transfer: TransferApprovalSubmissionSource
+) {
+  return createHash("sha256")
+    .update(inventoryTransferApprovalSourceCanonicalJson(transfer), "utf8")
+    .digest("hex");
+}
+
+export function inventoryTransferApprovalRequestCanonicalJson(input: {
+  transferId: string;
+  submitterUserId: string;
+  idempotencyKey: string;
+}) {
+  return inventoryPilotCanonicalJson({
+    schemaVersion: 1,
+    action: "inventory-transfer-approval-submit",
+    documentType: "InventoryTransfer",
+    transferId: input.transferId,
+    submitterUserId: input.submitterUserId,
+    idempotencyKey: input.idempotencyKey
+  });
+}
+
+export function hashInventoryTransferApprovalRequest(input: {
+  transferId: string;
+  submitterUserId: string;
+  idempotencyKey: string;
+}) {
+  return createHash("sha256")
+    .update(inventoryTransferApprovalRequestCanonicalJson(input), "utf8")
+    .digest("hex");
+}
+
+/**
+ * The environment switch is a denial switch, not an authorization source. If
+ * a sealed database activation is already live, a disabled process must still
+ * classify the locked source to decide whether it belongs to that cohort. A
+ * matching source is denied; only an exact non-cohort scope mismatch may keep
+ * using the legacy workflow. Configuration drift remains fail-closed.
+ */
+async function assertDisabledTransferSubmissionCanUseLegacy(
+  tx: TransactionClient,
+  transfer: LockedTransferApprovalSubmissionSource
+) {
+  const activeActivations = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    WITH activation_guard AS MATERIALIZED (
+      SELECT pg_advisory_xact_lock_shared(
+        hashtextextended(
+          ${transfer.tenantId}::text || ':' || ${transfer.companyId}::text || ':inventory-pilot-activation',
+          0
+        )
+      ) AS locked
+    )
+    SELECT a."id"
+    FROM activation_guard
+    CROSS JOIN "InventoryPilotFamilyActivation" a
+    WHERE a."tenantId" = ${transfer.tenantId}::uuid
+      AND a."companyId" = ${transfer.companyId}::uuid
+      AND a."family" = 'InventoryTransfer'::"InventoryPilotApprovalFamily"
+      AND a.status = 'ACTIVE'::"InventoryPilotActivationStatus"
+    ORDER BY a."id" ASC
+  `);
+  if (activeActivations.length === 0) return;
+  if (activeActivations.length !== 1) {
+    throw new Error(INVENTORY_PILOT_APPROVAL_ERRORS.CONFIGURATION_INVALID);
+  }
+
+  try {
+    await classifyInventoryTransferForPilotApproval({
+      tx,
+      transfer: {
+        id: transfer.id,
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        version: transfer.version,
+        status: transfer.status,
+        sourceLocationId: transfer.sourceLocationId,
+        destinationLocationId: transfer.destinationLocationId,
+        lines: transfer.lines.map((line) => ({
+          id: line.id,
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          itemId: line.itemId,
+          sourceInventoryLocationId: line.sourceInventoryLocationId,
+          destinationInventoryLocationId: line.destinationInventoryLocationId
+        }))
+      },
+      stage: "SUBMIT",
+      environment: {
+        ...process.env,
+        INVENTORY_TRANSFER_APPROVAL_V1_ENABLED: "true"
+      }
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === INVENTORY_PILOT_APPROVAL_ERRORS.SCOPE_MISMATCH
+    ) {
+      return;
+    }
+    throw error;
+  }
+
+  throw new Error(INVENTORY_PILOT_APPROVAL_ERRORS.DISABLED);
+}
+
 function canonicalReceiptQuantity(value: number) {
   return value.toFixed(6);
 }
@@ -319,8 +519,47 @@ export function assertTransferCanSubmit(status: string) {
 }
 
 export function assertTransferCanCancel(status: string) {
-  if (status !== "DRAFT" && status !== "REQUESTED") {
+  if (!["DRAFT", "REQUESTED", "PENDING_APPROVAL"].includes(status)) {
     throw new Error("TRANSFER_NOT_CANCELLABLE");
+  }
+}
+
+/**
+ * A person who approved any cycle of this transfer must not later obtain
+ * custody through dispatch or receipt. Query inside the already-locked posting
+ * transaction so a role/scope change cannot convert historical approval into a
+ * physical-custody bypass.
+ */
+async function assertTransferActorWasNotApprover(
+  tx: TransactionClient,
+  input: {
+    tenantId: string;
+    companyId: string;
+    transferId: string;
+    actorUserId: string;
+    action: "DISPATCH" | "RECEIVE";
+  }
+) {
+  const approvedSteps = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT s."id"
+    FROM "ApprovalInstanceStep" s
+    JOIN "ApprovalInstance" ai ON ai."id" = s."approvalInstanceId"
+    WHERE ai."tenantId" = ${input.tenantId}::uuid
+      AND ai."companyId" = ${input.companyId}::uuid
+      AND ai."documentType" = 'InventoryTransfer'
+      AND ai."documentId" = ${input.transferId}::uuid
+      AND s."actedByUserId" = ${input.actorUserId}::uuid
+      AND s.status = 'APPROVED'::"ApprovalStepStatus"
+    ORDER BY ai."createdAt" ASC, ai."id" ASC, s."stepOrder" ASC, s."id" ASC
+    LIMIT 1
+    FOR SHARE OF s, ai
+  `);
+  if (approvedSteps[0]) {
+    throw new Error(
+      input.action === "DISPATCH"
+        ? "TRANSFER_APPROVER_CANNOT_DISPATCH"
+        : "TRANSFER_APPROVER_CANNOT_RECEIVE"
+    );
   }
 }
 
@@ -1481,18 +1720,18 @@ export async function submitInventoryTransfer(formData: FormData) {
   await requirePermission(session, permissions.transferSubmit);
   const values = transferActionSchema.parse(Object.fromEntries(formData));
 
-  await prisma.$transaction(async (tx) => {
-    const [transfer] = await tx.$queryRaw<Array<{
-      id: string;
-      tenantId: string;
-      companyId: string;
-      sourceLocationId: string;
-      destinationLocationId: string;
-      status: string;
-      updatedAt: Date;
-    }>>(Prisma.sql`
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "InventoryTransfer"
+  }, async (tx) => {
+    const [lockedTransfer] = await tx.$queryRaw<Array<
+      LockedTransferApprovalSubmissionSource
+    >>(Prisma.sql`
       SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
-        t."destinationLocationId", t."status", t."updatedAt"
+        t."destinationLocationId", t."requestedByUserId", t."publicReference",
+        t."transferType", t."purpose", t."requiredByDate", t."status",
+        t."updatedAt", t."version"
       FROM "InventoryTransfer" t
       WHERE t."id" = ${values.id}::uuid
         AND t."tenantId" = ${session.context.tenantId}::uuid
@@ -1501,19 +1740,104 @@ export async function submitInventoryTransfer(formData: FormData) {
           OR t."destinationLocationId" = ${session.context.locationId}::uuid)
       FOR UPDATE OF t
     `);
-    if (!transfer) {
+    if (!lockedTransfer) {
       throw new Error("TRANSFER_NOT_FOUND");
     }
-    assertTransferCanSubmit(transfer.status);
-    assertTransferLocationsDistinct(transfer.sourceLocationId, transfer.destinationLocationId);
 
-    const locationIds = [transfer.sourceLocationId, transfer.destinationLocationId].sort();
+    const replayRequest = values.idempotencyKey
+      ? {
+          canonicalJson: inventoryTransferApprovalRequestCanonicalJson({
+            transferId: lockedTransfer.id,
+            submitterUserId: session.user.id,
+            idempotencyKey: values.idempotencyKey
+          }),
+          hash: hashInventoryTransferApprovalRequest({
+            transferId: lockedTransfer.id,
+            submitterUserId: session.user.id,
+            idempotencyKey: values.idempotencyKey
+          })
+        }
+      : null;
+
+    // The same immutable request remains an exact replay after later approval
+    // decisions advance the source and graph. Revalidate the currently active
+    // authority pins, but never require the source to remain in its submitted
+    // version/status merely to acknowledge an already committed request.
+    const existingIntent = values.idempotencyKey
+      ? await tx.inventoryTransferApprovalSubmissionIntent.findFirst({
+          where: {
+            tenantId: lockedTransfer.tenantId,
+            companyId: lockedTransfer.companyId,
+            idempotencyKey: values.idempotencyKey
+          }
+        })
+      : null;
+    if (existingIntent) {
+      const existingApproval = await tx.approvalInstance.findFirst({
+        where: {
+          id: existingIntent.approvalInstanceId,
+          tenantId: lockedTransfer.tenantId,
+          companyId: lockedTransfer.companyId
+        },
+        select: { documentType: true, documentId: true }
+      });
+      const currentActivation = await tx.inventoryPilotFamilyActivation.findUnique({
+        where: {
+          tenantId_companyId_family: {
+            tenantId: lockedTransfer.tenantId,
+            companyId: lockedTransfer.companyId,
+            family: "InventoryTransfer"
+          }
+        }
+      });
+      if (
+        !replayRequest ||
+        existingIntent.inventoryTransferId !== lockedTransfer.id ||
+        existingIntent.submitterUserId !== session.user.id ||
+        existingIntent.requestCanonicalJson !== replayRequest.canonicalJson ||
+        existingIntent.requestHash !== replayRequest.hash ||
+        !/^[a-f0-9]{64}$/.test(existingIntent.sourceCanonicalHash) ||
+        !/^[a-f0-9]{64}$/.test(existingIntent.configurationDigest) ||
+        existingIntent.configurationRevisionNumber < 1 ||
+        existingIntent.activationGeneration < 1 ||
+        existingIntent.sourceVersionBefore + 1 !== existingIntent.sourceVersionAfter ||
+        existingIntent.approvalDocumentType !== "InventoryTransfer" ||
+        existingIntent.activationFamily !== "InventoryTransfer" ||
+        existingIntent.activationStatus !== "ACTIVE" ||
+        !existingApproval ||
+        existingApproval.documentType !== "InventoryTransfer" ||
+        existingApproval.documentId !== lockedTransfer.id ||
+        !currentActivation ||
+        currentActivation.status !== "ACTIVE" ||
+        currentActivation.currentActivationEventId !== existingIntent.activationEventId ||
+        currentActivation.configurationRevisionId !== existingIntent.configurationRevisionId ||
+        currentActivation.configurationRevisionNumber !== existingIntent.configurationRevisionNumber ||
+        currentActivation.configurationDigest !== existingIntent.configurationDigest ||
+        currentActivation.generation !== existingIntent.activationGeneration
+      ) {
+        throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+      }
+      return;
+    }
+    if (lockedTransfer.status === "PENDING_APPROVAL") {
+      throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    }
+
+    assertTransferLocationsDistinct(
+      lockedTransfer.sourceLocationId,
+      lockedTransfer.destinationLocationId
+    );
+
+    const locationIds = [
+      lockedTransfer.sourceLocationId,
+      lockedTransfer.destinationLocationId
+    ].sort();
     const locations = await tx.$queryRaw<Array<{ id: string; status: string }>>(Prisma.sql`
       SELECT l."id", l."status"
       FROM "Location" l
       WHERE l."id" IN (${Prisma.join(locationIds.map((id) => Prisma.sql`${id}::uuid`))})
-        AND l."tenantId" = ${transfer.tenantId}::uuid
-        AND l."companyId" = ${transfer.companyId}::uuid
+        AND l."tenantId" = ${lockedTransfer.tenantId}::uuid
+        AND l."companyId" = ${lockedTransfer.companyId}::uuid
       ORDER BY l."id" ASC
       FOR SHARE OF l
     `);
@@ -1521,8 +1845,7 @@ export async function submitInventoryTransfer(formData: FormData) {
       throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
     }
 
-    const lines = await tx.$queryRaw<Array<{
-      id: string;
+    const lines = await tx.$queryRaw<TransferApprovalSubmissionHashLine[] & Array<{
       sourceLocationId: string;
       destinationLocationId: string;
       requestedQty: Prisma.Decimal;
@@ -1532,20 +1855,22 @@ export async function submitInventoryTransfer(formData: FormData) {
       damagedQty: Prisma.Decimal;
       discrepancyQty: Prisma.Decimal;
     }>>(Prisma.sql`
-      SELECT l."id", sil."locationId" AS "sourceLocationId",
-        dil."locationId" AS "destinationLocationId", l."requestedQty",
+      SELECT l."id", l."itemId", l."sourceInventoryLocationId",
+        l."destinationInventoryLocationId", l."lineNumber", l."requestedQty",
+        l."uomId", l."description", l."notes", sil."locationId" AS "sourceLocationId",
+        dil."locationId" AS "destinationLocationId",
         l."dispatchedQty", l."receivedQty", l."rejectedQty", l."damagedQty",
         l."discrepancyQty"
       FROM "InventoryTransferLine" l
       JOIN "InventoryLocation" sil ON sil."id" = l."sourceInventoryLocationId"
       JOIN "InventoryLocation" dil ON dil."id" = l."destinationInventoryLocationId"
-      WHERE l."inventoryTransferId" = ${transfer.id}::uuid
-        AND l."tenantId" = ${transfer.tenantId}::uuid
-        AND l."companyId" = ${transfer.companyId}::uuid
-        AND sil."tenantId" = ${transfer.tenantId}::uuid
-        AND sil."companyId" = ${transfer.companyId}::uuid
-        AND dil."tenantId" = ${transfer.tenantId}::uuid
-        AND dil."companyId" = ${transfer.companyId}::uuid
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}::uuid
+        AND l."tenantId" = ${lockedTransfer.tenantId}::uuid
+        AND l."companyId" = ${lockedTransfer.companyId}::uuid
+        AND sil."tenantId" = ${lockedTransfer.tenantId}::uuid
+        AND sil."companyId" = ${lockedTransfer.companyId}::uuid
+        AND dil."tenantId" = ${lockedTransfer.tenantId}::uuid
+        AND dil."companyId" = ${lockedTransfer.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
@@ -1554,8 +1879,8 @@ export async function submitInventoryTransfer(formData: FormData) {
     }
     for (const line of lines) {
       if (
-        line.sourceLocationId !== transfer.sourceLocationId ||
-        line.destinationLocationId !== transfer.destinationLocationId
+        line.sourceLocationId !== lockedTransfer.sourceLocationId ||
+        line.destinationLocationId !== lockedTransfer.destinationLocationId
       ) {
         throw new Error("TRANSFER_SUBMIT_SCOPE_CONFLICT");
       }
@@ -1571,7 +1896,12 @@ export async function submitInventoryTransfer(formData: FormData) {
       }
     }
 
-    const [receiptResidue, movementResidue, approvalResidue] = await Promise.all([
+    const transfer: LockedTransferApprovalSubmissionSource = {
+      ...lockedTransfer,
+      lines
+    };
+
+    const [receiptResidue, movementResidue, approvalHistory] = await Promise.all([
       tx.inventoryTransferReceipt.count({
         where: { tenantId: transfer.tenantId, companyId: transfer.companyId, inventoryTransferId: transfer.id }
       }),
@@ -1583,19 +1913,152 @@ export async function submitInventoryTransfer(formData: FormData) {
           sourceDocumentId: transfer.id
         }
       }),
-      tx.approvalInstance.count({
+      tx.approvalInstance.findMany({
         where: {
           tenantId: transfer.tenantId,
           companyId: transfer.companyId,
           documentType: "InventoryTransfer",
           documentId: transfer.id
-        }
+        },
+        select: { status: true },
+        orderBy: { createdAt: "asc" }
       })
     ]);
-    if (receiptResidue > 0 || movementResidue > 0 || approvalResidue > 0) {
+    const approvalHistoryIsValid =
+      (transfer.status === "DRAFT" && approvalHistory.length === 0) ||
+      (transfer.status === "RETURNED" &&
+        approvalHistory.length > 0 &&
+        approvalHistory.every(({ status }) => status === "RETURNED"));
+    if (
+      receiptResidue > 0 ||
+      movementResidue > 0 ||
+      !approvalHistoryIsValid
+    ) {
       throw new Error("TRANSFER_SUBMIT_RESIDUE_CONFLICT");
     }
 
+    let attestation: Awaited<ReturnType<typeof classifyInventoryTransferForPilotApproval>>;
+    try {
+      attestation = await classifyInventoryTransferForPilotApproval({
+        tx,
+        transfer: {
+          id: transfer.id,
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          version: transfer.version,
+          status: transfer.status,
+          sourceLocationId: transfer.sourceLocationId,
+          destinationLocationId: transfer.destinationLocationId,
+          lines: transfer.lines.map((line) => ({
+            id: line.id,
+            tenantId: transfer.tenantId,
+            companyId: transfer.companyId,
+            itemId: line.itemId,
+            sourceInventoryLocationId: line.sourceInventoryLocationId,
+            destinationInventoryLocationId: line.destinationInventoryLocationId
+          }))
+        },
+        stage: "SUBMIT"
+      });
+    } catch (error) {
+      // Default-off is the only legacy path. A configured classifier that is
+      // stale, incomplete, mixed, or otherwise invalid must never bypass its
+      // authority by silently falling back to REQUESTED.
+      if (
+        error instanceof Error &&
+        error.message === INVENTORY_PILOT_APPROVAL_ERRORS.DISABLED
+      ) {
+        await assertDisabledTransferSubmissionCanUseLegacy(tx, transfer);
+        assertTransferCanSubmit(transfer.status);
+        const submitted = await tx.inventoryTransfer.updateMany({
+          where: {
+            id: transfer.id,
+            tenantId: transfer.tenantId,
+            companyId: transfer.companyId,
+            sourceLocationId: transfer.sourceLocationId,
+            destinationLocationId: transfer.destinationLocationId,
+            status: "DRAFT",
+            updatedAt: transfer.updatedAt,
+            version: transfer.version
+          },
+          data: {
+            status: "REQUESTED",
+            submittedAt: new Date(),
+            version: { increment: 1 }
+          }
+        });
+        if (submitted.count !== 1) {
+          throw new Error("TRANSFER_NOT_DRAFT_FOR_SUBMIT");
+        }
+        await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "inventory_transfer.submitted",
+            entityType: "InventoryTransfer",
+            entityId: transfer.id,
+            beforeData: { status: "DRAFT" },
+            afterData: { status: "REQUESTED" }
+          }
+        });
+        return;
+      }
+      throw error;
+    }
+
+    if (!values.idempotencyKey || !replayRequest) {
+      throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_KEY_REQUIRED");
+    }
+
+    // The database unique key is the final backstop, but normalize a reused
+    // key before any source transition so a pilot retry mismatch is never
+    // surfaced as a provider-specific unique-constraint error.
+    const reusedIntent = await tx.inventoryTransferApprovalSubmissionIntent.findFirst({
+      where: {
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        idempotencyKey: values.idempotencyKey
+      },
+      select: { id: true }
+    });
+    if (reusedIntent) {
+      throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    }
+
+    const ruleRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT r."id"
+      FROM "ApprovalRule" r
+      WHERE r."tenantId" = ${transfer.tenantId}::uuid
+        AND r."companyId" = ${transfer.companyId}::uuid
+        AND r."transactionType" = 'InventoryTransfer'
+        AND r."isActive" = true
+        AND r."definitionSealed" = true
+      ORDER BY r."priority" ASC, r."id" ASC
+      LIMIT 1
+      FOR SHARE OF r
+    `);
+    const approvalRule = ruleRows[0];
+    if (!approvalRule) {
+      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+    }
+    const ruleSteps = await tx.$queryRaw<Array<{
+      stepOrder: number;
+      userId: string | null;
+      roleId: string | null;
+    }>>(Prisma.sql`
+      SELECT s."stepOrder", s."userId", s."roleId"
+      FROM "ApprovalRuleStep" s
+      WHERE s."approvalRuleId" = ${approvalRule.id}::uuid
+      ORDER BY s."stepOrder" ASC
+      FOR SHARE OF s
+    `);
+    const firstStep = ruleSteps[0];
+    if (!firstStep) {
+      throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
+
+    const sourceDigest = hashInventoryTransferApprovalSource(transfer);
     const submitted = await tx.inventoryTransfer.updateMany({
       where: {
         id: transfer.id,
@@ -1603,27 +2066,164 @@ export async function submitInventoryTransfer(formData: FormData) {
         companyId: transfer.companyId,
         sourceLocationId: transfer.sourceLocationId,
         destinationLocationId: transfer.destinationLocationId,
-        status: "DRAFT",
-        updatedAt: transfer.updatedAt
+        status: { in: ["DRAFT", "RETURNED"] },
+        updatedAt: transfer.updatedAt,
+        version: transfer.version
       },
       data: {
-        status: "REQUESTED",
-        submittedAt: new Date()
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date(),
+        version: { increment: 1 }
       }
     });
     if (submitted.count !== 1) {
-      throw new Error("TRANSFER_NOT_DRAFT_FOR_SUBMIT");
+      throw new Error("TRANSFER_APPROVAL_SOURCE_CAS_CONFLICT");
     }
-    await tx.auditEvent.create({
+
+    const routedSteps = ruleSteps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
+    const approval = await tx.approvalInstance.create({
       data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        documentType: "InventoryTransfer",
+        documentId: transfer.id,
+        approvalRuleId: approvalRule.id,
+        status: "PENDING",
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedUserId: step.userId,
+            assignedRoleId: step.roleId,
+            status: step.activationStatus
+          }))
+        }
+      }
+    });
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        routingPolicy: getApprovalRoutingPolicy("InventoryTransfer"),
+        requiredPermissionCode: permissions.transferApprove,
+        dueAt: transfer.requiredByDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "inventory-transfer-approval-submission"
+        },
+        scopeGroups: [
+          {
+            groupOrder: 1,
+            targetMatchMode: "ANY",
+            targets: [{
+              scopeType: "LOCATION",
+              companyId: transfer.companyId,
+              locationId: transfer.sourceLocationId
+            }]
+          },
+          {
+            groupOrder: 2,
+            targetMatchMode: "ANY",
+            targets: [{
+              scopeType: "LOCATION",
+              companyId: transfer.companyId,
+              locationId: transfer.destinationLocationId
+            }]
+          }
+        ],
+        prohibitedActors: [{
+          userId: transfer.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: transfer.tenantId,
+      companyId: transfer.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
+    const intent = await tx.inventoryTransferApprovalSubmissionIntent.create({
+      data: {
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        inventoryTransferId: transfer.id,
+        sourceVersionBefore: transfer.version,
+        sourceVersionAfter: transfer.version + 1,
+        sourceCanonicalHash: sourceDigest,
+        configurationRevisionId: attestation.configurationRevisionId,
+        configurationRevisionNumber: attestation.configurationRevisionNumber,
+        configurationDigest: attestation.configurationDigest,
+        activationEventId: attestation.activationEventId,
+        activationFamily: "InventoryTransfer",
+        activationStatus: "ACTIVE",
+        activationGeneration: attestation.activationGeneration,
+        idempotencyKey: values.idempotencyKey,
+        requestCanonicalJson: replayRequest.canonicalJson,
+        requestHash: replayRequest.hash,
+        submitterUserId: session.user.id,
+        approvalInstanceId: approval.id,
+        approvalDocumentType: "InventoryTransfer"
+      }
+    });
+    const auditEvent = await tx.auditEvent.create({
+      data: {
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
         actorUserId: session.user.id,
-        eventType: "inventory_transfer.submitted",
+        eventType: "inventory_transfer.approval_submitted",
         entityType: "InventoryTransfer",
         entityId: transfer.id,
-        beforeData: { status: "DRAFT" },
-        afterData: { status: "REQUESTED" }
+        beforeData: { status: transfer.status, version: transfer.version },
+        afterData: {
+          status: "PENDING_APPROVAL",
+          version: transfer.version + 1,
+          currentApprovalStep: firstStep.stepOrder
+        },
+        metadata: {
+          approvalInstanceId: approval.id,
+          approvalRuleId: approvalRule.id,
+          approvalSubmissionIntentId: intent.id,
+          sourceCanonicalHash: sourceDigest,
+          configurationRevisionId: attestation.configurationRevisionId,
+          configurationRevisionNumber: attestation.configurationRevisionNumber,
+          configurationDigest: attestation.configurationDigest,
+          activationEventId: attestation.activationEventId,
+          activationGeneration: attestation.activationGeneration,
+          lineCount: transfer.lines.length,
+          nonPostingApproval: true
+        }
+      }
+    });
+    await recordWorkflowNotifications(tx, {
+      tenantId: transfer.tenantId,
+      companyId: transfer.companyId,
+      locationId: transfer.destinationLocationId,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
+      notificationType: "APPROVE_INVENTORY_TRANSFER",
+      priority: "NORMAL",
+      title: `Approve Inventory Transfer ${transfer.publicReference}`,
+      body: `${session.user.displayName} submitted ${transfer.publicReference} for transfer approval.`,
+      deepLink: `/approvals/${approval.id}`,
+      entityType: "InventoryTransfer",
+      entityId: transfer.id,
+      sourceEventKey: auditEvent.id,
+      recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
+      metadata: {
+        approvalInstanceId: approval.id,
+        approvalStepOrder: firstStep.stepOrder,
+        publicReference: transfer.publicReference,
+        source: "inventory-transfer-approval-submission"
       }
     });
   });
@@ -1665,10 +2265,11 @@ export async function dispatchInventoryTransfer(formData: FormData) {
       id: string;
       status: string;
       updatedAt: Date;
+      version: number;
       sourceLocationId: string;
       destinationLocationId: string;
     }>>(Prisma.sql`
-      SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
+      SELECT t."id", t."status", t."updatedAt", t."version", t."sourceLocationId",
         t."destinationLocationId"
       FROM "InventoryTransfer" t
       WHERE t."id" = ${values.id}::uuid
@@ -1745,6 +2346,13 @@ export async function dispatchInventoryTransfer(formData: FormData) {
       throw new Error("TRANSFER_DISPATCH_STATE_CONFLICT");
     }
     assertTransferCanDispatch(lockedTransfer.status);
+    await assertTransferActorWasNotApprover(tx, {
+      tenantId: authoritativeTransfer.tenantId,
+      companyId: authoritativeTransfer.companyId,
+      transferId: authoritativeTransfer.id,
+      actorUserId: session.user.id,
+      action: "DISPATCH"
+    });
     if (authoritativeTransfer.lines.length === 0) {
       throw new Error("TRANSFER_DISPATCH_SCOPE_CONFLICT");
     }
@@ -1756,12 +2364,14 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         companyId: session.context.companyId,
         sourceLocationId: session.context.locationId,
         status: "REQUESTED",
-        updatedAt: lockedTransfer.updatedAt
+        updatedAt: lockedTransfer.updatedAt,
+        version: lockedTransfer.version
       },
       data: {
         status: "DISPATCHED",
         dispatchedAt: now,
-        dispatchedByUserId: session.user.id
+        dispatchedByUserId: session.user.id,
+        version: { increment: 1 }
       }
     });
     if (dispatched.count !== 1) {
@@ -1878,10 +2488,11 @@ export async function receiveInventoryTransfer(formData: FormData) {
       id: string;
       status: string;
       updatedAt: Date;
+      version: number;
       sourceLocationId: string;
       destinationLocationId: string;
     }>>(Prisma.sql`
-      SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
+      SELECT t."id", t."status", t."updatedAt", t."version", t."sourceLocationId",
         t."destinationLocationId"
       FROM "InventoryTransfer" t
       WHERE t."id" = ${values.id}::uuid
@@ -2039,6 +2650,13 @@ export async function receiveInventoryTransfer(formData: FormData) {
       throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_IN_PROGRESS");
     }
     assertTransferCanReceive(lockedTransfer.status);
+    await assertTransferActorWasNotApprover(tx, {
+      tenantId: authoritativeTransfer.tenantId,
+      companyId: authoritativeTransfer.companyId,
+      transferId: authoritativeTransfer.id,
+      actorUserId: session.user.id,
+      action: "RECEIVE"
+    });
     const receipt = await tx.inventoryTransferReceipt.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2223,12 +2841,14 @@ export async function receiveInventoryTransfer(formData: FormData) {
         companyId: session.context.companyId,
         destinationLocationId: session.context.locationId,
         status: lockedTransfer.status,
-        updatedAt: lockedTransfer.updatedAt
+        updatedAt: lockedTransfer.updatedAt,
+        version: lockedTransfer.version
       },
       data: {
         status: nextStatus,
         receivedAt: now,
-        receivedByUserId: session.user.id
+        receivedByUserId: session.user.id,
+        version: { increment: 1 }
       }
     });
     if (updatedTransfer.count !== 1) {
@@ -2339,16 +2959,34 @@ export async function settleInventoryTransferDiscrepancy(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const [lockedTransfer] = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      version: number;
+    }>>(Prisma.sql`
+      SELECT t."id", t."status", t."version"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${transfer.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND t."destinationLocationId" = ${session.context.locationId}::uuid
+      FOR UPDATE OF t
+    `);
+    if (!lockedTransfer) {
+      throw new Error("TRANSFER_NOT_FOUND");
+    }
     const updated = await tx.inventoryTransfer.updateMany({
       where: {
-        id: transfer.id,
+        id: lockedTransfer.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         destinationLocationId: session.context.locationId,
-        status: "DISPUTED"
+        status: "DISPUTED",
+        version: lockedTransfer.version
       },
       data: {
-        status: "DISCREPANCY_SETTLED"
+        status: "DISCREPANCY_SETTLED",
+        version: { increment: 1 }
       }
     });
     if (updated.count !== 1) {
@@ -2452,9 +3090,10 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
       id: string;
       status: string;
       updatedAt: Date;
+      version: number;
       destinationLocationId: string;
     }>>(Prisma.sql`
-      SELECT t."id", t."status", t."updatedAt", t."destinationLocationId"
+      SELECT t."id", t."status", t."updatedAt", t."version", t."destinationLocationId"
       FROM "InventoryTransfer" t
       WHERE t."id" = ${values.id}::uuid
         AND t."tenantId" = ${session.context.tenantId}::uuid
@@ -2826,12 +3465,14 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
         companyId: session.context.companyId,
         destinationLocationId: session.context.locationId,
         status: lockedTransfer.status,
-        updatedAt: lockedTransfer.updatedAt
+        updatedAt: lockedTransfer.updatedAt,
+        version: lockedTransfer.version
       },
       data: {
         status: nextStatus,
         receivedAt: latestRemainingReceipt?.receivedAt ?? null,
-        receivedByUserId: latestRemainingReceipt?.receivedByUserId ?? null
+        receivedByUserId: latestRemainingReceipt?.receivedByUserId ?? null,
+        version: { increment: 1 }
       }
     });
     if (updatedTransfer.count !== 1) {
@@ -2872,11 +3513,15 @@ export async function cancelInventoryTransfer(formData: FormData) {
       companyId: string;
       sourceLocationId: string;
       destinationLocationId: string;
+      requestedByUserId: string;
+      publicReference: string;
       status: string;
       updatedAt: Date;
+      version: number;
     }>>(Prisma.sql`
       SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
-        t."destinationLocationId", t."status", t."updatedAt"
+        t."destinationLocationId", t."requestedByUserId", t."publicReference",
+        t."status", t."updatedAt", t."version"
       FROM "InventoryTransfer" t
       WHERE t."id" = ${values.id}::uuid
         AND t."tenantId" = ${session.context.tenantId}::uuid
@@ -2888,7 +3533,72 @@ export async function cancelInventoryTransfer(formData: FormData) {
     if (!transfer) {
       throw new Error("TRANSFER_NOT_FOUND");
     }
+    await requirePermission(session, permissions.transferCancel);
     assertTransferCanCancel(transfer.status);
+
+    // An admitted pilot source may only be cancelled with its exact immutable
+    // submission intent and active graph. Lock the source first, then the
+    // intent, then let the shared helper take the graph/step locks. This
+    // prevents a generic or historical approval graph from being cancelled on
+    // behalf of a different transfer cycle.
+    const pendingApprovalIntent = transfer.status === "PENDING_APPROVAL"
+      ? await tx.$queryRaw<Array<{
+          approvalInstanceId: string;
+          sourceVersionAfter: number;
+          approvalDocumentType: string;
+          activationFamily: string;
+          activationStatus: string;
+        }>>(Prisma.sql`
+          SELECT i."approvalInstanceId", i."sourceVersionAfter",
+            i."approvalDocumentType", i."activationFamily", i."activationStatus"
+          FROM "InventoryTransferApprovalSubmissionIntent" i
+          JOIN "ApprovalInstance" ai ON ai."id" = i."approvalInstanceId"
+          WHERE i."tenantId" = ${transfer.tenantId}::uuid
+            AND i."companyId" = ${transfer.companyId}::uuid
+            AND i."inventoryTransferId" = ${transfer.id}::uuid
+            AND i."approvalDocumentType" = 'InventoryTransfer'
+            AND i."activationFamily" = 'InventoryTransfer'
+            AND i."activationStatus" = 'ACTIVE'
+            AND ai."tenantId" = ${transfer.tenantId}::uuid
+            AND ai."companyId" = ${transfer.companyId}::uuid
+            AND ai."documentType" = 'InventoryTransfer'
+            AND ai."documentId" = ${transfer.id}::uuid
+            AND ai.status = 'PENDING'::"ApprovalStatus"
+          ORDER BY i."createdAt" ASC, i."id" ASC
+        `)
+      : [];
+    if (transfer.status === "PENDING_APPROVAL" && pendingApprovalIntent.length !== 1) {
+      throw new Error("TRANSFER_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
+    const pendingIntent = pendingApprovalIntent[0];
+    if (
+      pendingIntent &&
+      (pendingIntent.sourceVersionAfter !== transfer.version ||
+        pendingIntent.approvalDocumentType !== "InventoryTransfer" ||
+        pendingIntent.activationFamily !== "InventoryTransfer" ||
+        pendingIntent.activationStatus !== "ACTIVE")
+    ) {
+      throw new Error("TRANSFER_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
+    const approvalCancellation = pendingIntent
+      ? await terminatePendingApprovalForCancellation(tx, {
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          documentType: "InventoryTransfer",
+          documentId: transfer.id,
+          policy: "APPROVAL_REQUIRED",
+          // Admission remains cancellable after a rollout flag is disabled;
+          // the locked, typed intent proves this source entered the pilot.
+          forceWhenDisabled: true
+        })
+      : null;
+    if (
+      pendingIntent &&
+      (approvalCancellation?.mode !== "CANCELLED" ||
+        approvalCancellation.approvalInstanceId !== pendingIntent.approvalInstanceId)
+    ) {
+      throw new Error("TRANSFER_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
 
     const locations = await tx.location.findMany({
       where: {
@@ -2954,7 +3664,8 @@ export async function cancelInventoryTransfer(formData: FormData) {
           tenantId: transfer.tenantId,
           companyId: transfer.companyId,
           documentType: "InventoryTransfer",
-          documentId: transfer.id
+          documentId: transfer.id,
+          status: "PENDING"
         }
       })
     ]);
@@ -2969,13 +3680,15 @@ export async function cancelInventoryTransfer(formData: FormData) {
         companyId: transfer.companyId,
         sourceLocationId: transfer.sourceLocationId,
         destinationLocationId: transfer.destinationLocationId,
-        status: { in: ["DRAFT", "REQUESTED"] },
-        updatedAt: transfer.updatedAt
+        status: transfer.status,
+        updatedAt: transfer.updatedAt,
+        version: transfer.version
       },
       data: {
         status: "CANCELLED",
         cancelledAt: new Date(),
-        cancellationReason: values.cancellationReason
+        cancellationReason: values.cancellationReason,
+        version: { increment: 1 }
       }
     });
     if (cancelled.count !== 1) {
@@ -2991,7 +3704,30 @@ export async function cancelInventoryTransfer(formData: FormData) {
         entityId: transfer.id,
         beforeData: { status: transfer.status },
         afterData: { status: "CANCELLED" },
-        metadata: { reason: values.cancellationReason }
+        metadata: {
+          reason: values.cancellationReason,
+          approvalInstanceId: approvalCancellation?.approvalInstanceId ?? null,
+          nonPostingCancellation: true
+        }
+      }
+    });
+    await recordWorkflowNotifications(tx, {
+      tenantId: transfer.tenantId,
+      companyId: transfer.companyId,
+      locationId: transfer.destinationLocationId,
+      recipientUserIds: [transfer.requestedByUserId],
+      notificationType: "INVENTORY_TRANSFER_CANCELLED",
+      priority: "NORMAL",
+      title: `Inventory Transfer ${transfer.publicReference} cancelled`,
+      body: `The transfer was cancelled before dispatch. ${values.cancellationReason}`,
+      deepLink: `/transfers/${transfer.id}`,
+      entityType: "InventoryTransfer",
+      entityId: transfer.id,
+      sourceEventKey: `inventory-transfer-cancelled:${transfer.id}:${transfer.version + 1}`,
+      recipientBasis: "requester",
+      metadata: {
+        approvalInstanceId: approvalCancellation?.approvalInstanceId ?? null,
+        nonPostingCancellation: true
       }
     });
   });

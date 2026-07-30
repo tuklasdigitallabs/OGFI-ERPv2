@@ -209,11 +209,11 @@ function sourceSnapshotDigest(
 }
 
 function uniqueActors(
-  entries: Array<[string | null | undefined, string]>,
+  entries: ReadonlyArray<readonly [string | null | undefined, string]>,
 ): ProhibitedActor[] {
   return [...new Map(
     entries
-      .filter((entry): entry is [string, string] => Boolean(entry[0]))
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[0]))
       .map(([userId, reasonCode]) => [userId, { userId, reasonCode }]),
   ).values()].sort((left, right) => left.userId.localeCompare(right.userId));
 }
@@ -249,6 +249,7 @@ async function lockMainSource(
     PurchaseRequest: "PurchaseRequest", QuotationRecommendation: "QuotationRecommendation",
     PurchaseOrder: "PurchaseOrder", PurchaseOrderBalanceClosure: "PurchaseOrderBalanceClosure",
     PurchaseOrderAmendment: "PurchaseOrderAmendment", WastageReport: "WastageReport",
+    InventoryTransfer: "InventoryTransfer", StockCountAttemptReview: "StockCountAttempt",
     StockAdjustment: "StockAdjustment", FinanceCloseRun: "FinanceCloseRun",
     BudgetRevision: "BudgetRevision", ExpenseRequest: "ExpenseRequest",
     CashAdvanceRequest: "CashAdvanceRequest", PettyCashRequest: "PettyCashRequest",
@@ -317,6 +318,48 @@ async function loadSourceSnapshot(
       const row = await tx.stockAdjustment.findUnique({ where: { id: instance.documentId }, include: { inventoryLocation: true } });
       if (!row) block("SOURCE_NOT_FOUND");
       return sourceSnapshot({ tenantId: row.tenantId, companyId: row.companyId, status: row.status, dueAt: null, transitionAt: row.submittedAt, scopeTargets: locationScope(row.companyId, row.inventoryLocation.locationId), prohibitedActors: uniqueActors([[row.requestedByUserId, "REQUESTER"]]) });
+    }
+    case "InventoryTransfer": {
+      const row = await tx.inventoryTransfer.findUnique({ where: { id: instance.documentId } });
+      if (!row) block("SOURCE_NOT_FOUND");
+      return sourceSnapshot({
+        tenantId: row.tenantId,
+        companyId: row.companyId,
+        status: row.status,
+        dueAt: row.requiredByDate,
+        transitionAt: row.submittedAt,
+        scopeTargetMatchMode: "ALL",
+        scopeTargets: [row.sourceLocationId, row.destinationLocationId].sort().map((locationId) => ({ scopeType: "LOCATION", companyId: row.companyId, locationId })),
+        prohibitedActors: uniqueActors([[row.requestedByUserId, "REQUESTER"]]),
+      });
+    }
+    case "StockCountAttemptReview": {
+      const row = await tx.stockCountAttempt.findUnique({
+        where: { id: instance.documentId },
+        include: {
+          inventoryLocation: true,
+          stockCountSession: {
+            include: { attempts: { include: { lines: { select: { countedByUserId: true } } } } },
+          },
+        },
+      });
+      if (!row || row.stockCountSession.currentAttemptId !== row.id) block("SOURCE_NOT_FOUND");
+      const session = row.stockCountSession;
+      return sourceSnapshot({
+        tenantId: row.tenantId,
+        companyId: row.companyId,
+        status: row.status,
+        dueAt: null,
+        transitionAt: row.submittedAt,
+        scopeTargets: locationScope(row.companyId, row.inventoryLocation.locationId),
+        prohibitedActors: uniqueActors([
+          [row.createdByUserId, "CREATOR"],
+          [row.assignedToUserId, "ASSIGNED_COUNTER"],
+          [session.createdByUserId, "SESSION_CREATOR"],
+          [session.assignedToUserId, "SESSION_ASSIGNED_COUNTER"],
+          ...session.attempts.flatMap((attempt) => attempt.lines.map((line) => [line.countedByUserId, "COUNTER"] as const)),
+        ]),
+      });
     }
     case "FinanceCloseRun": {
       const row = await tx.financeCloseRun.findUnique({ where: { id: instance.documentId } });

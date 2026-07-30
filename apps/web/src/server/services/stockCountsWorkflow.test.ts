@@ -20,7 +20,13 @@ const mocks = vi.hoisted(() => {
       createMany: vi.fn(),
       updateMany: vi.fn()
     },
+    approvalInstanceStep: {
+      updateMany: vi.fn(),
+      findFirst: vi.fn()
+    },
+    approvalInstance: { updateMany: vi.fn() },
     inventoryBalance: { findMany: vi.fn() },
+    inventoryPilotFamilyActivation: { findUnique: vi.fn() },
     stockAdjustment: { findFirst: vi.fn(), create: vi.fn() },
     stockAdjustmentLine: { createMany: vi.fn() },
     auditEvent: { create: vi.fn() }
@@ -40,6 +46,8 @@ const mocks = vi.hoisted(() => {
   return {
     prisma,
     tx,
+    classifyStockCountAttemptForPilotApproval: vi.fn(),
+    withApprovalProducerTransaction: vi.fn(),
     requirePermission: vi.fn(),
     requireSessionContext: vi.fn(),
     lockInventoryLocationForPosting: vi.fn()
@@ -64,6 +72,16 @@ vi.mock("./context", async (importOriginal) => ({
 vi.mock("./inventory", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./inventory")>()),
   lockInventoryLocationForPosting: mocks.lockInventoryLocationForPosting
+}));
+
+vi.mock("./inventoryPilotApprovalPolicy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./inventoryPilotApprovalPolicy")>()),
+  classifyStockCountAttemptForPilotApproval:
+    mocks.classifyStockCountAttemptForPilotApproval
+}));
+
+vi.mock("./approvalProducerBarrier", () => ({
+  withApprovalProducerTransaction: mocks.withApprovalProducerTransaction
 }));
 
 const ids = {
@@ -115,6 +133,8 @@ function lockedCount(overrides: Record<string, unknown> = {}) {
     scheduledDate: null,
     createdByUserId: "00000000-0000-4000-8000-000000000009",
     assignedToUserId: ids.user,
+    version: 7,
+    currentAttemptVersion: 11,
     updatedAt,
     databaseNow,
     ...overrides
@@ -128,9 +148,42 @@ function actionForm(extra: Record<string, string> = {}) {
   return form;
 }
 
+function queuePilotAttemptLock(status: "IN_PROGRESS" | "SUBMITTED") {
+  mocks.tx.$queryRaw
+    .mockResolvedValueOnce([lockedCount({ status })])
+    .mockResolvedValueOnce([{ id: ids.count, version: 11 }])
+    .mockResolvedValueOnce([{
+      id: ids.count,
+      stockCountSessionId: ids.count,
+      tenantId: ids.tenant,
+      companyId: ids.company,
+      inventoryLocationId: ids.inventoryLocation,
+      status,
+      version: 11,
+      createdByUserId: "00000000-0000-4000-8000-000000000009",
+      assignedToUserId: ids.user,
+      evidenceReference: null
+    }])
+    .mockResolvedValueOnce([{
+      id: ids.line,
+      tenantId: ids.tenant,
+      companyId: ids.company,
+      inventoryLocationId: ids.inventoryLocation,
+      itemId: "00000000-0000-4000-8000-000000000010",
+      countedByUserId: "00000000-0000-4000-8000-000000000011",
+      countedAt: databaseNow,
+      countedQuantityBaseUom: 5
+    }]);
+}
+
 describe("Stock Count workflow integrity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED", "false");
+    mocks.withApprovalProducerTransaction.mockImplementation(
+      (_input: unknown, action: (client: typeof mocks.tx) => unknown) =>
+        mocks.prisma.$transaction(action)
+    );
     mocks.requireSessionContext.mockResolvedValue(session);
     mocks.requirePermission.mockResolvedValue(undefined);
     mocks.prisma.stockCountSession.findFirst.mockResolvedValue({
@@ -141,10 +194,14 @@ describe("Stock Count workflow integrity", () => {
     mocks.tx.$queryRaw.mockResolvedValue([lockedCount()]);
     mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.stockCountSession.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue(null);
     mocks.tx.stockCountLine.count.mockResolvedValue(0);
     mocks.tx.stockCountLine.findMany.mockResolvedValue([]);
     mocks.tx.stockCountLine.createMany.mockResolvedValue({ count: 1 });
     mocks.tx.stockCountLine.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.approvalInstanceStep.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.approvalInstanceStep.findFirst.mockResolvedValue(null);
+    mocks.tx.approvalInstance.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.inventoryBalance.findMany.mockResolvedValue([{
       itemId: "00000000-0000-4000-8000-000000000010",
       baseUomId: "00000000-0000-4000-8000-000000000011",
@@ -181,11 +238,13 @@ describe("Stock Count workflow integrity", () => {
         where: expect.objectContaining({
           assignedToUserId: ids.user,
           status: "DRAFT",
-          updatedAt
+          updatedAt,
+          version: 7
         }),
         data: expect.objectContaining({
           status: "IN_PROGRESS",
-          cutoffAt: databaseNow
+          cutoffAt: databaseNow,
+          version: { increment: 1 }
         })
       })
     );
@@ -234,6 +293,36 @@ describe("Stock Count workflow integrity", () => {
     expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  test("relinks a locked legacy attempt within the start CAS instead of adding a second session write", async () => {
+    mocks.tx.$queryRaw
+      .mockResolvedValueOnce([
+        lockedCount({ currentAttemptId: null, currentAttemptVersion: null })
+      ])
+      .mockResolvedValueOnce([{ id: ids.count, version: 13 }]);
+
+    await startStockCount(actionForm());
+
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          currentAttemptId: null,
+          version: 7
+        }),
+        data: expect.objectContaining({
+          currentAttemptId: ids.count,
+          version: { increment: 1 }
+        })
+      })
+    );
+    const attemptMutation = mocks.tx.$executeRaw.mock.calls.at(0)?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "AND version = "
+    );
+  });
+
   test("submission accepts only assigned first-pass complete lineage and audits the CAS transition", async () => {
     mocks.tx.$queryRaw.mockResolvedValueOnce([
       lockedCount({ status: "IN_PROGRESS" })
@@ -252,10 +341,27 @@ describe("Stock Count workflow integrity", () => {
         where: expect.objectContaining({
           assignedToUserId: ids.user,
           status: "IN_PROGRESS",
-          updatedAt
+          updatedAt,
+          version: 7
         }),
-        data: { status: "SUBMITTED", submittedAt: databaseNow }
+        data: expect.objectContaining({
+          status: "SUBMITTED",
+          submittedAt: databaseNow,
+          version: { increment: 1 }
+        })
       })
+    );
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ version: 7 }),
+        data: expect.objectContaining({ version: { increment: 1 } })
+      })
+    );
+    const attemptMutation = mocks.tx.$executeRaw.mock.calls.at(-1)?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "AND version = "
     );
     expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
@@ -305,9 +411,17 @@ describe("Stock Count workflow integrity", () => {
         where: expect.objectContaining({
           assignedToUserId: ids.user,
           status: "IN_PROGRESS",
-          updatedAt
-        })
+          updatedAt,
+          version: 7
+        }),
+        data: expect.objectContaining({ version: { increment: 1 } })
       })
+    );
+    const aggregateAttemptMutation = mocks.tx.$executeRaw.mock.calls.at(-1)?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(aggregateAttemptMutation.strings.join(""))).toContain(
+      "version = version + 1"
     );
     expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -392,6 +506,15 @@ describe("Stock Count workflow integrity", () => {
     expect(String(attemptMutation.strings.join(""))).toContain(
       "status = 'CANCELLED'"
     );
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "AND version = "
+    );
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ version: 7 }),
+        data: expect.objectContaining({ version: { increment: 1 } })
+      })
+    );
     expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ eventType: "stock_count.cancelled" })
@@ -408,6 +531,264 @@ describe("Stock Count workflow integrity", () => {
     await expect(cancelStockCount(actionForm({
       cancellationReason: "Count cancelled after scope correction"
     }))).rejects.toThrow("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("cancels an admitted review graph before cancelling the exact current attempt", async () => {
+    const approvalInstanceId = "00000000-0000-4000-8000-000000000012";
+    mocks.tx.$queryRaw.mockReset()
+      .mockResolvedValueOnce([lockedCount({ status: "SUBMITTED" })])
+      .mockResolvedValueOnce([{ id: ids.count, version: 11 }])
+      .mockResolvedValueOnce([{
+        id: "00000000-0000-4000-8000-000000000013",
+        approvalInstanceId,
+        stockCountAttemptId: ids.count,
+        stockCountSessionId: ids.count,
+        attemptVersionBefore: 10,
+        attemptVersionAfter: 11,
+        sessionVersionBefore: 6,
+        sessionVersionAfter: 7,
+        approvalDocumentType: "StockCountAttemptReview",
+        activationFamily: "StockCountAttemptReview",
+        activationStatus: "ACTIVE"
+      }])
+      .mockResolvedValueOnce([{ id: approvalInstanceId }])
+      .mockResolvedValueOnce([{ id: approvalInstanceId, currentStepOrder: 1 }])
+      .mockResolvedValueOnce([{
+        id: "00000000-0000-4000-8000-000000000014",
+        stepOrder: 1,
+        status: "PENDING",
+        actedAt: null,
+        activatedAt: null,
+        dueAt: null
+      }]);
+
+    await expect(cancelStockCount(actionForm({
+      cancellationReason: "Count cancelled after a controlled correction"
+    }))).resolves.toBeUndefined();
+
+    expect(mocks.tx.approvalInstance.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: approvalInstanceId,
+          status: "PENDING"
+        }),
+        data: expect.objectContaining({ status: "CANCELLED" })
+      })
+    );
+    expect(
+      mocks.tx.approvalInstance.updateMany.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      mocks.tx.stockCountSession.updateMany.mock.invocationCallOrder[0]!
+    );
+    expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventType: "stock_count.cancelled",
+          metadata: expect.objectContaining({
+            approvalInstanceId
+          })
+        })
+      })
+    );
+  });
+
+  test("fails closed without source mutation for an orphan pending pilot graph", async () => {
+    mocks.tx.$queryRaw.mockReset()
+      .mockResolvedValueOnce([lockedCount({ status: "SUBMITTED" })])
+      .mockResolvedValueOnce([{ id: ids.count, version: 11 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        id: "00000000-0000-4000-8000-000000000015"
+      }]);
+
+    await expect(cancelStockCount(actionForm({
+      cancellationReason: "Count cancelled after a controlled correction"
+    }))).rejects.toThrow("STOCK_COUNT_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("allows direct review only while the ordinary-count approval family is disabled", async () => {
+    mocks.tx.$queryRaw.mockResolvedValueOnce([
+      lockedCount({ status: "SUBMITTED" })
+    ]);
+    mocks.tx.stockCountLine.findMany.mockResolvedValueOnce([{
+      countedQuantityBaseUom: 5,
+      countedByUserId: "00000000-0000-4000-8000-000000000010",
+      countedAt: databaseNow
+    }]);
+
+    await reviewStockCount(actionForm({
+      reviewAction: "REVIEW",
+      reviewNotes: "Verified independent count"
+    }));
+
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ version: 7 }),
+        data: expect.objectContaining({ version: { increment: 1 } })
+      })
+    );
+    const attemptMutation = mocks.tx.$executeRaw.mock.calls.at(-1)?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "version = version + 1"
+    );
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "AND version = "
+    );
+    expect(mocks.classifyStockCountAttemptForPilotApproval).not.toHaveBeenCalled();
+  });
+
+  test("rejects the direct-review bypass for an admitted pilot count without source mutation", async () => {
+    vi.stubEnv("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED", "true");
+    mocks.tx.$queryRaw
+      .mockResolvedValueOnce([lockedCount({ status: "SUBMITTED" })])
+      .mockResolvedValueOnce([{ id: ids.count, version: 11 }])
+      .mockResolvedValueOnce([{
+        id: ids.count,
+        stockCountSessionId: ids.count,
+        tenantId: ids.tenant,
+        companyId: ids.company,
+        inventoryLocationId: ids.inventoryLocation,
+        status: "SUBMITTED",
+        version: 11,
+        createdByUserId: "00000000-0000-4000-8000-000000000009",
+        assignedToUserId: ids.user,
+        evidenceReference: null
+      }])
+      .mockResolvedValueOnce([{
+        id: ids.line,
+        tenantId: ids.tenant,
+        companyId: ids.company,
+        inventoryLocationId: ids.inventoryLocation,
+        itemId: "00000000-0000-4000-8000-000000000010",
+        countedByUserId: "00000000-0000-4000-8000-000000000011",
+        countedAt: databaseNow,
+        countedQuantityBaseUom: 5
+      }]);
+    mocks.classifyStockCountAttemptForPilotApproval.mockResolvedValue({
+      configurationRevisionId: "00000000-0000-4000-8000-000000000012",
+      configurationRevisionNumber: 1,
+      configurationDigest: "a".repeat(64),
+      activationEventId: "00000000-0000-4000-8000-000000000013",
+      activationGeneration: 1,
+      family: "StockCountAttemptReview",
+      itemDigest: "b".repeat(64)
+    });
+
+    await expect(reviewStockCount(actionForm({
+      reviewAction: "REVIEW",
+      reviewNotes: "Verified independent count"
+    }))).rejects.toThrow("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_REQUIRED");
+
+    expect(mocks.classifyStockCountAttemptForPilotApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: "REVALIDATE" })
+    );
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("keeps a database-active matching cohort denied when the environment switch is off", async () => {
+    mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue({
+      status: "ACTIVE"
+    });
+    queuePilotAttemptLock("SUBMITTED");
+    mocks.classifyStockCountAttemptForPilotApproval.mockResolvedValue({});
+
+    await expect(reviewStockCount(actionForm({
+      reviewAction: "REVIEW",
+      reviewNotes: "Verified independent count"
+    }))).rejects.toThrow("INVENTORY_PILOT_APPROVAL_DISABLED");
+
+    expect(mocks.classifyStockCountAttemptForPilotApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "REVALIDATE",
+        environment: {
+          STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED: "true"
+        }
+      })
+    );
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("does not downgrade a matching active cohort during submission when the environment switch is off", async () => {
+    mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue({
+      status: "ACTIVE"
+    });
+    queuePilotAttemptLock("IN_PROGRESS");
+    mocks.classifyStockCountAttemptForPilotApproval.mockResolvedValue({});
+
+    await expect(submitStockCount(actionForm())).rejects.toThrow(
+      "INVENTORY_PILOT_APPROVAL_DISABLED"
+    );
+
+    expect(mocks.classifyStockCountAttemptForPilotApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: "SUBMIT" })
+    );
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("keeps an active non-cohort on the legacy review path but never masks a mixed cohort", async () => {
+    mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue({
+      status: "ACTIVE"
+    });
+    queuePilotAttemptLock("SUBMITTED");
+    mocks.classifyStockCountAttemptForPilotApproval.mockRejectedValueOnce(
+      new Error("INVENTORY_PILOT_SCOPE_MISMATCH")
+    );
+    mocks.tx.stockCountLine.findMany.mockResolvedValueOnce([{
+      countedQuantityBaseUom: 5,
+      countedByUserId: "00000000-0000-4000-8000-000000000010",
+      countedAt: databaseNow
+    }]);
+
+    await expect(reviewStockCount(actionForm({
+      reviewAction: "REVIEW",
+      reviewNotes: "Verified independent count"
+    }))).resolves.toBeUndefined();
+    expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mocks.requireSessionContext.mockResolvedValue(session);
+    mocks.requirePermission.mockResolvedValue(undefined);
+    mocks.prisma.stockCountSession.findFirst.mockResolvedValue({
+      id: ids.count,
+      inventoryLocationId: ids.inventoryLocation
+    });
+    mocks.lockInventoryLocationForPosting.mockResolvedValue({});
+    mocks.withApprovalProducerTransaction.mockImplementation(
+      (_input: unknown, action: (client: typeof mocks.tx) => unknown) =>
+        mocks.prisma.$transaction(action)
+    );
+    mocks.prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof mocks.tx) => unknown) => callback(mocks.tx)
+    );
+    mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue({
+      status: "ACTIVE"
+    });
+    mocks.tx.stockCountSession.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.$executeRaw.mockResolvedValue(1);
+    queuePilotAttemptLock("SUBMITTED");
+    mocks.classifyStockCountAttemptForPilotApproval.mockRejectedValueOnce(
+      new Error("INVENTORY_PILOT_MIXED_ITEM_COHORT")
+    );
+
+    await expect(reviewStockCount(actionForm({
+      reviewAction: "REVIEW",
+      reviewNotes: "Verified independent count"
+    }))).rejects.toThrow("INVENTORY_PILOT_MIXED_ITEM_COHORT");
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
     expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 

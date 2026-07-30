@@ -124,6 +124,7 @@ const ids = {
   projectRiskResolvePermissionId: "00000000-0000-4000-8000-000000000095",
   projectRiskArchivePermissionId: "00000000-0000-4000-8000-000000000096",
   transferDiscrepancySettlePermissionId: "00000000-0000-4000-8000-000000000097",
+  transferApprovePermissionId: "00000000-0000-4000-8000-000000000177",
   recipeViewPermissionId: "00000000-0000-4000-8000-000000000101",
   recipeManagePermissionId: "00000000-0000-4000-8000-000000000102",
   menuCostViewPermissionId: "00000000-0000-4000-8000-000000000103",
@@ -7845,6 +7846,19 @@ async function main() {
   });
 
   await prisma.permission.upsert({
+    where: { code: "inventory.transfer.approve" },
+    create: {
+      id: ids.transferApprovePermissionId,
+      code: "inventory.transfer.approve",
+      module: "inventory",
+      action: "transfer.approve",
+      description:
+        "Approve an inventory transfer through its configured normalized approval route.",
+    },
+    update: {},
+  });
+
+  await prisma.permission.upsert({
     where: { code: "inventory.transfer.cancel" },
     create: {
       id: ids.transferCancelPermissionId,
@@ -8755,6 +8769,10 @@ async function main() {
       },
       {
         roleId: ids.approverRoleId,
+        permissionId: ids.transferApprovePermissionId,
+      },
+      {
+        roleId: ids.approverRoleId,
         permissionId: ids.branchOperationsViewPermissionId,
       },
       {
@@ -8954,6 +8972,10 @@ async function main() {
       {
         roleId: ids.adminRoleId,
         permissionId: ids.transferDiscrepancySettlePermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.transferApprovePermissionId,
       },
       {
         roleId: ids.adminRoleId,

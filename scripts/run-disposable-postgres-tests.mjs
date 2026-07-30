@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -138,6 +138,7 @@ let databaseCreated = false;
 let markerCreated = false;
 let exitCode = 1;
 let shadowFixtureExitCode = null;
+let inventoryPilotBootstrap = null;
 try {
   runPsql(adminUrl, `CREATE DATABASE ${quoteIdentifier(identity.databaseName)}`);
   databaseCreated = true;
@@ -220,6 +221,16 @@ try {
     runSeedRepeatability(runtimeUrl, identity);
   }
 
+  if (suiteName === "inventory-approval") {
+    installInventoryPilotRollbackHarness(setupUrl, identity);
+    verifyInventoryPilotRollbackHarness(setupUrl, runtimeUrl, identity);
+    verifyInventoryPilotRuntimeControlPlaneDenied(runtimeUrl);
+    inventoryPilotBootstrap = startInventoryPilotBootstrapBroker(
+      migratorUrl,
+      identity,
+    );
+  }
+
   exitCode = suiteName === "approval-routing-shadow"
     ? shadowFixtureExitCode ?? 1
     : runChildCommand(
@@ -230,7 +241,11 @@ try {
           identity,
           adminUrl,
         ),
+        inventoryPilotBootstrap?.runtimeEnvironment,
       );
+  if (exitCode === 0 && suiteName === "inventory-approval") {
+    verifyInventoryPilotStockCountGuardBypassDenied(setupUrl, runtimeUrl);
+  }
   if (
     exitCode === 0
     && (suiteName === "approval-routing-backfill" || suiteName === "approval-routing-shadow")
@@ -242,6 +257,7 @@ try {
     verifyApprovalIntegrityOwnerGuards(setupUrl);
   }
 } finally {
+  stopInventoryPilotBootstrapBroker(inventoryPilotBootstrap);
   if (databaseCreated) {
     if (!markerCreated) {
       console.error(`Refusing unverified teardown of ${identity.databaseName}.`);
@@ -255,20 +271,279 @@ try {
     }
   }
 }
+
+function installInventoryPilotRollbackHarness(databaseUrl, marker) {
+  runPsql(databaseUrl, `
+    CREATE TABLE ogfi_disposable_control.inventory_pilot_audit_failure (
+      entity_id uuid NOT NULL,
+      event_type text NOT NULL,
+      PRIMARY KEY (entity_id, event_type)
+    );
+    REVOKE ALL ON ogfi_disposable_control.inventory_pilot_audit_failure FROM PUBLIC;
+    GRANT SELECT, INSERT, DELETE
+      ON ogfi_disposable_control.inventory_pilot_audit_failure
+      TO ${quoteIdentifier(marker.runtimeRole)};
+
+    CREATE FUNCTION ogfi_disposable_control.inject_inventory_pilot_audit_failure()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path = pg_catalog
+    AS $rollback$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+          FROM ogfi_disposable_control.inventory_pilot_audit_failure failure
+         WHERE failure.entity_id = NEW."entityId"
+           AND failure.event_type = NEW."eventType"
+      ) THEN
+        RAISE EXCEPTION 'INVENTORY_PILOT_ROLLBACK_INJECTED';
+      END IF;
+      RETURN NEW;
+    END;
+    $rollback$;
+    ALTER TABLE ogfi_disposable_control.inventory_pilot_audit_failure
+      OWNER TO ${quoteIdentifier(marker.ownerRole)};
+    ALTER FUNCTION ogfi_disposable_control.inject_inventory_pilot_audit_failure()
+      OWNER TO ${quoteIdentifier(marker.ownerRole)};
+    REVOKE ALL ON FUNCTION ogfi_disposable_control.inject_inventory_pilot_audit_failure() FROM PUBLIC;
+    REVOKE ALL ON FUNCTION ogfi_disposable_control.inject_inventory_pilot_audit_failure()
+      FROM ${quoteIdentifier(marker.runtimeRole)};
+    CREATE TRIGGER inventory_pilot_disposable_rollback_trigger
+      BEFORE INSERT ON public."AuditEvent"
+      FOR EACH ROW EXECUTE FUNCTION ogfi_disposable_control.inject_inventory_pilot_audit_failure();
+    ALTER TABLE public."AuditEvent"
+      ENABLE ALWAYS TRIGGER inventory_pilot_disposable_rollback_trigger;
+  `);
+}
+
+function verifyInventoryPilotRollbackHarness(setupDatabaseUrl, runtimeDatabaseUrl, marker) {
+  verifyMarker(setupDatabaseUrl, marker);
+  runPsql(setupDatabaseUrl, `DO $verify_inventory_pilot_rollback$
+  DECLARE
+    owner_oid oid := ${quoteLiteral(marker.ownerRole)}::regrole::oid;
+    runtime_oid oid := ${quoteLiteral(marker.runtimeRole)}::regrole::oid;
+  BEGIN
+    IF current_database() <> ${quoteLiteral(marker.databaseName)}
+       OR current_database() !~ '^ogfi_(test|ci|rehearsal|disposable|demo_disposable)_' THEN
+      RAISE EXCEPTION 'INVENTORY_PILOT_ROLLBACK_HARNESS_DATABASE_UNSAFE';
+    END IF;
+    IF has_schema_privilege(runtime_oid, 'ogfi_disposable_control', 'CREATE') THEN
+      RAISE EXCEPTION 'Inventory-pilot rollback runtime can create control objects';
+    END IF;
+    PERFORM 1
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'ogfi_disposable_control'
+       AND c.relname = 'inventory_pilot_audit_failure'
+       AND c.relkind = 'r'
+       AND c.relowner = owner_oid;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Inventory-pilot rollback control table ownership drifted';
+    END IF;
+    IF NOT has_table_privilege(runtime_oid,
+         'ogfi_disposable_control.inventory_pilot_audit_failure', 'SELECT,INSERT,DELETE')
+       OR has_table_privilege(runtime_oid,
+         'ogfi_disposable_control.inventory_pilot_audit_failure',
+         'UPDATE,TRUNCATE,TRIGGER,REFERENCES,MAINTAIN')
+       OR EXISTS (
+         SELECT 1
+           FROM pg_attribute a,
+             LATERAL aclexplode(a.attacl) acl
+          WHERE a.attrelid = 'ogfi_disposable_control.inventory_pilot_audit_failure'::regclass
+            AND a.attnum > 0 AND NOT a.attisdropped
+            AND acl.grantee IN (0, runtime_oid)
+       ) THEN
+      RAISE EXCEPTION 'Inventory-pilot rollback control table ACL drifted';
+    END IF;
+    PERFORM 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_language l ON l.oid = p.prolang
+     WHERE n.nspname = 'ogfi_disposable_control'
+       AND p.proname = 'inject_inventory_pilot_audit_failure'
+       AND pg_get_function_identity_arguments(p.oid) = ''
+       AND p.prorettype = 'trigger'::regtype
+       AND p.proowner = owner_oid
+       AND l.lanname = 'plpgsql'
+       AND p.provolatile = 'v'
+       AND NOT p.proisstrict
+       AND NOT p.prosecdef
+       AND p.proconfig = ARRAY['search_path=pg_catalog']::text[]
+       AND md5(p.prosrc) = 'c34fde850179e05d69ff56ba000cb36c'
+       AND NOT has_function_privilege(runtime_oid, p.oid, 'EXECUTE')
+       AND NOT EXISTS (
+         SELECT 1
+           FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+       );
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Inventory-pilot rollback injector routine contract drifted';
+    END IF;
+    PERFORM 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relname = 'AuditEvent'
+       AND t.tgname = 'inventory_pilot_disposable_rollback_trigger'
+       AND NOT t.tgisinternal
+       AND t.tgenabled = 'A'
+       AND t.tgtype = 7
+       AND t.tgfoid =
+         'ogfi_disposable_control.inject_inventory_pilot_audit_failure()'::regprocedure
+       AND t.tgconstraint = 0
+       AND NOT t.tgdeferrable
+       AND NOT t.tginitdeferred;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Inventory-pilot rollback trigger contract drifted';
+    END IF;
+  END
+  $verify_inventory_pilot_rollback$;`);
+
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'UPDATE ogfi_disposable_control.inventory_pilot_audit_failure SET event_type = event_type WHERE false',
+    '42501',
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'TRUNCATE TABLE ogfi_disposable_control.inventory_pilot_audit_failure',
+    '42501',
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'SELECT ogfi_disposable_control.inject_inventory_pilot_audit_failure()',
+    '42501',
+  );
+}
+
+function verifyInventoryPilotRuntimeControlPlaneDenied(runtimeDatabaseUrl) {
+  for (const table of [
+    'InventoryPilotConfigurationRevision',
+    'InventoryPilotEndpointMembership',
+    'InventoryPilotItemMembership',
+    'InventoryPilotFamilyActivationEvent',
+    'InventoryPilotFamilyActivation',
+  ]) {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `UPDATE public."${table}" SET "id" = "id" WHERE false`,
+      '42501',
+    );
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `DELETE FROM public."${table}" WHERE false`,
+      '42501',
+    );
+  }
+  for (const table of [
+    'InventoryTransferApprovalSubmissionIntent',
+    'StockCountReviewSubmissionIntent',
+  ]) {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `UPDATE public."${table}" SET "id" = "id" WHERE false`,
+      '42501',
+    );
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `DELETE FROM public."${table}" WHERE false`,
+      '42501',
+    );
+  }
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    "SELECT public.inventory_pilot_revision_canonical_json(gen_random_uuid())",
+    '42501',
+  );
+}
+
+function verifyInventoryPilotStockCountGuardBypassDenied(
+  setupDatabaseUrl,
+  runtimeDatabaseUrl,
+) {
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'ALTER TABLE public."StockCountAttempt" DISABLE TRIGGER "StockCountAttempt_history_guard"',
+    '42501',
+  );
+  expectPsqlFailure(
+    setupDatabaseUrl,
+    `BEGIN;
+     SET LOCAL session_replication_role = replica;
+     UPDATE public."StockCountAttempt"
+        SET "evidenceReference" = coalesce("evidenceReference", '') || ':replication-bypass'
+      WHERE id = (
+        SELECT id
+          FROM public."StockCountAttempt"
+         WHERE status IN ('SUBMITTED', 'REVIEWED', 'RECOUNT_REQUESTED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
+         ORDER BY id
+         LIMIT 1
+      );
+     ROLLBACK;`,
+    '55000',
+  );
+}
 process.exitCode = exitCode;
 
-function runChildCommand(childCommand, env) {
+function runChildCommand(childCommand, env, additionalEnvironment = undefined) {
   const childInvocation =
     childCommand[0] === "pnpm"
       ? pnpmInvocation(childCommand.slice(1))
       : { executable: childCommand[0], args: childCommand.slice(1) };
   const child = spawnSync(childInvocation.executable, childInvocation.args, {
     cwd: workspaceRoot,
-    env,
+    env: { ...env, ...additionalEnvironment },
     stdio: "inherit",
   });
   if (child.error) throw child.error;
   return child.status ?? 1;
+}
+
+function startInventoryPilotBootstrapBroker(migrationDatabaseUrl, marker) {
+  const socketPath = `/tmp/ogfi-inventory-bootstrap-${marker.nonce.slice(0, 24)}.sock`;
+  const token = randomBytes(32).toString("base64url");
+  rmSync(socketPath, { force: true });
+  const ownerSwitchUrl = new URL(migrationDatabaseUrl);
+  ownerSwitchUrl.searchParams.set("options", `-c role=${marker.ownerRole}`);
+  const invocation = pnpmInvocation([
+    "--dir", "apps/web", "exec", "tsx",
+    "tests/helpers/inventoryPilotApprovalPgBootstrapBroker.ts",
+  ]);
+  const child = spawn(invocation.executable, invocation.args, {
+    cwd: workspaceRoot,
+    env: {
+      ...controlledSetupEnvironment(ownerSwitchUrl.toString(), marker),
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: socketPath,
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: token,
+    },
+    stdio: "inherit",
+  });
+  const deadline = Date.now() + 20_000;
+  while (!existsSync(socketPath)) {
+    if (child.exitCode !== null) {
+      throw new Error("INVENTORY_PILOT_BOOTSTRAP_BROKER_EXITED");
+    }
+    if (Date.now() >= deadline) {
+      child.kill("SIGTERM");
+      throw new Error("INVENTORY_PILOT_BOOTSTRAP_BROKER_TIMEOUT");
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  }
+  return {
+    child,
+    socketPath,
+    runtimeEnvironment: {
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: socketPath,
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: token,
+    },
+  };
+}
+
+function stopInventoryPilotBootstrapBroker(broker) {
+  if (!broker) return;
+  broker.child.kill("SIGTERM");
+  rmSync(broker.socketPath, { force: true });
 }
 
 function verifyApprovalShadowObservers(

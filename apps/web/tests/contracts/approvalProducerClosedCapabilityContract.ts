@@ -76,8 +76,8 @@ const producerInventory = new Map(
     .map((entry) => [entry.documentTypes[0], entry] as const),
 );
 if (
-  approvalGraphMutationInventory.filter((entry) => entry.category === "PRODUCER_CREATION").length !== 18
-  || producerInventory.size !== 18
+  approvalGraphMutationInventory.filter((entry) => entry.category === "PRODUCER_CREATION").length !== supportedApprovalDocumentTypes.length
+  || producerInventory.size !== supportedApprovalDocumentTypes.length
   || [...producerInventory.values()].some((entry) => entry.documentTypes.length !== 1)
 ) {
   throw new Error("APPROVAL_PRODUCER_CLOSED_CONTRACT_PRODUCER_INVENTORY_NOT_BIJECTIVE");

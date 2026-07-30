@@ -9,7 +9,7 @@ import {
 import { supportedApprovalDocumentTypes } from "./approvalRoutingRegistry";
 
 describe("normalized approval decision capability contract", () => {
-  it("covers every registered family with the exact 18/14/18 command matrix", () => {
+  it("covers every registered family with the exact 20/15/19 command matrix", () => {
     expect(Object.keys(canonicalApprovalDecisionCapabilities).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
@@ -17,17 +17,17 @@ describe("normalized approval decision capability contract", () => {
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("APPROVE"),
       ),
-    ).toHaveLength(18);
+    ).toHaveLength(20);
     expect(
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("RETURN"),
       ),
-    ).toHaveLength(14);
+    ).toHaveLength(15);
     expect(
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("REJECT"),
       ),
-    ).toHaveLength(18);
+    ).toHaveLength(19);
   });
 
   it("pins the exact closed family/action sets and rejects runtime mutation", () => {
@@ -36,10 +36,13 @@ describe("normalized approval decision capability contract", () => {
       "BudgetRevision",
       "PaymentRelease",
       "EmployeeOvertimeRecord",
+      "StockCountAttemptReview",
     ]);
     for (const family of supportedApprovalDocumentTypes) {
       expect(canonicalApprovalDecisionCapabilities[family]).toEqual(
-        noReturn.has(family)
+        family === "StockCountAttemptReview"
+          ? ["APPROVE"]
+          : noReturn.has(family)
           ? ["APPROVE", "REJECT"]
           : ["APPROVE", "RETURN", "REJECT"],
       );
@@ -60,9 +63,9 @@ describe("normalized approval decision capability contract", () => {
   });
 
   it("publishes a stable versioned digest for the subsequent cutover cursor", () => {
-    expect(APPROVAL_DECISION_CAPABILITY_VERSION).toBe("1");
+    expect(APPROVAL_DECISION_CAPABILITY_VERSION).toBe("2");
     expect(APPROVAL_DECISION_CAPABILITY_HASH).toBe(
-      "9059b8b0ef752d340b2f2d757f7298f7f66a07ea3a70db053421c534ae52e608",
+      "584834b6085e75e25de7703b63ca7e0a800a9e609f9811a3a511822dbbe89e03",
     );
   });
 

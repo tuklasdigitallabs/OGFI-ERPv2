@@ -540,19 +540,19 @@ function moduleReferences(file: string, source: string, target: string) {
 }
 
 describe("DEC-0247 C1-S dormant observer structural contract", () => {
-  test("pins a deeply frozen, private exact 18-family manifest", () => {
-    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.private-binary-observer-sql.2");
+  test("pins a deeply frozen, private exact 20-family manifest", () => {
+    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0261.inventory-pilot-families.1");
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(
-      "f460803ba04366045f9633f3baf208e6e3bbbca19b1b45efce84ba274b4c7cbe",
+      "dffabc01e8b41e9f253c6afac5705c91dd2fb2bbb52e954529ecc07dac6803e0",
     );
     expect(Object.isFrozen(approvalProducerCapabilityManifest)).toBe(true);
-    expect(approvalProducerCapabilityContracts).toHaveLength(18);
+    expect(approvalProducerCapabilityContracts).toHaveLength(20);
     expect(Object.keys(approvalProducerCapabilityManifest).sort()).toEqual([...supportedApprovalDocumentTypes].sort());
-    expect(new Set(approvalProducerCapabilityContracts.map((item) => item.producerId)).size).toBe(18);
+    expect(new Set(approvalProducerCapabilityContracts.map((item) => item.producerId)).size).toBe(20);
     expect(canonicalApprovalDocumentTypes).toEqual([
       "PurchaseRequest", "QuotationRecommendation", "PurchaseOrder",
-      "PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "WastageReport",
-      "StockAdjustment",
+      "PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "InventoryTransfer",
+      "StockCountAttemptReview", "WastageReport", "StockAdjustment",
     ]);
     expect(specializedApprovalDocumentTypes).toEqual([
       "BudgetRevision", "ExpenseRequest", "CashAdvanceRequest", "PettyCashRequest",
@@ -571,6 +571,8 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
       PurchaseOrder: "approval_shadow.observe_purchase_order_v1",
       PurchaseOrderBalanceClosure: "approval_shadow.observe_purchase_order_balance_closure_v1",
       PurchaseOrderAmendment: "approval_shadow.observe_purchase_order_amendment_v1",
+      InventoryTransfer: "approval_shadow.observe_inventory_transfer_v1",
+      StockCountAttemptReview: "approval_shadow.observe_stock_count_attempt_review_v1",
       WastageReport: "approval_shadow.observe_wastage_report_v1",
       StockAdjustment: "approval_shadow.observe_stock_adjustment_v1",
       FinanceCloseRun: "approval_shadow.observe_finance_close_run_v1",
@@ -587,7 +589,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     } as const;
     expect(new Set(approvalProducerCapabilityContracts.map(
       (contract) => contract.observerDesign.proposedName,
-    )).size).toBe(18);
+    )).size).toBe(20);
 
     for (const contract of approvalProducerCapabilityContracts) {
       expect(contract.contractKind).toBe("DORMANT_DISCOVERY_CONTRACT");
@@ -650,7 +652,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     expect(approvalProducerCapabilityManifest.PurchaseOrderAmendment.currentCompatibility.transactionControl.lock).toBe("IMPLEMENTED");
     expect(new Set(approvalProducerCapabilityContracts.map(
       (contract) => `${contract.currentCompatibility.producer.serviceFile}:${contract.currentCompatibility.producer.functionName}`,
-    )).size).toBe(18);
+    )).size).toBe(20);
     for (const family of ["PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "PaymentRelease"] as const) {
       expect(approvalProducerCapabilityManifest[family].identityLifecycle?.unresolvedRequiredDesign).toContain("Define");
       expect(approvalProducerCapabilityManifest[family].observerDesign.derivation.lifecycle).toBe("POST_CHILD_ONLY");
@@ -690,6 +692,8 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
       PurchaseOrder: [["PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
       PurchaseOrderBalanceClosure: [["PurchaseOrder", "PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
       PurchaseOrderAmendment: [["PurchaseOrder", "PurchaseRequest", "QuotationRecommendation", "QuotationRequest", "Location", "Location"], [], []],
+      InventoryTransfer: [["Location", "Location"], [], ["InventoryTransferLine", "InventoryLocation", "Item"]],
+      StockCountAttemptReview: [["StockCountSession", "InventoryLocation", "Location"], [], ["StockCountAttemptLine", "Item"]],
       WastageReport: [["InventoryLocation", "Location"], [], []],
       StockAdjustment: [["InventoryLocation", "Location"], [], []],
       FinanceCloseRun: [["Company"], [], []],
@@ -802,13 +806,13 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
 });
 
 describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
-  test("pins the exact 18-family producer bijection and closed authority posture", () => {
-    expect(approvalProducerClosedCapabilityContracts).toHaveLength(18);
+  test("pins the exact 20-family producer bijection and closed authority posture", () => {
+    expect(approvalProducerClosedCapabilityContracts).toHaveLength(20);
     expect(Object.keys(approvalProducerClosedCapabilityContract).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
-    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.producerId)).size).toBe(18);
-    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.proposedCapability.name)).size).toBe(18);
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.producerId)).size).toBe(20);
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.proposedCapability.name)).size).toBe(20);
     for (const entry of approvalProducerClosedCapabilityContracts) {
       expect(entry).toMatchObject({
         contractKind: "DORMANT_WRITER_DISCOVERY",
@@ -856,10 +860,10 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
       "dec-0247-c2.dormant-closed-writer-contract.2",
     );
     expect(approvalProducerClosedCapabilityInventoryDigest).toBe(
-      "6878aacdd237b95494a2139f4df2c1d161a2e2b5c76c91ef5f4a0e49bed6a319",
+      "df5aa823ca13cbac990a0875ae2f705fcf750fbfc320de1b5e2cfca2a67baee6",
     );
     expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe(
-      "dec-0247-c1.private-binary-observer-sql.2",
+      "dec-0261.inventory-pilot-families.1",
     );
     expect(Object.isFrozen(approvalProducerClosedCapabilityContract)).toBe(true);
     expect(Object.isFrozen(approvalProducerClosedCapabilityContracts)).toBe(true);
@@ -868,7 +872,7 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
 
   test("keeps the C2 contract test-only and cannot mutate the C1 contract", () => {
     const before = APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST;
-    expect(approvalProducerCapabilityContracts).toHaveLength(18);
+    expect(approvalProducerCapabilityContracts).toHaveLength(20);
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(before);
     expect(() => {
       (approvalProducerClosedCapabilityContract.PurchaseRequest as { status: string }).status = "EXECUTABLE";
@@ -913,7 +917,7 @@ describe("DEC-0247 C3 dormant typed-adapter shape", () => {
       "dec-0247-c3.dormant-typed-adapter-shape.2",
     );
     expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_DIGEST).toBe(
-      "548e59e5c550807f04ebd58dc2d79408f8e19bd95532e4b646f38963c03d0f9b",
+      "488708a5362b437ab713f5cec1cf30c545a3074b1f637211681f45eb8dd64571",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerTypedAdapterContract"),
@@ -954,7 +958,7 @@ describe("DEC-0247 C4 dormant typed terminal shape", () => {
       "dec-0247-c4-terminal-shape.1",
     );
     expect(APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST).toBe(
-      "95c8b862694b54004e9a918119aa43624b21ac2146ad19d0f507480a7736d3b2",
+      "9eea764eb1bb5bfe25f5bb4d7cc7c4a0bf04d0467656139dc21349f2d492becd",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalTerminalTypedCapabilityContract"),

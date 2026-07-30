@@ -12,6 +12,7 @@ import {
   assertStockCountAssignedActor,
   assertStockCountReviewerSegregation,
   assertStockCountAttemptLineParity,
+  buildStockCountApprovalProhibitedActors,
   selectStockCountReadLines,
   STOCK_COUNT_ATTEMPT_READ_V1_ENABLED,
   buildStockCountExportRows,
@@ -213,6 +214,18 @@ describe("stock count foundation rules", () => {
     expect(source).toContain("listStockCountPage");
     expect(source).toContain("tx.stockCountAttempt.create");
     expect(source).toContain("currentAttemptId: null");
+  });
+
+  test("schedule links its first attempt through an exact session-version CAS", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockCounts.ts"), "utf8");
+    const scheduleWriter = source.slice(
+      source.indexOf("export async function scheduleStockCount"),
+      source.indexOf("export async function startStockCount")
+    );
+
+    expect(scheduleWriter).toContain("currentAttemptId: null");
+    expect(scheduleWriter).toContain("version: count.version");
+    expect(scheduleWriter).toContain("version: { increment: 1 }");
   });
 
   test("dashboard read requires stock-count review permission and returns bounded header-only candidates", async () => {
@@ -829,6 +842,22 @@ describe("stock count foundation rules", () => {
         countedByUserIds: ["counter-1"]
       })
     ).toThrow("STOCK_COUNT_SELF_REVIEW_BLOCKED");
+  });
+
+  test("deduplicates all stock-count approval prohibited actors while retaining the latest applicable reason", () => {
+    expect(buildStockCountApprovalProhibitedActors({
+      sessionCreatedByUserId: "session-creator",
+      sessionAssignedToUserId: "session-assignee",
+      attemptCreatedByUserId: "attempt-creator",
+      attemptAssignedToUserId: "shared-actor",
+      countedByUserIds: ["counter-a", "shared-actor", "counter-a", "attempt-creator"]
+    })).toEqual([
+      { userId: "session-creator", reasonCode: "SESSION_CREATOR" },
+      { userId: "session-assignee", reasonCode: "SESSION_ASSIGNED_COUNTER" },
+      { userId: "attempt-creator", reasonCode: "COUNTER" },
+      { userId: "shared-actor", reasonCode: "COUNTER" },
+      { userId: "counter-a", reasonCode: "COUNTER" }
+    ]);
   });
 
   test("generates variance adjustments from reviewed counts only", () => {

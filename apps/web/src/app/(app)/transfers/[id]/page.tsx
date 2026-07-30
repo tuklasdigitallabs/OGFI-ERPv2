@@ -352,11 +352,16 @@ export default async function TransferDetailPage({
             <ButtonLink href="/transfers" className="bg-slate-700 hover:bg-slate-800">
               Back to Transfers
             </ButtonLink>
-            {transfer.status === "DRAFT" && canSubmitTransfers ? (
+            {["DRAFT", "RETURNED"].includes(transfer.status) && canSubmitTransfers ? (
               <form action={submitTransferAction}>
                 <input name="id" type="hidden" value={transfer.id} />
+                <input
+                  name="idempotencyKey"
+                  type="hidden"
+                  value={`ui:transfer-approval:${randomUUID()}`}
+                />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
-                  Submit Request
+                  {transfer.status === "RETURNED" ? "Resubmit Request" : "Submit Request"}
                 </button>
               </form>
             ) : null}

@@ -1,4 +1,5 @@
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { canUseStockCounts, permissions, requirePermission } from "./authorization";
 import {
@@ -20,6 +21,20 @@ import {
   type DashboardTaskCursor,
   type DashboardTaskFilter
 } from "./dashboardTasks";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
+import {
+  classifyStockCountAttemptForPilotApproval,
+  INVENTORY_PILOT_APPROVAL_ERRORS,
+  inventoryPilotCanonicalJson,
+  inventoryPilotDigest
+} from "./inventoryPilotApprovalPolicy";
+import { recordWorkflowNotifications } from "./notifications";
 
 const countTypes = ["FULL", "CYCLE", "SPOT", "HIGH_VALUE", "OPENING"] as const;
 
@@ -37,7 +52,8 @@ const scheduleStockCountSchema = z.object({
 });
 
 const stockCountActionSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().uuid(),
+  idempotencyKey: z.string().trim().min(1).max(200).optional()
 });
 
 const stockCountLineEntrySchema = z.object({
@@ -271,12 +287,14 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
 type LockedStockCount = {
   id: string;
   currentAttemptId: string | null;
+  currentAttemptVersion: number | null;
   inventoryLocationId: string;
   status: string;
   blindCount: boolean;
   scheduledDate: Date | null;
   createdByUserId: string;
   assignedToUserId: string | null;
+  version: number;
   updatedAt: Date;
   databaseNow: Date;
 };
@@ -304,12 +322,14 @@ async function lockScopedStockCount(
   const rows = await tx.$queryRaw<LockedStockCount[]>(Prisma.sql`
     SELECT sc.id,
            sc."currentAttemptId",
+           ca.version AS "currentAttemptVersion",
            sc."inventoryLocationId",
            sc.status,
            sc."blindCount",
            sc."scheduledDate",
            sc."createdByUserId",
            sc."assignedToUserId",
+           sc.version,
            sc."updatedAt",
            clock_timestamp() AS "databaseNow"
       FROM "StockCountSession" sc
@@ -335,13 +355,31 @@ async function lockScopedStockCount(
   if (!count || rows.length !== 1) {
     throw new Error("STOCK_COUNT_NOT_FOUND");
   }
+  if (count.currentAttemptId) {
+    const attempts = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
+      SELECT id, version
+        FROM "StockCountAttempt"
+       WHERE id = ${count.currentAttemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "inventoryLocationId" = ${count.inventoryLocationId}::uuid
+       FOR UPDATE
+    `);
+    const attempt = attempts[0];
+    if (!attempt || attempts.length !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
+    count.currentAttemptVersion = attempt.version;
+  }
   return count;
 }
 
 /**
- * Keeps the additive immutable attempt-1 record aligned with the legacy
- * first-pass session during the reversible cutover. The migration backfills
- * existing sessions; this helper covers sessions created after deployment.
+ * Resolves a locked additive attempt-1 record for the legacy first-pass
+ * session during the reversible cutover. Callers combine any required relink
+ * with their own session mutation so one successful workflow increments the
+ * session aggregate version exactly once.
  */
 async function ensureStockCountAttempt1(
   tx: TransactionClient,
@@ -349,41 +387,61 @@ async function ensureStockCountAttempt1(
   count: LockedStockCount
 ) {
   if (count.currentAttemptId) {
-    return count.currentAttemptId;
+    if (count.currentAttemptVersion === null) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
+    return {
+      id: count.currentAttemptId,
+      version: count.currentAttemptVersion,
+      needsSessionLink: false
+    };
   }
-  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  const existingAttempts = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
+    SELECT id, version
+      FROM "StockCountAttempt"
+     WHERE "stockCountSessionId" = ${count.id}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+       AND "inventoryLocationId" = ${count.inventoryLocationId}::uuid
+       AND "attemptNumber" = 1
+     FOR UPDATE
+  `);
+  if (existingAttempts.length === 1) {
+    return {
+      id: existingAttempts[0]!.id,
+      version: existingAttempts[0]!.version,
+      needsSessionLink: true
+    };
+  }
+  if (existingAttempts.length > 1) {
+    throw new Error("STOCK_COUNT_ATTEMPT_LINEAGE_INVALID");
+  }
+  const rows = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
     INSERT INTO "StockCountAttempt" (
       "stockCountSessionId", "tenantId", "companyId", "inventoryLocationId",
       "attemptNumber", "status", "blindCount", "freezeMovements",
       "createdByUserId", "assignedToUserId", "reviewedByUserId",
+      "cutoffAt", "startedAt", "submittedAt", "reviewedAt", "cancelledAt",
+      "cancellationReason", "reviewNotes",
       "createdAt", "updatedAt"
     )
     SELECT sc.id, sc."tenantId", sc."companyId", sc."inventoryLocationId",
-           1, 'DRAFT', sc."blindCount", sc."freezeMovements",
+           1, sc.status, sc."blindCount", sc."freezeMovements",
            sc."createdByUserId", sc."assignedToUserId", sc."reviewedByUserId",
+           sc."cutoffAt", sc."startedAt", sc."submittedAt", sc."reviewedAt", sc."cancelledAt",
+           sc."cancellationReason", sc."reviewNotes",
            sc."createdAt", sc."updatedAt"
       FROM "StockCountSession" sc
      WHERE sc.id = ${count.id}::uuid
        AND sc."tenantId" = ${session.context.tenantId}::uuid
        AND sc."companyId" = ${session.context.companyId}::uuid
-    RETURNING id
+    RETURNING id, version
   `);
   const attempt = rows[0];
   if (!attempt) {
     throw new Error("STOCK_COUNT_ATTEMPT_CREATE_FAILED");
   }
-  const linked = await tx.$executeRaw(Prisma.sql`
-    UPDATE "StockCountSession"
-       SET "currentAttemptId" = ${attempt.id}::uuid
-     WHERE id = ${count.id}::uuid
-       AND "tenantId" = ${session.context.tenantId}::uuid
-       AND "companyId" = ${session.context.companyId}::uuid
-       AND "currentAttemptId" IS NULL
-  `);
-  if (linked !== 1) {
-    throw new Error("STOCK_COUNT_ATTEMPT_LINK_FAILED");
-  }
-  return attempt.id;
+  return { id: attempt.id, version: attempt.version, needsSessionLink: true };
 }
 
 async function syncStockCountAttempt1Lines(
@@ -1375,9 +1433,13 @@ export async function scheduleStockCount(formData: FormData) {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             inventoryLocationId: inventoryLocation.id,
-            currentAttemptId: null
+            currentAttemptId: null,
+            version: count.version
           },
-          data: { currentAttemptId: attempt.id }
+          data: {
+            currentAttemptId: attempt.id,
+            version: { increment: 1 }
+          }
         });
         if (linked.count !== 1) {
           throw new Error("STOCK_COUNT_ATTEMPT_LINK_FAILED");
@@ -1469,6 +1531,7 @@ export async function startStockCount(formData: FormData) {
       throw new Error("STOCK_COUNT_HAS_NO_BALANCES");
     }
 
+    const ensuredAttempt = await ensureStockCountAttempt1(tx, session, count);
     const started = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
@@ -1477,12 +1540,18 @@ export async function startStockCount(formData: FormData) {
         inventoryLocationId: count.inventoryLocationId,
         assignedToUserId: session.user.id,
         status: "DRAFT",
-        updatedAt: count.updatedAt
+        updatedAt: count.updatedAt,
+        version: count.version,
+        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
       },
       data: {
         status: "IN_PROGRESS",
         startedAt: count.databaseNow,
-        cutoffAt: count.databaseNow
+        cutoffAt: count.databaseNow,
+        ...(ensuredAttempt.needsSessionLink
+          ? { currentAttemptId: ensuredAttempt.id }
+          : {}),
+        version: { increment: 1 }
       }
     });
     if (started.count !== 1) {
@@ -1505,18 +1574,19 @@ export async function startStockCount(formData: FormData) {
       }))
     });
 
-    const attemptId = await ensureStockCountAttempt1(tx, session, count);
     const attemptUpdated = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
          SET status = 'IN_PROGRESS',
              "startedAt" = ${count.databaseNow},
              "cutoffAt" = ${count.databaseNow},
-             "updatedAt" = ${count.databaseNow}
-       WHERE id = ${attemptId}::uuid
+             "updatedAt" = ${count.databaseNow},
+             version = version + 1
+       WHERE id = ${ensuredAttempt.id}::uuid
          AND "stockCountSessionId" = ${count.id}::uuid
          AND "tenantId" = ${session.context.tenantId}::uuid
          AND "companyId" = ${session.context.companyId}::uuid
          AND status = 'DRAFT'
+         AND version = ${ensuredAttempt.version}
     `);
     if (attemptUpdated !== 1) {
       throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1524,7 +1594,7 @@ export async function startStockCount(formData: FormData) {
     await syncStockCountAttempt1Lines(
       tx,
       session,
-      attemptId,
+      ensuredAttempt.id,
       count.id,
       count.inventoryLocationId
     );
@@ -1589,7 +1659,16 @@ export async function saveStockCountEntries(rawValues: unknown) {
       throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
     }
     const linesById = new Map(lines.map((line) => [line.id, line]));
-    const attemptId = await ensureStockCountAttempt1(tx, session, count);
+    const ensuredAttempt = await ensureStockCountAttempt1(tx, session, count);
+    if (ensuredAttempt.needsSessionLink) {
+      await syncStockCountAttempt1Lines(
+        tx,
+        session,
+        ensuredAttempt.id,
+        count.id,
+        count.inventoryLocationId
+      );
+    }
     for (const entry of values.lines) {
       const line = linesById.get(entry.lineId);
       if (!line) {
@@ -1631,7 +1710,7 @@ export async function saveStockCountEntries(rawValues: unknown) {
          WHERE al.id = ${entry.lineId}::uuid
            AND al."legacyStockCountLineId" = ${entry.lineId}::uuid
            AND al."stockCountAttemptId" = a.id
-           AND a.id = ${attemptId}::uuid
+           AND a.id = ${ensuredAttempt.id}::uuid
            AND a.status = 'IN_PROGRESS'
            AND al."updatedAt" = ${line.updatedAt}
       `);
@@ -1641,10 +1720,12 @@ export async function saveStockCountEntries(rawValues: unknown) {
     }
     const attemptTouched = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
-         SET "updatedAt" = ${count.databaseNow}
-       WHERE id = ${attemptId}::uuid
+         SET "updatedAt" = ${count.databaseNow},
+             version = version + 1
+       WHERE id = ${ensuredAttempt.id}::uuid
          AND "stockCountSessionId" = ${count.id}::uuid
          AND status = 'IN_PROGRESS'
+         AND version = ${ensuredAttempt.version}
     `);
     if (attemptTouched !== 1) {
       throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1657,9 +1738,17 @@ export async function saveStockCountEntries(rawValues: unknown) {
         inventoryLocationId: count.inventoryLocationId,
         assignedToUserId: session.user.id,
         status: "IN_PROGRESS",
-        updatedAt: count.updatedAt
+        updatedAt: count.updatedAt,
+        version: count.version,
+        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
       },
-      data: { updatedAt: count.databaseNow }
+      data: {
+        updatedAt: count.databaseNow,
+        ...(ensuredAttempt.needsSessionLink
+          ? { currentAttemptId: ensuredAttempt.id }
+          : {}),
+        version: { increment: 1 }
+      }
     });
     if (touched.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -1679,14 +1768,242 @@ export async function saveStockCountEntries(rawValues: unknown) {
   });
 }
 
+type LockedStockCountApprovalAttempt = {
+  id: string;
+  stockCountSessionId: string;
+  tenantId: string;
+  companyId: string;
+  inventoryLocationId: string;
+  status: string;
+  version: number;
+  createdByUserId: string;
+  assignedToUserId: string | null;
+  evidenceReference: string | null;
+};
+
+type LockedStockCountApprovalLine = {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  inventoryLocationId: string;
+  itemId: string;
+  countedByUserId: string | null;
+  countedAt: Date | null;
+  countedQuantityBaseUom: unknown;
+};
+
+async function lockCurrentStockCountAttemptForApproval(
+  tx: TransactionClient,
+  session: SessionContext,
+  count: LockedStockCount
+) {
+  if (!count.currentAttemptId) {
+    throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+  }
+  const attempts = await tx.$queryRaw<LockedStockCountApprovalAttempt[]>(Prisma.sql`
+    SELECT a.id, a."stockCountSessionId", a."tenantId", a."companyId",
+           a."inventoryLocationId", a.status, a.version, a."createdByUserId",
+           a."assignedToUserId", a."evidenceReference"
+      FROM "StockCountAttempt" a
+     WHERE a.id = ${count.currentAttemptId}::uuid
+       AND a."stockCountSessionId" = ${count.id}::uuid
+       AND a."tenantId" = ${session.context.tenantId}::uuid
+       AND a."companyId" = ${session.context.companyId}::uuid
+       AND a."inventoryLocationId" = ${count.inventoryLocationId}::uuid
+     FOR UPDATE
+  `);
+  const attempt = attempts[0];
+  if (!attempt || attempts.length !== 1) {
+    throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+  }
+  const lines = await tx.$queryRaw<LockedStockCountApprovalLine[]>(Prisma.sql`
+    SELECT al.id, al."tenantId", al."companyId", al."inventoryLocationId",
+           al."itemId", al."countedByUserId", al."countedAt",
+           al."countedQuantityBaseUom"
+      FROM "StockCountAttemptLine" al
+     WHERE al."stockCountAttemptId" = ${attempt.id}::uuid
+       AND al."tenantId" = ${session.context.tenantId}::uuid
+       AND al."companyId" = ${session.context.companyId}::uuid
+       AND al."inventoryLocationId" = ${count.inventoryLocationId}::uuid
+     ORDER BY al."lineNumber" ASC, al.id ASC
+     FOR UPDATE
+  `);
+  if (
+    lines.length === 0 ||
+    lines.some(
+      (line) =>
+        line.countedQuantityBaseUom === null ||
+        !line.countedByUserId ||
+        !line.countedAt
+    )
+  ) {
+    throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
+  }
+  return { attempt, lines };
+}
+
+function stockCountReviewRequest(input: {
+  stockCountSessionId: string;
+  stockCountAttemptId: string;
+  submitterUserId: string;
+  idempotencyKey: string;
+}) {
+  const request = {
+    action: "StockCountAttemptReview.submit",
+    idempotencyKey: input.idempotencyKey,
+    schemaVersion: 1,
+    stockCountAttemptId: input.stockCountAttemptId,
+    stockCountSessionId: input.stockCountSessionId,
+    submitterUserId: input.submitterUserId
+  };
+  return {
+    canonicalJson: inventoryPilotCanonicalJson(request),
+    hash: inventoryPilotDigest(request)
+  };
+}
+
+async function allStockCountApprovalProhibitedActors(
+  tx: TransactionClient,
+  session: SessionContext,
+  count: LockedStockCount,
+  attempt: LockedStockCountApprovalAttempt
+) {
+  const counters = await tx.$queryRaw<Array<{ userId: string }>>(Prisma.sql`
+    SELECT al."countedByUserId" AS "userId"
+      FROM "StockCountAttempt" a
+      JOIN "StockCountAttemptLine" al ON al."stockCountAttemptId" = a.id
+     WHERE a.id = ${attempt.id}::uuid
+       AND a."stockCountSessionId" = ${count.id}::uuid
+       AND a."tenantId" = ${session.context.tenantId}::uuid
+       AND a."companyId" = ${session.context.companyId}::uuid
+       AND al."tenantId" = ${session.context.tenantId}::uuid
+       AND al."companyId" = ${session.context.companyId}::uuid
+       AND al."inventoryLocationId" = ${count.inventoryLocationId}::uuid
+       AND al."countedByUserId" IS NOT NULL
+     ORDER BY al."countedByUserId" ASC, al."lineNumber" ASC, al.id ASC
+     FOR UPDATE OF a, al
+  `);
+  return buildStockCountApprovalProhibitedActors({
+    sessionCreatedByUserId: count.createdByUserId,
+    sessionAssignedToUserId: count.assignedToUserId,
+    attemptCreatedByUserId: attempt.createdByUserId,
+    attemptAssignedToUserId: attempt.assignedToUserId,
+    countedByUserIds: counters.map(({ userId }) => userId)
+  });
+}
+
+export function buildStockCountApprovalProhibitedActors(input: {
+  sessionCreatedByUserId: string;
+  sessionAssignedToUserId: string | null;
+  attemptCreatedByUserId: string;
+  attemptAssignedToUserId: string | null;
+  countedByUserIds: Iterable<string>;
+}) {
+  const actors = new Map<string, string>();
+  actors.set(input.sessionCreatedByUserId, "SESSION_CREATOR");
+  if (input.sessionAssignedToUserId) {
+    actors.set(input.sessionAssignedToUserId, "SESSION_ASSIGNED_COUNTER");
+  }
+  actors.set(input.attemptCreatedByUserId, "CREATOR");
+  if (input.attemptAssignedToUserId) {
+    actors.set(input.attemptAssignedToUserId, "ASSIGNED_COUNTER");
+  }
+  for (const userId of input.countedByUserIds) actors.set(userId, "COUNTER");
+  return [...actors].map(([userId, reasonCode]) => ({ userId, reasonCode }));
+}
+
+async function assertLegacyStockCountReviewIsAllowed(
+  tx: TransactionClient,
+  session: SessionContext,
+  count: LockedStockCount,
+  stage: "SUBMIT" | "REVALIDATE"
+) {
+  // The environment switch may deny use of the pilot producer, but it must
+  // never downgrade a database-active family to the legacy direct path.
+  // This runs under the same shared producer barrier as the source locks, so
+  // activation cannot race the legacy admission decision.
+  const activation = await tx.inventoryPilotFamilyActivation.findUnique({
+    where: {
+      tenantId_companyId_family: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        family: "StockCountAttemptReview"
+      }
+    },
+    select: { status: true }
+  });
+  if (activation?.status === "ACTIVE") {
+    const locked = await lockCurrentStockCountAttemptForApproval(tx, session, count);
+    try {
+      await classifyStockCountAttemptForPilotApproval({
+        tx,
+        // The environment is a denial-only switch. This explicit local value
+        // is used solely to classify an already-active sealed database cohort;
+        // it never creates activation or grants an approval path.
+        environment: {
+          STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED: "true"
+        },
+        stage,
+        count: {
+          session: {
+            id: count.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            version: count.version,
+            status: count.status,
+            inventoryLocationId: count.inventoryLocationId,
+            locationId: session.context.locationId,
+            currentAttemptId: count.currentAttemptId
+          },
+          attempt: {
+            id: locked.attempt.id,
+            stockCountSessionId: locked.attempt.stockCountSessionId,
+            tenantId: locked.attempt.tenantId,
+            companyId: locked.attempt.companyId,
+            version: locked.attempt.version,
+            status: locked.attempt.status,
+            inventoryLocationId: locked.attempt.inventoryLocationId,
+            lines: locked.lines.map((line) => ({
+              id: line.id,
+              tenantId: line.tenantId,
+              companyId: line.companyId,
+              inventoryLocationId: line.inventoryLocationId,
+              itemId: line.itemId
+            }))
+          }
+        }
+      });
+    } catch (error) {
+      // A cohort with neither matching endpoint nor item membership remains on
+      // the legacy path. A mixed cohort, stale authority, malformed evidence,
+      // or source mismatch is never treated as a legacy fallback.
+      if (
+        error instanceof Error &&
+        (error.message === INVENTORY_PILOT_APPROVAL_ERRORS.SCOPE_MISMATCH ||
+          error.message ===
+            INVENTORY_PILOT_APPROVAL_ERRORS.ENDPOINT_CAPABILITY_MISMATCH)
+      ) {
+        return;
+      }
+      throw error;
+    }
+    throw new Error(INVENTORY_PILOT_APPROVAL_ERRORS.DISABLED);
+  }
+}
+
 export async function submitStockCount(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.stockCountSubmit);
   const values = stockCountActionSchema.parse(Object.fromEntries(formData));
 
   const target = await findScopedStockCountLocation(session, values.id);
-
-  await prisma.$transaction(async (tx) => {
+  const pilotEnabled =
+    process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "StockCountAttemptReview"
+  }, async (tx) => {
     await lockInventoryLocationForPosting(
       tx,
       session,
@@ -1699,11 +2016,86 @@ export async function submitStockCount(formData: FormData) {
       target.inventoryLocationId
     );
     await requirePermission(session, permissions.stockCountSubmit);
-    assertStockCountCanSubmit(count.status);
     assertStockCountAssignedActor({
       assignedToUserId: count.assignedToUserId,
       actorUserId: session.user.id
     });
+    if (!pilotEnabled) {
+      await assertLegacyStockCountReviewIsAllowed(tx, session, count, "SUBMIT");
+    }
+
+    let pilotApprovalContext: {
+      locked: Awaited<ReturnType<typeof lockCurrentStockCountAttemptForApproval>>;
+      request: ReturnType<typeof stockCountReviewRequest>;
+    } | null = null;
+    if (pilotEnabled) {
+      if (!values.idempotencyKey) {
+        assertStockCountCanSubmit(count.status);
+        throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
+      }
+      const locked = await lockCurrentStockCountAttemptForApproval(tx, session, count);
+      const request = stockCountReviewRequest({
+        stockCountSessionId: count.id,
+        stockCountAttemptId: locked.attempt.id,
+        submitterUserId: session.user.id,
+        idempotencyKey: values.idempotencyKey
+      });
+      const replay = await tx.stockCountReviewSubmissionIntent.findFirst({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          idempotencyKey: values.idempotencyKey
+        }
+      });
+      if (replay) {
+        const replayApproval = await tx.approvalInstance.findFirst({
+          where: {
+            id: replay.approvalInstanceId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId
+          },
+          select: { documentType: true, documentId: true }
+        });
+        const currentActivation = await tx.inventoryPilotFamilyActivation.findUnique({
+          where: {
+            tenantId_companyId_family: {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              family: "StockCountAttemptReview"
+            }
+          }
+        });
+        if (
+          replay.stockCountAttemptId !== locked.attempt.id ||
+          replay.stockCountSessionId !== count.id ||
+          replay.submitterUserId !== session.user.id ||
+          replay.requestCanonicalJson !== request.canonicalJson ||
+          replay.requestHash !== request.hash ||
+          replay.attemptVersionBefore + 1 !== replay.attemptVersionAfter ||
+          replay.sessionVersionBefore + 1 !== replay.sessionVersionAfter ||
+          replay.approvalDocumentType !== "StockCountAttemptReview" ||
+          replay.activationFamily !== "StockCountAttemptReview" ||
+          replay.activationStatus !== "ACTIVE" ||
+          !replayApproval ||
+          replayApproval.documentType !== "StockCountAttemptReview" ||
+          replayApproval.documentId !== locked.attempt.id ||
+          count.currentAttemptId !== locked.attempt.id ||
+          !currentActivation ||
+          currentActivation.status !== "ACTIVE" ||
+          currentActivation.currentActivationEventId !== replay.activationEventId ||
+          currentActivation.configurationRevisionId !== replay.configurationRevisionId ||
+          currentActivation.configurationRevisionNumber !== replay.configurationRevisionNumber ||
+          currentActivation.configurationDigest !== replay.configurationDigest ||
+          currentActivation.generation !== replay.activationGeneration
+        ) {
+          throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_CONFLICT");
+        }
+        return;
+      }
+      pilotApprovalContext = { locked, request };
+    }
+
+    assertStockCountCanSubmit(count.status);
     const lines = await tx.stockCountLine.findMany({
       where: {
         stockCountSessionId: count.id,
@@ -1726,7 +2118,257 @@ export async function submitStockCount(formData: FormData) {
     if (lines.some((line) => !line.countedByUserId || !line.countedAt)) {
       throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
     }
-    const attemptId = await ensureStockCountAttempt1(tx, session, count);
+
+    // The ordinary review graph is deliberately default-off. A disabled
+    // family is the only non-admitted result that can use the legacy path;
+    // an enabled family with missing, mixed, or stale authority fails closed.
+    if (pilotEnabled) {
+      if (!pilotApprovalContext || !values.idempotencyKey) {
+        throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
+      }
+      const { locked, request } = pilotApprovalContext;
+
+      const attestation = await classifyStockCountAttemptForPilotApproval({
+        tx,
+        stage: "SUBMIT",
+        count: {
+          session: {
+            id: count.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            version: count.version,
+            status: count.status,
+            inventoryLocationId: count.inventoryLocationId,
+            locationId: session.context.locationId,
+            currentAttemptId: count.currentAttemptId
+          },
+          attempt: {
+            id: locked.attempt.id,
+            stockCountSessionId: locked.attempt.stockCountSessionId,
+            tenantId: locked.attempt.tenantId,
+            companyId: locked.attempt.companyId,
+            version: locked.attempt.version,
+            status: locked.attempt.status,
+            inventoryLocationId: locked.attempt.inventoryLocationId,
+            lines: locked.lines.map((line) => ({
+              id: line.id,
+              tenantId: line.tenantId,
+              companyId: line.companyId,
+              inventoryLocationId: line.inventoryLocationId,
+              itemId: line.itemId
+            }))
+          }
+        }
+      });
+      const approvalRule = await tx.approvalRule.findFirst({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          transactionType: "StockCountAttemptReview",
+          isActive: true,
+          definitionSealed: true
+        },
+        include: { steps: { orderBy: { stepOrder: "asc" } } },
+        orderBy: { priority: "asc" }
+      });
+      if (!approvalRule || approvalRule.steps.length === 0) {
+        throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+      }
+      const firstStep = approvalRule.steps[0];
+      if (!firstStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+      const prohibitedActors = await allStockCountApprovalProhibitedActors(
+        tx,
+        session,
+        count,
+        locked.attempt
+      );
+      const routedSteps = approvalRule.steps.map((step, index) => ({
+        ...step,
+        approvalInstanceStepId: randomUUID(),
+        activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+      }));
+      const firstRoutedStep = routedSteps[0];
+      if (!firstRoutedStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+
+      const approval = await tx.approvalInstance.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          documentType: "StockCountAttemptReview",
+          documentId: locked.attempt.id,
+          approvalRuleId: approvalRule.id,
+          status: "PENDING",
+          currentStepOrder: firstStep.stepOrder,
+          steps: {
+            create: routedSteps.map((step) => ({
+              id: step.approvalInstanceStepId,
+              stepOrder: step.stepOrder,
+              assignedUserId: step.userId,
+              assignedRoleId: step.roleId,
+              status: step.activationStatus
+            }))
+          }
+        }
+      });
+      for (const step of routedSteps) {
+        await configureApprovalStepRouting(tx, {
+          approvalInstanceStepId: step.approvalInstanceStepId,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          routingPolicy: getApprovalRoutingPolicy("StockCountAttemptReview"),
+          requiredPermissionCode: permissions.stockCountReview,
+          dueAt: null,
+          activationAudit: {
+            actorUserId: session.user.id,
+            source: "stock-count-attempt-review-submission"
+          },
+          scopeGroups: [{
+            groupOrder: 1,
+            targetMatchMode: "ANY",
+            targets: [{
+              scopeType: "LOCATION",
+              companyId: session.context.companyId,
+              locationId: session.context.locationId
+            }]
+          }],
+          prohibitedActors
+        });
+      }
+      await assertAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+      });
+      const sessionDigest = inventoryPilotDigest({
+        schemaVersion: 1,
+        id: count.id,
+        currentAttemptId: count.currentAttemptId,
+        status: count.status,
+        version: count.version
+      });
+      const attemptDigest = inventoryPilotDigest({
+        schemaVersion: 1,
+        id: locked.attempt.id,
+        stockCountSessionId: locked.attempt.stockCountSessionId,
+        status: locked.attempt.status,
+        version: locked.attempt.version
+      });
+      const evidenceDigest = inventoryPilotDigest({
+        schemaVersion: 1,
+        evidenceReference: locked.attempt.evidenceReference,
+        lines: locked.lines.map((line) => ({
+          id: line.id,
+          itemId: line.itemId,
+          countedByUserId: line.countedByUserId,
+          countedAt: line.countedAt?.toISOString() ?? null,
+          countedQuantityBaseUom: String(line.countedQuantityBaseUom)
+        }))
+      });
+
+      const submitted = await tx.stockCountSession.updateMany({
+        where: {
+          id: count.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: count.inventoryLocationId,
+          assignedToUserId: session.user.id,
+          currentAttemptId: locked.attempt.id,
+          status: "IN_PROGRESS",
+          updatedAt: count.updatedAt,
+          version: count.version
+        },
+        data: {
+          status: "SUBMITTED",
+          submittedAt: count.databaseNow,
+          version: { increment: 1 }
+        }
+      });
+      if (submitted.count !== 1) throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+      const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
+        UPDATE "StockCountAttempt"
+           SET status = 'SUBMITTED', "submittedAt" = ${count.databaseNow},
+               "updatedAt" = ${count.databaseNow}, version = version + 1
+         WHERE id = ${locked.attempt.id}::uuid
+           AND "stockCountSessionId" = ${count.id}::uuid
+           AND "tenantId" = ${session.context.tenantId}::uuid
+           AND "companyId" = ${session.context.companyId}::uuid
+           AND status = 'IN_PROGRESS' AND version = ${locked.attempt.version}
+      `);
+      if (attemptSubmitted !== 1) throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+      const evidenceCanonicalHash = inventoryPilotDigest({
+        schemaVersion: 1,
+        sessionDigest,
+        attemptDigest,
+        evidenceDigest
+      });
+      await tx.stockCountReviewSubmissionIntent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          stockCountAttemptId: locked.attempt.id,
+          stockCountSessionId: count.id,
+          attemptVersionBefore: locked.attempt.version,
+          attemptVersionAfter: locked.attempt.version + 1,
+          sessionVersionBefore: count.version,
+          sessionVersionAfter: count.version + 1,
+          evidenceCanonicalHash,
+          configurationRevisionId: attestation.configurationRevisionId,
+          configurationRevisionNumber: attestation.configurationRevisionNumber,
+          configurationDigest: attestation.configurationDigest,
+          activationEventId: attestation.activationEventId,
+          activationFamily: "StockCountAttemptReview",
+          activationStatus: "ACTIVE",
+          activationGeneration: attestation.activationGeneration,
+          idempotencyKey: values.idempotencyKey,
+          requestCanonicalJson: request.canonicalJson,
+          requestHash: request.hash,
+          submitterUserId: session.user.id,
+          approvalInstanceId: approval.id,
+          approvalDocumentType: "StockCountAttemptReview"
+        }
+      });
+      const auditEvent = await tx.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "stock_count.submitted",
+          entityType: "StockCountAttempt",
+          entityId: locked.attempt.id,
+          beforeData: { sessionStatus: "IN_PROGRESS", attemptStatus: "IN_PROGRESS" },
+          afterData: { sessionStatus: "SUBMITTED", attemptStatus: "SUBMITTED" },
+          metadata: {
+            approvalInstanceId: approval.id,
+            approvalRuleId: approvalRule.id,
+            configurationRevisionId: attestation.configurationRevisionId,
+            activationEventId: attestation.activationEventId,
+            sessionDigest,
+            attemptDigest,
+            evidenceDigest,
+            evidenceCanonicalHash
+          }
+        }
+      });
+      await recordWorkflowNotifications(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: session.context.locationId,
+        recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
+        notificationType: "APPROVE_STOCK_COUNT_REVIEW",
+        priority: "NORMAL",
+        title: `Review Stock Count ${count.id}`,
+        body: `${session.user.displayName} submitted a stock count for independent review.`,
+        deepLink: `/approvals/${approval.id}`,
+        entityType: "StockCountAttempt",
+        entityId: locked.attempt.id,
+        sourceEventKey: auditEvent.id,
+        recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
+        metadata: { approvalInstanceId: approval.id, approvalStepOrder: firstStep.stepOrder }
+      });
+      return;
+    }
+
+    const ensuredAttempt = await ensureStockCountAttempt1(tx, session, count);
     const submitted = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
@@ -1735,11 +2377,17 @@ export async function submitStockCount(formData: FormData) {
         inventoryLocationId: count.inventoryLocationId,
         assignedToUserId: session.user.id,
         status: "IN_PROGRESS",
-        updatedAt: count.updatedAt
+        updatedAt: count.updatedAt,
+        version: count.version,
+        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
       },
       data: {
         status: "SUBMITTED",
-        submittedAt: count.databaseNow
+        submittedAt: count.databaseNow,
+        ...(ensuredAttempt.needsSessionLink
+          ? { currentAttemptId: ensuredAttempt.id }
+          : {}),
+        version: { increment: 1 }
       }
     });
     if (submitted.count !== 1) {
@@ -1749,12 +2397,14 @@ export async function submitStockCount(formData: FormData) {
       UPDATE "StockCountAttempt"
          SET status = 'SUBMITTED',
              "submittedAt" = ${count.databaseNow},
-             "updatedAt" = ${count.databaseNow}
-       WHERE id = ${attemptId}::uuid
+             "updatedAt" = ${count.databaseNow},
+             version = version + 1
+       WHERE id = ${ensuredAttempt.id}::uuid
          AND "stockCountSessionId" = ${count.id}::uuid
          AND "tenantId" = ${session.context.tenantId}::uuid
          AND "companyId" = ${session.context.companyId}::uuid
          AND status = 'IN_PROGRESS'
+         AND version = ${ensuredAttempt.version}
     `);
     if (attemptSubmitted !== 1) {
       throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1785,7 +2435,13 @@ export async function reviewStockCount(formData: FormData) {
 
   const target = await findScopedStockCountLocation(session, values.id);
   const nextStatus = "REVIEWED";
-  await prisma.$transaction(async (tx) => {
+  const pilotEnabled =
+    process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "StockCountAttemptReview"
+  }, async (tx) => {
     await lockInventoryLocationForPosting(
       tx,
       session,
@@ -1798,6 +2454,59 @@ export async function reviewStockCount(formData: FormData) {
       target.inventoryLocationId
     );
     await requirePermission(session, permissions.stockCountReview);
+
+    // Once the sealed ordinary-count approval family is enabled, direct review
+    // is not an alternate terminal path. Revalidate the locked current attempt
+    // against the relational activation authority before rejecting it. This
+    // deliberately propagates missing, stale, mixed, or malformed pilot
+    // authority instead of falling through to the legacy mutation path.
+    if (pilotEnabled) {
+      const locked = await lockCurrentStockCountAttemptForApproval(
+        tx,
+        session,
+        count
+      );
+      await classifyStockCountAttemptForPilotApproval({
+        tx,
+        stage: "REVALIDATE",
+        count: {
+          session: {
+            id: count.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            version: count.version,
+            status: count.status,
+            inventoryLocationId: count.inventoryLocationId,
+            locationId: session.context.locationId,
+            currentAttemptId: count.currentAttemptId
+          },
+          attempt: {
+            id: locked.attempt.id,
+            stockCountSessionId: locked.attempt.stockCountSessionId,
+            tenantId: locked.attempt.tenantId,
+            companyId: locked.attempt.companyId,
+            version: locked.attempt.version,
+            status: locked.attempt.status,
+            inventoryLocationId: locked.attempt.inventoryLocationId,
+            lines: locked.lines.map((line) => ({
+              id: line.id,
+              tenantId: line.tenantId,
+              companyId: line.companyId,
+              inventoryLocationId: line.inventoryLocationId,
+              itemId: line.itemId
+            }))
+          }
+        }
+      });
+      throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_REQUIRED");
+    }
+    await assertLegacyStockCountReviewIsAllowed(
+      tx,
+      session,
+      count,
+      "REVALIDATE"
+    );
+
     assertStockCountCanReview(count.status);
     const lines = await tx.stockCountLine.findMany({
       where: {
@@ -1825,13 +2534,15 @@ export async function reviewStockCount(formData: FormData) {
         companyId: session.context.companyId,
         inventoryLocationId: count.inventoryLocationId,
         status: "SUBMITTED",
-        updatedAt: count.updatedAt
+        updatedAt: count.updatedAt,
+        version: count.version
       },
       data: {
         status: nextStatus,
         reviewedAt: count.databaseNow,
         reviewedByUserId: session.user.id,
-        reviewNotes: values.reviewNotes
+        reviewNotes: values.reviewNotes,
+        version: { increment: 1 }
       }
     });
     if (reviewed.count !== 1) {
@@ -1841,18 +2552,23 @@ export async function reviewStockCount(formData: FormData) {
     if (!attemptId) {
       throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
     }
+    if (count.currentAttemptVersion === null) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
     const attemptReviewed = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
          SET status = ${nextStatus},
              "reviewedAt" = ${count.databaseNow},
              "reviewedByUserId" = ${session.user.id}::uuid,
              "reviewNotes" = ${values.reviewNotes},
-             "updatedAt" = ${count.databaseNow}
+             "updatedAt" = ${count.databaseNow},
+             version = version + 1
        WHERE id = ${attemptId}::uuid
          AND "stockCountSessionId" = ${count.id}::uuid
          AND "tenantId" = ${session.context.tenantId}::uuid
          AND "companyId" = ${session.context.companyId}::uuid
          AND status = 'SUBMITTED'
+         AND version = ${count.currentAttemptVersion}
     `);
     if (attemptReviewed !== 1) {
       throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1894,6 +2610,95 @@ export async function cancelStockCount(formData: FormData) {
     );
     await requirePermission(session, permissions.stockCountCancel);
     assertStockCountCanCancel(count.status);
+    if (!count.currentAttemptId || count.currentAttemptVersion === null) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
+
+    // A pilot-admitted review is identified by the immutable intent, rather
+    // than the rollout flag. This lets an already-admitted count be cancelled
+    // coherently even after the default-off switch is restored. Keep the lock
+    // order source -> intent -> graph: terminal approval paths take the same
+    // source lock before changing either graph or source state.
+    const pendingIntent = count.status === "SUBMITTED"
+      ? await tx.$queryRaw<Array<{
+          id: string;
+          approvalInstanceId: string;
+          stockCountAttemptId: string;
+          stockCountSessionId: string;
+          attemptVersionBefore: number;
+          attemptVersionAfter: number;
+          sessionVersionBefore: number;
+          sessionVersionAfter: number;
+          approvalDocumentType: string;
+          activationFamily: string;
+          activationStatus: string;
+        }>>(Prisma.sql`
+          SELECT i.id, i."approvalInstanceId", i."stockCountAttemptId",
+                 i."stockCountSessionId", i."attemptVersionBefore",
+                 i."attemptVersionAfter", i."sessionVersionBefore",
+                 i."sessionVersionAfter", i."approvalDocumentType",
+                 i."activationFamily", i."activationStatus"
+            FROM "StockCountReviewSubmissionIntent" i
+           WHERE i."tenantId" = ${session.context.tenantId}::uuid
+             AND i."companyId" = ${session.context.companyId}::uuid
+             AND i."stockCountAttemptId" = ${count.currentAttemptId}::uuid
+             AND i."stockCountSessionId" = ${count.id}::uuid
+           ORDER BY i."createdAt" ASC, i.id ASC
+        `)
+      : [];
+    const pendingGraphs = count.status === "SUBMITTED"
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT ai.id
+            FROM "ApprovalInstance" ai
+           WHERE ai."tenantId" = ${session.context.tenantId}::uuid
+             AND ai."companyId" = ${session.context.companyId}::uuid
+             AND ai."documentType" = 'StockCountAttemptReview'
+             AND ai."documentId" = ${count.currentAttemptId}::uuid
+             AND ai.status = 'PENDING'::"ApprovalStatus"
+           ORDER BY ai.id ASC
+           FOR UPDATE OF ai
+        `)
+      : [];
+    if (pendingIntent.length !== pendingGraphs.length || pendingIntent.length > 1) {
+      throw new Error("STOCK_COUNT_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
+    const intent = pendingIntent[0];
+    const graph = pendingGraphs[0];
+    if (
+      intent &&
+      (!graph ||
+        intent.approvalInstanceId !== graph.id ||
+        intent.stockCountAttemptId !== count.currentAttemptId ||
+        intent.stockCountSessionId !== count.id ||
+        intent.attemptVersionBefore + 1 !== intent.attemptVersionAfter ||
+        intent.sessionVersionBefore + 1 !== intent.sessionVersionAfter ||
+        intent.attemptVersionAfter !== count.currentAttemptVersion ||
+        intent.sessionVersionAfter !== count.version ||
+        intent.approvalDocumentType !== "StockCountAttemptReview" ||
+        intent.activationFamily !== "StockCountAttemptReview" ||
+        intent.activationStatus !== "ACTIVE")
+    ) {
+      throw new Error("STOCK_COUNT_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
+    const approvalCancellation = intent
+      ? await terminatePendingApprovalForCancellation(tx, {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          documentType: "StockCountAttemptReview",
+          documentId: intent.stockCountAttemptId,
+          policy: "APPROVAL_REQUIRED",
+          // Admission is durable evidence. A later flag disable cannot strand
+          // an in-flight normalized graph.
+          forceWhenDisabled: true
+        })
+      : null;
+    if (
+      intent &&
+      (approvalCancellation?.mode !== "CANCELLED" ||
+        approvalCancellation.approvalInstanceId !== intent.approvalInstanceId)
+    ) {
+      throw new Error("STOCK_COUNT_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
+    }
     const cancelled = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
@@ -1901,33 +2706,34 @@ export async function cancelStockCount(formData: FormData) {
         companyId: session.context.companyId,
         inventoryLocationId: count.inventoryLocationId,
         status: count.status,
-        updatedAt: count.updatedAt
+        updatedAt: count.updatedAt,
+        version: count.version
       },
       data: {
         status: "CANCELLED",
         cancelledAt: count.databaseNow,
-        cancellationReason: values.cancellationReason
+        cancellationReason: values.cancellationReason,
+        version: { increment: 1 }
       }
     });
     if (cancelled.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
     const attemptId = count.currentAttemptId;
-    if (!attemptId) {
-      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
-    }
     const attemptCancelled = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
          SET status = 'CANCELLED',
              "cancelledAt" = ${count.databaseNow},
              "cancellationReason" = ${values.cancellationReason},
-             "updatedAt" = ${count.databaseNow}
+             "updatedAt" = ${count.databaseNow},
+             version = version + 1
        WHERE id = ${attemptId}::uuid
          AND "stockCountSessionId" = ${count.id}::uuid
          AND "tenantId" = ${session.context.tenantId}::uuid
          AND "companyId" = ${session.context.companyId}::uuid
          AND "inventoryLocationId" = ${count.inventoryLocationId}::uuid
          AND status = ${count.status}
+         AND version = ${count.currentAttemptVersion}
     `);
     if (attemptCancelled !== 1) {
       throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1942,7 +2748,10 @@ export async function cancelStockCount(formData: FormData) {
         entityId: count.id,
         beforeData: { status: count.status },
         afterData: { status: "CANCELLED" },
-        metadata: { reason: values.cancellationReason }
+        metadata: {
+          reason: values.cancellationReason,
+          approvalInstanceId: intent?.approvalInstanceId ?? null
+        }
       }
     });
   });

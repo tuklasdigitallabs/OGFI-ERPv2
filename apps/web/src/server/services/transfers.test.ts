@@ -14,6 +14,10 @@ import {
   assertTransferCanSubmit,
   assertTransferLocationsDistinct,
   hashInventoryTransferReceiptRequest,
+  hashInventoryTransferApprovalRequest,
+  hashInventoryTransferApprovalSource,
+  inventoryTransferApprovalRequestCanonicalJson,
+  inventoryTransferApprovalSourceCanonicalJson,
   getTransferDashboardRead,
   listTransferMyTaskPage,
   listInventoryTransfersDashboardProfilePage,
@@ -273,15 +277,16 @@ describe("inventory transfer foundation rules", () => {
     );
   });
 
-  test("cancels only draft or requested transfers", () => {
+  test("cancels draft, requested, or normalized-pending transfers only", () => {
     expect(() => assertTransferCanCancel("DRAFT")).not.toThrow();
     expect(() => assertTransferCanCancel("REQUESTED")).not.toThrow();
+    expect(() => assertTransferCanCancel("PENDING_APPROVAL")).not.toThrow();
     expect(() => assertTransferCanCancel("CANCELLED")).toThrow(
       "TRANSFER_NOT_CANCELLABLE"
     );
   });
 
-  test("cancellation uses a scoped source and child-row fence without posting movements", () => {
+  test("cancellation uses a source-first typed-intent graph fence without posting movements", () => {
     const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
     const cancellation = source.slice(source.indexOf("export async function cancelInventoryTransfer"));
 
@@ -291,6 +296,15 @@ describe("inventory transfer foundation rules", () => {
     expect(cancellation).toContain('updatedAt: transfer.updatedAt');
     expect(cancellation).toContain('sourceDocumentType: "InventoryTransfer"');
     expect(cancellation).toContain('TRANSFER_CANCELLATION_RESIDUE_CONFLICT');
+    expect(cancellation).toContain('"InventoryTransferApprovalSubmissionIntent"');
+    expect(cancellation).not.toContain('FOR UPDATE OF i');
+    expect(cancellation).toContain('TRANSFER_CANCELLATION_APPROVAL_LINEAGE_CONFLICT');
+    expect(cancellation).toContain('terminatePendingApprovalForCancellation');
+    expect(cancellation).toContain('forceWhenDisabled: true');
+    expect(cancellation).toContain('status: "PENDING"');
+    expect(cancellation).toContain('status: transfer.status');
+    expect(cancellation).toContain('nonPostingCancellation: true');
+    expect(cancellation).toContain('INVENTORY_TRANSFER_CANCELLED');
     expect(cancellation).not.toContain('postInventoryMovementInTransaction');
   });
 
@@ -311,6 +325,37 @@ describe("inventory transfer foundation rules", () => {
     expect(dispatch).toContain("TRANSFER_DISPATCH_STATE_CONFLICT");
   });
 
+  test("dispatch and receipt deny every historical transfer approver before custody mutation", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const dispatch = source.slice(
+      source.indexOf("export async function dispatchInventoryTransfer"),
+      source.indexOf("export async function receiveInventoryTransfer")
+    );
+    const receive = source.slice(
+      source.indexOf("export async function receiveInventoryTransfer"),
+      source.indexOf("export async function settleInventoryTransferDiscrepancy")
+    );
+
+    expect(source).toContain('FROM "ApprovalInstanceStep" s');
+    expect(source).toContain('s."actedByUserId" = ${input.actorUserId}::uuid');
+    expect(source).toContain("s.status = 'APPROVED'::\"ApprovalStepStatus\"");
+    expect(source).toContain("TRANSFER_APPROVER_CANNOT_DISPATCH");
+    expect(source).toContain("TRANSFER_APPROVER_CANNOT_RECEIVE");
+    expect(dispatch.indexOf("assertTransferCanDispatch(lockedTransfer.status)")).toBeLessThan(
+      dispatch.indexOf("action: \"DISPATCH\"")
+    );
+    expect(dispatch.indexOf("action: \"DISPATCH\"")).toBeLessThan(
+      dispatch.indexOf('status: "DISPATCHED"')
+    );
+    expect(receive.indexOf("assertTransferCanReceive(lockedTransfer.status)")).toBeLessThan(
+      receive.indexOf("action: \"RECEIVE\"")
+    );
+    expect(receive.indexOf("action: \"RECEIVE\"")).toBeLessThan(
+      receive.indexOf('status: "POSTING"')
+    );
+    expect(receive).toContain("TRANSFER_RECEIVER_MUST_DIFFER_FROM_DISPATCHER");
+  });
+
   test("submit fences the scoped header and lines without posting inventory", () => {
     const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
     const submit = source.slice(
@@ -326,6 +371,187 @@ describe("inventory transfer foundation rules", () => {
     expect(submit).toContain("TRANSFER_SUBMIT_RESIDUE_CONFLICT");
     expect(submit).not.toContain("lockInventoryLocationsForPosting");
     expect(submit).not.toContain("postInventoryMovementInTransaction");
+  });
+
+  test("every material transfer header writer CASes and advances version once", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const writers = [
+      ["submitInventoryTransfer", "dispatchInventoryTransfer", "transfer.version"],
+      ["dispatchInventoryTransfer", "receiveInventoryTransfer", "lockedTransfer.version"],
+      ["receiveInventoryTransfer", "settleInventoryTransferDiscrepancy", "lockedTransfer.version"],
+      ["settleInventoryTransferDiscrepancy", "reverseInventoryTransferReceipt", "lockedTransfer.version"],
+      ["reverseInventoryTransferReceipt", "cancelInventoryTransfer", "lockedTransfer.version"],
+      ["cancelInventoryTransfer", undefined, "transfer.version"]
+    ] as const;
+
+    for (const [writer, nextWriter, expectedVersion] of writers) {
+      const start = source.indexOf(`export async function ${writer}`);
+      const end = nextWriter
+        ? source.indexOf(`export async function ${nextWriter}`, start)
+        : source.length;
+      const writerSource = source.slice(start, end);
+
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(writerSource).toContain("FOR UPDATE OF t");
+      expect(writerSource).toContain(`version: ${expectedVersion}`);
+      expect(writerSource).toContain("version: { increment: 1 }");
+    }
+
+    expect((source.match(/version: \{ increment: 1 \}/g) ?? [])).toHaveLength(7);
+  });
+
+  test("approval submission canonicalizes its request and locked source deterministically", () => {
+    const baseSource = {
+      id: "transfer-1",
+      tenantId: "tenant-1",
+      companyId: "company-1",
+      sourceLocationId: "source-1",
+      destinationLocationId: "destination-1",
+      requestedByUserId: "requester-1",
+      publicReference: "TR-2026-00001",
+      transferType: "REPLENISHMENT",
+      purpose: "Replenish branch stock",
+      requiredByDate: new Date("2026-08-01T00:00:00.000Z"),
+      status: "DRAFT",
+      version: 7,
+      lines: [
+        {
+          id: "line-2",
+          itemId: "item-2",
+          sourceInventoryLocationId: "source-inventory-1",
+          destinationInventoryLocationId: "destination-inventory-1",
+          lineNumber: 2,
+          requestedQty: { toFixed: () => "2.000000" },
+          uomId: "uom-1",
+          description: "Second",
+          notes: null
+        },
+        {
+          id: "line-1",
+          itemId: "item-1",
+          sourceInventoryLocationId: "source-inventory-1",
+          destinationInventoryLocationId: "destination-inventory-1",
+          lineNumber: 1,
+          requestedQty: { toFixed: () => "1.000000" },
+          uomId: "uom-1",
+          description: "First",
+          notes: "urgent"
+        }
+      ]
+    };
+    const source = baseSource as unknown as Parameters<
+      typeof inventoryTransferApprovalSourceCanonicalJson
+    >[0];
+    const reordered = {
+      ...baseSource,
+      lines: [...baseSource.lines].reverse()
+    } as unknown as Parameters<typeof inventoryTransferApprovalSourceCanonicalJson>[0];
+
+    expect(inventoryTransferApprovalSourceCanonicalJson(source)).toBe(
+      inventoryTransferApprovalSourceCanonicalJson(reordered)
+    );
+    expect(hashInventoryTransferApprovalSource(source)).toBe(
+      hashInventoryTransferApprovalSource(reordered)
+    );
+
+    const request = {
+      transferId: "transfer-1",
+      submitterUserId: "submitter-1",
+      idempotencyKey: "transfer-approval-key-0001"
+    };
+    expect(inventoryTransferApprovalRequestCanonicalJson(request)).toContain(
+      '"action":"inventory-transfer-approval-submit"'
+    );
+    expect(hashInventoryTransferApprovalRequest(request)).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  test("approval adapter uses the atomic pilot path and leaves the legacy path default-off only", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const submit = source.slice(
+      source.indexOf("export async function submitInventoryTransfer"),
+      source.indexOf("export async function dispatchInventoryTransfer")
+    );
+
+    expect(submit).toContain("withApprovalProducerTransaction");
+    expect(submit).toContain("classifyInventoryTransferForPilotApproval");
+    expect(submit).toContain("INVENTORY_PILOT_APPROVAL_ERRORS.DISABLED");
+    expect(submit).toContain("assertDisabledTransferSubmissionCanUseLegacy(tx, transfer)");
+    expect(submit).toContain('status: "PENDING_APPROVAL"');
+    expect(submit).toContain("inventoryTransferApprovalSubmissionIntent.create");
+    expect(submit).toContain("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    expect(submit).toContain("TRANSFER_APPROVAL_SOURCE_CAS_CONFLICT");
+    expect(submit).toContain('reasonCode: "REQUESTER"');
+    expect(submit).toContain("groupOrder: 1");
+    expect(submit).toContain("groupOrder: 2");
+    expect(submit).toContain("FOR SHARE OF r");
+    expect(submit).toContain("FOR SHARE OF s");
+    expect(submit).toContain("FOR UPDATE OF t");
+    expect(submit).toContain("FOR UPDATE OF l");
+    expect(submit).toContain("version: transfer.version");
+    expect(submit).toContain("version: { increment: 1 }");
+    expect(submit).not.toContain("catch (error) {\n      throw new Error(\"TRANSFER_NOT_DRAFT_FOR_SUBMIT\")");
+  });
+
+  test("a disabled process cannot downgrade a matching active pilot cohort to legacy submission", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const helperStart = source.indexOf("async function assertDisabledTransferSubmissionCanUseLegacy");
+    const helperEnd = source.indexOf("function canonicalReceiptQuantity", helperStart);
+    const helper = source.slice(helperStart, helperEnd);
+
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helper).toContain('"InventoryPilotFamilyActivation" a');
+    expect(helper).toContain("a.status = 'ACTIVE'::\"InventoryPilotActivationStatus\"");
+    expect(helper).toContain("pg_advisory_xact_lock_shared");
+    expect(helper).not.toContain("FOR SHARE OF a");
+    expect(helper).toContain("INVENTORY_TRANSFER_APPROVAL_V1_ENABLED: \"true\"");
+    expect(helper).toContain("INVENTORY_PILOT_APPROVAL_ERRORS.SCOPE_MISMATCH");
+    expect(helper).toContain("INVENTORY_PILOT_APPROVAL_ERRORS.DISABLED");
+    expect(helper).toContain("INVENTORY_PILOT_APPROVAL_ERRORS.CONFIGURATION_INVALID");
+  });
+
+  test("approval adapter pins replay identity and keeps source, graph, intent, audit, and notification atomic", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const submit = source.slice(
+      source.indexOf("export async function submitInventoryTransfer"),
+      source.indexOf("export async function dispatchInventoryTransfer")
+    );
+
+    const pilotSourceDigest = submit.indexOf("const sourceDigest = hashInventoryTransferApprovalSource");
+    const cas = submit.indexOf(
+      "const submitted = await tx.inventoryTransfer.updateMany",
+      pilotSourceDigest
+    );
+    const graph = submit.indexOf("const approval = await tx.approvalInstance.create");
+    const intent = submit.indexOf("inventoryTransferApprovalSubmissionIntent.create");
+    const audit = submit.indexOf("eventType: \"inventory_transfer.approval_submitted\"");
+    const notification = submit.indexOf("notificationType: \"APPROVE_INVENTORY_TRANSFER\"");
+
+    expect(pilotSourceDigest).toBeGreaterThanOrEqual(0);
+    expect(cas).toBeGreaterThan(pilotSourceDigest);
+    expect(graph).toBeGreaterThan(cas);
+    expect(intent).toBeGreaterThan(graph);
+    expect(audit).toBeGreaterThan(intent);
+    expect(notification).toBeGreaterThan(audit);
+    expect(submit).toContain("sourceVersionBefore: transfer.version");
+    expect(submit).toContain("sourceVersionAfter: transfer.version + 1");
+    expect(submit).toContain("sourceCanonicalHash: sourceDigest");
+    expect(submit).toContain("configurationRevisionId: attestation.configurationRevisionId");
+    expect(submit).toContain("activationEventId: attestation.activationEventId");
+    expect(submit).toContain("requestCanonicalJson: replayRequest.canonicalJson");
+    expect(submit).toContain("requestHash: replayRequest.hash");
+    expect(submit).toContain(
+      "currentActivation.currentActivationEventId !== existingIntent.activationEventId"
+    );
+    expect(submit).toContain(
+      "currentActivation.generation !== existingIntent.activationGeneration"
+    );
+    expect(submit).not.toContain(
+      "existingIntent.sourceVersionAfter !== lockedTransfer.version"
+    );
+    expect(submit).toContain('transfer.status === "RETURNED"');
+    expect(submit).toContain(
+      'approvalHistory.every(({ status }) => status === "RETURNED")'
+    );
   });
 
   test("dispatches requested transfers only", () => {

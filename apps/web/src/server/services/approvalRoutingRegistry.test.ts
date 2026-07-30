@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { permissions } from "./authorization";
 import {
   APPROVAL_ROUTING_MAPPING_HASH,
   approvalRoutingPolicies,
@@ -8,14 +9,27 @@ import {
 } from "./approvalRoutingRegistry";
 
 describe("approval routing mapping registry", () => {
-  test("contains exactly the 18 confirmed document types with no fallback", () => {
-    expect(supportedApprovalDocumentTypes).toHaveLength(18);
-    expect(new Set(supportedApprovalDocumentTypes).size).toBe(18);
+  test("contains exactly the 20 confirmed document types with no fallback", () => {
+    expect(supportedApprovalDocumentTypes).toHaveLength(20);
+    expect(new Set(supportedApprovalDocumentTypes).size).toBe(20);
     expect(Object.keys(approvalRoutingPolicies).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
     expect(isSupportedApprovalDocumentType("PROJECT_REQUIREMENT")).toBe(false);
     expect(isSupportedApprovalDocumentType("UnknownDocument")).toBe(false);
+  });
+
+  test("binds pilot transfer and count review to exact server-owned scope sources", () => {
+    expect(getApprovalRoutingPolicy("InventoryTransfer")).toMatchObject({
+      requiredPermissionCode: permissions.transferApprove,
+      scopeSource: "sourceLocationId+destinationLocationId",
+      allowedSourceStatuses: ["PENDING_APPROVAL"],
+    });
+    expect(getApprovalRoutingPolicy("StockCountAttemptReview")).toMatchObject({
+      requiredPermissionCode: permissions.stockCountReview,
+      scopeSource: "inventoryLocation.locationId",
+      allowedSourceStatuses: ["SUBMITTED"],
+    });
   });
 
   test.each(supportedApprovalDocumentTypes)(

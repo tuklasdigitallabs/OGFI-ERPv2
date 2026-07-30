@@ -255,6 +255,15 @@ Production deployment requires:
 
 Staging and production use three distinct PostgreSQL roles: a non-login object owner, a login migrator that may `SET ROLE` only to that owner, and a login runtime role with no memberships or schema/database creation rights. The application receives only `DATABASE_URL` for `ogfi_stg_runtime` or `ogfi_prod_runtime`. Owner, administrator, `DIRECT_DATABASE_URL`, and migrator credentials are prohibited from the application environment.
 
+Inventory Pilot configuration and activation are control-plane data, not ordinary
+runtime writes. The runtime role has `SELECT` only on configuration revisions,
+endpoint/item memberships, activation events, and activation state; it has only
+`SELECT, INSERT` on the two append-only typed submission-intent tables. It may
+execute the pure JSON canonicalizer needed for intent validation but not the
+revision-reading canonicalizer. A future production configuration or activation
+operation requires a separately confirmed narrow authority boundary and must not
+restore blanket control-plane DML to the web runtime.
+
 On Hostinger, keep the migrator, snapshot, and runtime credentials separate and
 keep the non-secret role contract separate from the application environment.
 The legacy `ogfi-db-migrate@.service` is a non-startable `/usr/bin/false`

@@ -360,7 +360,7 @@ BEGIN
         'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'::regprocedure,
-        '56d541f206e22b519da7e0d8462baf59', 'plpgsql', false,
+        '5476acd44e67de7c5037b5fa137809de', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)'::regprocedure,
         '7b52a3ede8f97dd7ecca08eb8ded185c', 'plpgsql', false,
@@ -406,6 +406,42 @@ BEGIN
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.controlled_evidence_canonical_json(jsonb)'::regprocedure,
         '785127719b3458bca6dbf1f6f3a443b3', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.inventory_pilot_canonical_json(jsonb)'::regprocedure,
+        'f7b95ffbba4f5410e1d24acd0c50ce0a', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure,
+        '7248e42819c1a191866e7cb7076aa8da', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_revision_insert()'::regprocedure,
+        '73d6b2530a5b911b444b5674e107ee22', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_revision_digest()'::regprocedure,
+        'd827ae0ee6a34a492d5ee536ceace0a1', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_activation_event()'::regprocedure,
+        '59ecb014ee3181498456e81281aca3fa', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_activation_transition()'::regprocedure,
+        '17a2f1174c75b696650d12a3ec8614b5', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_activation_event_acceptance()'::regprocedure,
+        'fb93397873a9adfda22948d2cae6cd29', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_cross_family_state()'::regprocedure,
+        '8fbce2031a450c09e84b35323ae52358', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_transfer_approval_intent()'::regprocedure,
+        '8e7b56058d4f7eae86a8a58f220aad4d', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_stock_count_review_intent()'::regprocedure,
+        '4ca75dcfd4e3f4c8022306a3a2be4201', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.reject_inventory_pilot_history_mutation()'::regprocedure,
+        'df7b14482c6a8a8a64b764414d0b271c', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.guard_stock_count_attempt_history()'::regprocedure,
+        'ea44887da055d7139aae8d13b6035144', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.reject_controlled_evidence_history_mutation()'::regprocedure,
         'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
@@ -874,6 +910,225 @@ BEGIN
      AND provolatile = 'i' AND proisstrict AND NOT prosecdef
      AND proconfig = ARRAY['search_path=pg_catalog']::text[];
   IF NOT FOUND THEN RAISE EXCEPTION 'Controlled-evidence canonicalizer properties drifted'; END IF;
+  IF NOT has_function_privilege(runtime_role, 'public.inventory_pilot_canonical_json(jsonb)', 'EXECUTE')
+     OR has_function_privilege(runtime_role, 'public.inventory_pilot_revision_canonical_json(uuid)', 'EXECUTE')
+     OR EXISTS (
+       SELECT 1
+       FROM pg_proc p,
+         LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+       WHERE p.oid IN (
+         'public.inventory_pilot_canonical_json(jsonb)'::regprocedure,
+         'public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure
+       )
+         AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'Inventory-pilot canonicalizer runtime execution boundary is unsafe';
+  END IF;
+  PERFORM 1 FROM pg_proc
+   WHERE oid = 'public.inventory_pilot_canonical_json(jsonb)'::regprocedure
+     AND provolatile = 'i' AND proisstrict AND NOT prosecdef
+     AND proconfig = ARRAY['search_path=pg_catalog']::text[];
+  IF NOT FOUND THEN RAISE EXCEPTION 'Inventory-pilot JSON canonicalizer properties drifted'; END IF;
+  PERFORM 1 FROM pg_proc
+   WHERE oid = 'public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure
+     AND provolatile = 's' AND proisstrict AND NOT prosecdef
+     AND proconfig = ARRAY['search_path=pg_catalog']::text[];
+  IF NOT FOUND THEN RAISE EXCEPTION 'Inventory-pilot revision canonicalizer properties drifted'; END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('public.validate_inventory_pilot_revision_insert()'::regprocedure),
+      ('public.validate_inventory_pilot_revision_digest()'::regprocedure),
+      ('public.validate_inventory_pilot_activation_event()'::regprocedure),
+      ('public.validate_inventory_pilot_activation_transition()'::regprocedure),
+      ('public.validate_inventory_pilot_activation_event_acceptance()'::regprocedure),
+      ('public.validate_inventory_pilot_cross_family_state()'::regprocedure),
+      ('public.validate_inventory_transfer_approval_intent()'::regprocedure),
+      ('public.validate_stock_count_review_intent()'::regprocedure),
+      ('public.reject_inventory_pilot_history_mutation()'::regprocedure),
+      ('public.guard_stock_count_attempt_history()'::regprocedure)
+    ) AS guarded(function_oid)
+    JOIN pg_proc p ON p.oid = guarded.function_oid
+    WHERE p.provolatile <> 'v'
+       OR p.proisstrict
+       OR p.prosecdef
+       OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::text[]
+       OR has_function_privilege(runtime_role, guarded.function_oid, 'EXECUTE')
+       OR EXISTS (
+         SELECT 1
+         FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+         WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+       )
+  ) THEN
+    RAISE EXCEPTION 'Inventory-pilot validator/history routine boundary is unsafe';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('InventoryPilotConfigurationRevision', 'InventoryPilotConfigurationRevision_monotonic_trg', 7::smallint,
+        'public.validate_inventory_pilot_revision_insert()'::regprocedure, false, false, false),
+      ('InventoryPilotConfigurationRevision', 'InventoryPilotConfigurationRevision_digest_trg', 5::smallint,
+        'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotEndpointMembership', 'InventoryPilotEndpointMembership_digest_trg', 5::smallint,
+        'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotItemMembership', 'InventoryPilotItemMembership_digest_trg', 5::smallint,
+        'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotFamilyActivationEvent', 'InventoryPilotFamilyActivationEvent_lineage_trg', 7::smallint,
+        'public.validate_inventory_pilot_activation_event()'::regprocedure, false, false, false),
+      ('InventoryPilotFamilyActivation', 'InventoryPilotFamilyActivation_transition_trg', 23::smallint,
+        'public.validate_inventory_pilot_activation_transition()'::regprocedure, false, false, false),
+      ('InventoryPilotFamilyActivationEvent', 'InventoryPilotFamilyActivationEvent_acceptance_trg', 5::smallint,
+        'public.validate_inventory_pilot_activation_event_acceptance()'::regprocedure, true, true, true),
+      ('InventoryPilotFamilyActivation', 'InventoryPilotFamilyActivation_cross_family_trg', 21::smallint,
+        'public.validate_inventory_pilot_cross_family_state()'::regprocedure, true, true, true),
+      ('InventoryTransferApprovalSubmissionIntent', 'InventoryTransferApprovalSubmissionIntent_lineage_trg', 7::smallint,
+        'public.validate_inventory_transfer_approval_intent()'::regprocedure, false, false, false),
+      ('StockCountReviewSubmissionIntent', 'StockCountReviewSubmissionIntent_lineage_trg', 7::smallint,
+        'public.validate_stock_count_review_intent()'::regprocedure, false, false, false),
+      ('StockCountAttempt', 'StockCountAttempt_history_guard', 27::smallint,
+        'public.guard_stock_count_attempt_history()'::regprocedure, false, false, false)
+    ) AS expected(
+      table_name, trigger_name, trigger_type, function_oid,
+      is_constraint, is_deferrable, initially_deferred
+    )
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND NOT t.tgisinternal
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND t.tgfoid = expected.function_oid
+        AND (t.tgconstraint <> 0) = expected.is_constraint
+        AND t.tgdeferrable = expected.is_deferrable
+        AND t.tginitdeferred = expected.initially_deferred
+    )
+  ) THEN
+    RAISE EXCEPTION 'Inventory-pilot lineage or stock-count history trigger semantics drifted';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('InventoryPilotConfigurationRevision'),
+      ('InventoryPilotEndpointMembership'),
+      ('InventoryPilotItemMembership'),
+      ('InventoryPilotFamilyActivationEvent'),
+      ('InventoryTransferApprovalSubmissionIntent'),
+      ('StockCountReviewSubmissionIntent')
+    ) AS expected(table_name)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.table_name || '_append_only_guard_trg'
+        AND NOT t.tgisinternal
+        AND t.tgenabled = 'A'
+        AND t.tgtype = 58
+        AND t.tgfoid = 'public.reject_inventory_pilot_history_mutation()'::regprocedure
+        AND t.tgconstraint = 0
+        AND NOT t.tgdeferrable
+        AND NOT t.tginitdeferred
+    )
+  ) THEN
+    RAISE EXCEPTION 'Inventory-pilot append-only trigger semantics drifted';
+  END IF;
+
+  PERFORM 1
+  FROM pg_trigger t
+  JOIN pg_class c ON c.oid = t.tgrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'InventoryPilotFamilyActivation'
+    AND t.tgname = 'InventoryPilotFamilyActivation_remove_guard_trg'
+    AND NOT t.tgisinternal
+    AND t.tgenabled = 'A'
+    AND t.tgtype = 42
+    AND t.tgfoid = 'public.reject_inventory_pilot_history_mutation()'::regprocedure
+    AND t.tgconstraint = 0
+    AND NOT t.tgdeferrable
+    AND NOT t.tginitdeferred;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Inventory-pilot activation removal trigger semantics drifted';
+  END IF;
+
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryPilotConfigurationRevision',
+    'InventoryPilotEndpointMembership',
+    'InventoryPilotItemMembership',
+    'InventoryPilotFamilyActivationEvent',
+    'InventoryPilotFamilyActivation'
+  ]
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', protected_table; END IF;
+    IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT') THEN
+      RAISE EXCEPTION '% required runtime read privilege is missing', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
+        LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains privileges on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute a, LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped AND acl.grantee IN (0, runtime_oid)
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC or runtime retains a column ACL on %', protected_table;
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryTransferApprovalSubmissionIntent',
+    'StockCountReviewSubmissionIntent'
+  ]
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', protected_table; END IF;
+    IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT')
+       OR NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'INSERT') THEN
+      RAISE EXCEPTION '% required runtime append privileges are missing', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
+        LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains privileges on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute a, LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped AND acl.grantee IN (0, runtime_oid)
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC or runtime retains a column ACL on %', protected_table;
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+  END LOOP;
   IF NOT has_table_privilege(runtime_role, 'public."ControlledEvidencePolicyActivation"', 'SELECT') THEN
     RAISE EXCEPTION 'ControlledEvidencePolicyActivation runtime read privilege is missing';
   END IF;
@@ -1321,6 +1576,16 @@ BEGIN
         n.nspname = 'public'
         AND p.proname = 'controlled_evidence_canonical_json'
         AND pg_get_function_identity_arguments(p.oid) = 'payload jsonb'
+      )
+      AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'inventory_pilot_canonical_json'
+        AND pg_get_function_identity_arguments(p.oid) = 'payload jsonb'
+      )
+      AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'inventory_pilot_revision_canonical_json'
+        AND pg_get_function_identity_arguments(p.oid) = 'revision_id uuid'
       )
       AND NOT (
         p.oid = to_regprocedure(

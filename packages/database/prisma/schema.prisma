@@ -842,6 +842,26 @@ enum InventoryMovementType {
   REVERSAL
 }
 
+enum InventoryPilotConfigurationStatus {
+  SEALED
+}
+
+enum InventoryPilotEndpointCapability {
+  TRANSFER_SOURCE
+  TRANSFER_DESTINATION
+  COUNT_LOCATION
+}
+
+enum InventoryPilotApprovalFamily {
+  InventoryTransfer
+  StockCountAttemptReview
+}
+
+enum InventoryPilotActivationStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum ProjectTemplateStatus {
   DRAFT
   PUBLISHED
@@ -985,6 +1005,13 @@ model Tenant {
   goodsReceipts                           GoodsReceipt[]
   goodsReceiptLines                       GoodsReceiptLine[]
   inventoryTransfers                      InventoryTransfer[]
+  inventoryPilotConfigurationRevisions       InventoryPilotConfigurationRevision[]
+  inventoryPilotEndpointMemberships          InventoryPilotEndpointMembership[]
+  inventoryPilotItemMemberships              InventoryPilotItemMembership[]
+  inventoryPilotFamilyActivations            InventoryPilotFamilyActivation[]
+  inventoryPilotFamilyActivationEvents       InventoryPilotFamilyActivationEvent[]
+  inventoryTransferApprovalSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
+  stockCountReviewSubmissionIntents          StockCountReviewSubmissionIntent[]
   inventoryTransferLines                  InventoryTransferLine[]
   inventoryTransferReceipts               InventoryTransferReceipt[]
   inventoryTransferReceiptLines           InventoryTransferReceiptLine[]
@@ -1165,6 +1192,13 @@ model Company {
   goodsReceipts                           GoodsReceipt[]
   goodsReceiptLines                       GoodsReceiptLine[]
   inventoryTransfers                      InventoryTransfer[]
+  inventoryPilotConfigurationRevisions       InventoryPilotConfigurationRevision[]
+  inventoryPilotEndpointMemberships          InventoryPilotEndpointMembership[]
+  inventoryPilotItemMemberships              InventoryPilotItemMembership[]
+  inventoryPilotFamilyActivations            InventoryPilotFamilyActivation[]
+  inventoryPilotFamilyActivationEvents       InventoryPilotFamilyActivationEvent[]
+  inventoryTransferApprovalSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
+  stockCountReviewSubmissionIntents          StockCountReviewSubmissionIntent[]
   inventoryTransferLines                  InventoryTransferLine[]
   inventoryTransferReceipts               InventoryTransferReceipt[]
   inventoryTransferReceiptLines           InventoryTransferReceiptLine[]
@@ -1361,6 +1395,7 @@ model Location {
   goodsReceipts                 GoodsReceipt[]                    @relation("GoodsReceiptReceivingLocation")
   sourceInventoryTransfers      InventoryTransfer[]               @relation("InventoryTransferSourceLocation")
   destinationInventoryTransfers InventoryTransfer[]               @relation("InventoryTransferDestinationLocation")
+  inventoryPilotEndpointMemberships InventoryPilotEndpointMembership[]
   notifications                 Notification[]
   authorizationDenialBuckets    AuthorizationDenialBucket[]
   projects                      Project[]
@@ -1536,6 +1571,10 @@ model User {
   createdStockCountAttempts           StockCountAttempt[]                   @relation("StockCountAttemptCreator")
   assignedStockCountAttempts          StockCountAttempt[]                   @relation("StockCountAttemptAssignee")
   reviewedStockCountAttempts          StockCountAttempt[]                   @relation("StockCountAttemptReviewer")
+  sealedInventoryPilotConfigurationRevisions InventoryPilotConfigurationRevision[]       @relation("InventoryPilotConfigurationRevisionSealer")
+  activatedInventoryPilotFamilies            InventoryPilotFamilyActivationEvent[]       @relation("InventoryPilotFamilyActivationActor")
+  submittedInventoryTransferApprovalIntents  InventoryTransferApprovalSubmissionIntent[] @relation("InventoryTransferApprovalIntentSubmitter")
+  submittedStockCountReviewIntents           StockCountReviewSubmissionIntent[]          @relation("StockCountReviewIntentSubmitter")
   countedStockCountAttemptLines       StockCountAttemptLine[]                @relation("StockCountAttemptLineCounter")
   reportedWastageReports              WastageReport[]                       @relation("WastageReportReporter")
   reviewedWastageReports              WastageReport[]                       @relation("WastageReportReviewer")
@@ -2876,8 +2915,10 @@ model Item {
   wastageLines                  WastageLine[]
   stockAdjustmentLines          StockAdjustmentLine[]
   recipeLines                   RecipeLine[]
+  inventoryPilotMemberships     InventoryPilotItemMembership[]
 
   @@unique([companyId, itemCode])
+  @@unique([id, tenantId, companyId], map: "Item_exact_scope_key")
   @@index([tenantId, companyId, status])
 }
 
@@ -3776,8 +3817,10 @@ model InventoryLocation {
   wastagePolicies                   WastagePolicy[]
   stockAdjustments                  StockAdjustment[]
   stockAdjustmentLines              StockAdjustmentLine[]
+  inventoryPilotEndpointMemberships InventoryPilotEndpointMembership[]
 
   @@unique([companyId, code])
+  @@unique([id, tenantId, companyId, locationId], map: "InventoryLocation_exact_parent_scope_key")
   @@index([tenantId, companyId, locationId, status])
 }
 
@@ -3846,6 +3889,131 @@ model PurchaseOrderAmendment {
   @@index([approvedByUserId])
 }
 
+model InventoryPilotConfigurationRevision {
+  id                        String                                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                  String                                      @db.Uuid
+  companyId                 String                                      @db.Uuid
+  revisionNumber            Int
+  schemaVersion             Int                                         @default(1)
+  status                    InventoryPilotConfigurationStatus           @default(SEALED)
+  canonicalJson             String                                      @db.Text
+  configurationDigest       String                                      @db.Char(64)
+  sourceDecisionId          String                                      @db.VarChar(40)
+  sealedByUserId            String                                      @db.Uuid
+  sealedAt                  DateTime
+  createdAt                 DateTime                                    @default(now())
+  tenant                    Tenant                                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                   Company                                     @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotConfigurationRevision_company_scope_fkey")
+  sealedBy                  User                                        @relation("InventoryPilotConfigurationRevisionSealer", fields: [sealedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotConfigurationRevision_sealer_scope_fkey")
+  endpointMemberships       InventoryPilotEndpointMembership[]
+  itemMemberships           InventoryPilotItemMembership[]
+  activationStates          InventoryPilotFamilyActivation[]
+  activationEvents          InventoryPilotFamilyActivationEvent[]
+  transferSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
+  stockCountReviewIntents   StockCountReviewSubmissionIntent[]
+
+  @@unique([tenantId, companyId, revisionNumber], map: "InventoryPilotConfigurationRevision_scope_revision_key")
+  @@unique([id, tenantId, companyId, revisionNumber], map: "InventoryPilotConfigurationRevision_exact_scope_key")
+  @@unique([id, tenantId, companyId, revisionNumber, configurationDigest], map: "InventoryPilotConfigurationRevision_exact_digest_key")
+  @@index([tenantId, companyId, sealedAt], map: "InventoryPilotConfigurationRevision_scope_sealed_idx")
+}
+
+model InventoryPilotEndpointMembership {
+  id                          String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  configurationRevisionId     String                              @db.Uuid
+  tenantId                    String                              @db.Uuid
+  companyId                   String                              @db.Uuid
+  configurationRevisionNumber Int
+  inventoryLocationId         String                              @db.Uuid
+  locationId                  String                              @db.Uuid
+  capability                  InventoryPilotEndpointCapability
+  createdAt                   DateTime                            @default(now())
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber], references: [id, tenantId, companyId, revisionNumber], onDelete: Restrict, map: "InventoryPilotEndpointMembership_revision_exact_fkey")
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotEndpointMembership_company_scope_fkey")
+  inventoryLocation           InventoryLocation                   @relation(fields: [inventoryLocationId, tenantId, companyId, locationId], references: [id, tenantId, companyId, locationId], onDelete: Restrict, map: "InventoryPilotEndpointMembership_inventory_location_exact_fkey")
+  location                    Location                            @relation(fields: [locationId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "InventoryPilotEndpointMembership_location_exact_fkey")
+
+  @@unique([configurationRevisionId, capability, inventoryLocationId], map: "InventoryPilotEndpointMembership_revision_capability_key")
+  @@index([tenantId, companyId, capability, inventoryLocationId], map: "InventoryPilotEndpointMembership_lookup_idx")
+}
+
+model InventoryPilotItemMembership {
+  id                          String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  configurationRevisionId     String                              @db.Uuid
+  tenantId                    String                              @db.Uuid
+  companyId                   String                              @db.Uuid
+  configurationRevisionNumber Int
+  itemId                      String                              @db.Uuid
+  createdAt                   DateTime                            @default(now())
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber], references: [id, tenantId, companyId, revisionNumber], onDelete: Restrict, map: "InventoryPilotItemMembership_revision_exact_fkey")
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotItemMembership_company_scope_fkey")
+  item                        Item                                @relation(fields: [itemId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "InventoryPilotItemMembership_item_exact_fkey")
+
+  @@unique([configurationRevisionId, itemId], map: "InventoryPilotItemMembership_revision_item_key")
+  @@index([tenantId, companyId, itemId], map: "InventoryPilotItemMembership_lookup_idx")
+}
+
+model InventoryPilotFamilyActivationEvent {
+  id                          String                                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                                      @db.Uuid
+  companyId                   String                                      @db.Uuid
+  family                      InventoryPilotApprovalFamily
+  status                      InventoryPilotActivationStatus
+  configurationRevisionId     String                                      @db.Uuid
+  configurationRevisionNumber Int
+  configurationDigest         String                                      @db.Char(64)
+  generation                  Int
+  priorActivationEventId      String?                                     @db.Uuid
+  priorGeneration             Int?
+  activatedByUserId           String                                      @db.Uuid
+  activationReason            String                                      @db.Text
+  canonicalJson               String                                      @db.Text
+  activationHash              String                                      @db.Char(64)
+  activatedAt                 DateTime
+  createdAt                   DateTime                                    @default(now())
+  tenant                      Tenant                                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                                     @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotFamilyActivationEvent_company_scope_fkey")
+  configurationRevision       InventoryPilotConfigurationRevision         @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber, configurationDigest], references: [id, tenantId, companyId, revisionNumber, configurationDigest], onDelete: Restrict, map: "InventoryPilotFamilyActivationEvent_revision_exact_fkey")
+  priorActivationEvent        InventoryPilotFamilyActivationEvent?        @relation("InventoryPilotFamilyActivationEventChain", fields: [priorActivationEventId, tenantId, companyId, family, priorGeneration], references: [id, tenantId, companyId, family, generation], onDelete: Restrict, map: "InventoryPilotFamilyActivationEvent_prior_exact_fkey")
+  nextActivationEvent         InventoryPilotFamilyActivationEvent?        @relation("InventoryPilotFamilyActivationEventChain")
+  activatedBy                 User                                        @relation("InventoryPilotFamilyActivationActor", fields: [activatedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotFamilyActivationEvent_actor_scope_fkey")
+  currentForState             InventoryPilotFamilyActivation?             @relation("InventoryPilotFamilyCurrentActivationEvent")
+  transferSubmissionIntents   InventoryTransferApprovalSubmissionIntent[]
+  stockCountReviewIntents     StockCountReviewSubmissionIntent[]
+
+  @@unique([tenantId, companyId, family, generation], map: "InventoryPilotFamilyActivationEvent_scope_generation_key")
+  @@unique([priorActivationEventId, tenantId, companyId, family], map: "InventoryPilotFamilyActivationEvent_prior_successor_key")
+  @@unique([priorActivationEventId, tenantId, companyId, family, priorGeneration], map: "InventoryPilotFamilyActivationEvent_prior_generation_key")
+  @@unique([id, tenantId, companyId, family, generation], map: "InventoryPilotFamilyActivationEvent_prior_exact_key")
+  @@unique([id, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], map: "InventoryPilotFamilyActivationEvent_state_exact_key")
+  @@index([tenantId, companyId, family, activatedAt], map: "InventoryPilotFamilyActivationEvent_scope_activated_idx")
+}
+
+model InventoryPilotFamilyActivation {
+  id                          String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                              @db.Uuid
+  companyId                   String                              @db.Uuid
+  family                      InventoryPilotApprovalFamily
+  status                      InventoryPilotActivationStatus
+  configurationRevisionId     String                              @db.Uuid
+  configurationRevisionNumber Int
+  configurationDigest         String                              @db.Char(64)
+  currentActivationEventId    String                              @unique @db.Uuid
+  generation                  Int
+  createdAt                   DateTime                            @default(now())
+  updatedAt                   DateTime                            @updatedAt
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryPilotFamilyActivation_company_scope_fkey")
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber, configurationDigest], references: [id, tenantId, companyId, revisionNumber, configurationDigest], onDelete: Restrict, map: "InventoryPilotFamilyActivation_revision_exact_fkey")
+  currentActivationEvent      InventoryPilotFamilyActivationEvent @relation("InventoryPilotFamilyCurrentActivationEvent", fields: [currentActivationEventId, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], references: [id, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], onDelete: Restrict, map: "InventoryPilotFamilyActivation_event_exact_fkey")
+
+  @@unique([tenantId, companyId, family], map: "InventoryPilotFamilyActivation_scope_family_key")
+  @@unique([currentActivationEventId, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], map: "InventoryPilotFamilyActivation_event_exact_key")
+  @@index([tenantId, companyId, status, updatedAt], map: "InventoryPilotFamilyActivation_scope_status_idx")
+}
+
 model StockCountSession {
   id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String            @db.Uuid
@@ -3869,6 +4037,7 @@ model StockCountSession {
   assignedToUserId    String?           @db.Uuid
   reviewedByUserId    String?           @db.Uuid
   currentAttemptId    String?           @unique @db.Uuid
+  version                 Int                                @default(1)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   tenant              Tenant            @relation(fields: [tenantId], references: [id])
@@ -3881,8 +4050,11 @@ model StockCountSession {
   stockAdjustments    StockAdjustment[]
   attempts            StockCountAttempt[]
   currentAttempt      StockCountAttempt? @relation("StockCountCurrentAttempt", fields: [currentAttemptId], references: [id])
+  reviewSubmissionIntents StockCountReviewSubmissionIntent[]
 
   @@unique([companyId, publicReference])
+  @@unique([id, tenantId, companyId], map: "StockCountSession_exact_scope_key")
+  @@unique([id, tenantId, companyId, currentAttemptId], map: "StockCountSession_current_attempt_exact_key")
   @@index([tenantId, companyId, status, scheduledDate])
   @@index([tenantId, companyId, inventoryLocationId, status], map: "StockCountSession_tenantId_companyId_inventoryLocationId_status")
 }
@@ -3945,6 +4117,7 @@ model StockCountAttempt {
   createdByUserId     String            @db.Uuid
   assignedToUserId    String?           @db.Uuid
   reviewedByUserId    String?           @db.Uuid
+  version                 Int                                @default(1)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   stockCountSession   StockCountSession @relation(fields: [stockCountSessionId], references: [id])
@@ -3957,8 +4130,11 @@ model StockCountAttempt {
   lines               StockCountAttemptLine[]
   stockAdjustments    StockAdjustment[]
   currentForSession   StockCountSession? @relation("StockCountCurrentAttempt")
+  reviewSubmissionIntents StockCountReviewSubmissionIntent[]
 
   @@unique([stockCountSessionId, attemptNumber])
+  @@unique([id, tenantId, companyId], map: "StockCountAttempt_exact_scope_key")
+  @@unique([id, tenantId, companyId, stockCountSessionId], map: "StockCountAttempt_session_exact_key")
   @@index([tenantId, companyId, status, createdAt])
   @@index([tenantId, companyId, inventoryLocationId, status])
 }
@@ -4312,6 +4488,7 @@ model InventoryTransfer {
   cancellationReason    String?
   dispatchedByUserId    String?                        @db.Uuid
   receivedByUserId      String?                        @db.Uuid
+  version                   Int                                         @default(1)
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
   tenant                Tenant                         @relation(fields: [tenantId], references: [id])
@@ -4324,12 +4501,90 @@ model InventoryTransfer {
   lines                 InventoryTransferLine[]
   receipts              InventoryTransferReceipt[]
   receiptLines          InventoryTransferReceiptLine[]
+  approvalSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
 
   @@unique([companyId, publicReference])
+  @@unique([id, tenantId, companyId], map: "InventoryTransfer_exact_scope_key")
   @@index([tenantId, companyId, status])
   @@index([tenantId, companyId, sourceLocationId, status], map: "InventoryTransfer_tenantId_companyId_sourceLocationId_status_id")
   @@index([tenantId, companyId, destinationLocationId, status], map: "InventoryTransfer_tenantId_companyId_destinationLocationId_stat")
   @@index([requiredByDate])
+}
+
+model InventoryTransferApprovalSubmissionIntent {
+  id                          String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                              @db.Uuid
+  companyId                   String                              @db.Uuid
+  inventoryTransferId         String                              @db.Uuid
+  sourceVersionBefore         Int
+  sourceVersionAfter          Int
+  sourceCanonicalHash         String                              @db.Char(64)
+  configurationRevisionId     String                              @db.Uuid
+  configurationRevisionNumber Int
+  configurationDigest         String                              @db.Char(64)
+  activationEventId           String                              @db.Uuid
+  activationFamily            InventoryPilotApprovalFamily        @default(InventoryTransfer)
+  activationStatus            InventoryPilotActivationStatus      @default(ACTIVE)
+  activationGeneration        Int
+  idempotencyKey              String                              @db.VarChar(200)
+  requestCanonicalJson        String                              @db.Text
+  requestHash                 String                              @db.Char(64)
+  submitterUserId             String                              @db.Uuid
+  approvalInstanceId          String                              @unique @db.Uuid
+  approvalDocumentType        String                              @default("InventoryTransfer") @db.VarChar(80)
+  createdAt                   DateTime                            @default(now())
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryTransferApprovalIntent_company_scope_fkey")
+  inventoryTransfer           InventoryTransfer                   @relation(fields: [inventoryTransferId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "InventoryTransferApprovalIntent_source_exact_fkey")
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber, configurationDigest], references: [id, tenantId, companyId, revisionNumber, configurationDigest], onDelete: Restrict, map: "InventoryTransferApprovalIntent_revision_exact_fkey")
+  activationEvent             InventoryPilotFamilyActivationEvent @relation(fields: [activationEventId, tenantId, companyId, activationFamily, activationStatus, configurationRevisionId, configurationRevisionNumber, configurationDigest, activationGeneration], references: [id, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], onDelete: Restrict, map: "InventoryTransferApprovalIntent_activation_exact_fkey")
+  submitter                   User                                @relation("InventoryTransferApprovalIntentSubmitter", fields: [submitterUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "InventoryTransferApprovalIntent_submitter_scope_fkey")
+  approvalInstance            ApprovalInstance                    @relation("InventoryTransferApprovalIntentGraph", fields: [approvalInstanceId, tenantId, companyId, approvalDocumentType, inventoryTransferId], references: [id, tenantId, companyId, documentType, documentId], onDelete: Restrict, map: "InventoryTransferApprovalIntent_graph_exact_fkey")
+
+  @@unique([tenantId, companyId, idempotencyKey], map: "InventoryTransferApprovalIntent_scope_idempotency_key")
+  @@unique([approvalInstanceId, tenantId, companyId, approvalDocumentType, inventoryTransferId], map: "InventoryTransferApprovalIntent_graph_exact_key")
+  @@unique([tenantId, companyId, inventoryTransferId, sourceVersionAfter], map: "InventoryTransferApprovalIntent_source_version_key")
+  @@index([tenantId, companyId, inventoryTransferId, createdAt], map: "InventoryTransferApprovalIntent_source_created_idx")
+}
+
+model StockCountReviewSubmissionIntent {
+  id                          String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                              @db.Uuid
+  companyId                   String                              @db.Uuid
+  stockCountAttemptId         String                              @db.Uuid
+  stockCountSessionId         String                              @db.Uuid
+  attemptVersionBefore        Int
+  attemptVersionAfter         Int
+  sessionVersionBefore        Int
+  sessionVersionAfter         Int
+  evidenceCanonicalHash       String                              @db.Char(64)
+  configurationRevisionId     String                              @db.Uuid
+  configurationRevisionNumber Int
+  configurationDigest         String                              @db.Char(64)
+  activationEventId           String                              @db.Uuid
+  activationFamily            InventoryPilotApprovalFamily        @default(StockCountAttemptReview)
+  activationStatus            InventoryPilotActivationStatus      @default(ACTIVE)
+  activationGeneration        Int
+  idempotencyKey              String                              @db.VarChar(200)
+  requestCanonicalJson        String                              @db.Text
+  requestHash                 String                              @db.Char(64)
+  submitterUserId             String                              @db.Uuid
+  approvalInstanceId          String                              @unique @db.Uuid
+  approvalDocumentType        String                              @default("StockCountAttemptReview") @db.VarChar(80)
+  createdAt                   DateTime                            @default(now())
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "StockCountReviewIntent_company_scope_fkey")
+  stockCountAttempt           StockCountAttempt                   @relation(fields: [stockCountAttemptId, tenantId, companyId, stockCountSessionId], references: [id, tenantId, companyId, stockCountSessionId], onDelete: Restrict, map: "StockCountReviewIntent_attempt_exact_fkey")
+  stockCountSession           StockCountSession                   @relation(fields: [stockCountSessionId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "StockCountReviewIntent_session_exact_fkey")
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber, configurationDigest], references: [id, tenantId, companyId, revisionNumber, configurationDigest], onDelete: Restrict, map: "StockCountReviewIntent_revision_exact_fkey")
+  activationEvent             InventoryPilotFamilyActivationEvent @relation(fields: [activationEventId, tenantId, companyId, activationFamily, activationStatus, configurationRevisionId, configurationRevisionNumber, configurationDigest, activationGeneration], references: [id, tenantId, companyId, family, status, configurationRevisionId, configurationRevisionNumber, configurationDigest, generation], onDelete: Restrict, map: "StockCountReviewIntent_activation_exact_fkey")
+  submitter                   User                                @relation("StockCountReviewIntentSubmitter", fields: [submitterUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "StockCountReviewIntent_submitter_scope_fkey")
+  approvalInstance            ApprovalInstance                    @relation("StockCountReviewIntentGraph", fields: [approvalInstanceId, tenantId, companyId, approvalDocumentType, stockCountAttemptId], references: [id, tenantId, companyId, documentType, documentId], onDelete: Restrict, map: "StockCountReviewIntent_graph_exact_fkey")
+
+  @@unique([tenantId, companyId, idempotencyKey], map: "StockCountReviewIntent_scope_idempotency_key")
+  @@unique([approvalInstanceId, tenantId, companyId, approvalDocumentType, stockCountAttemptId], map: "StockCountReviewIntent_graph_exact_key")
+  @@unique([tenantId, companyId, stockCountAttemptId, attemptVersionAfter], map: "StockCountReviewIntent_attempt_version_key")
+  @@index([tenantId, companyId, stockCountSessionId, createdAt], map: "StockCountReviewIntent_session_created_idx")
 }
 
 model InventoryTransferLine {
@@ -7166,8 +7421,11 @@ model ApprovalInstance {
   controlledEvidenceQualifications ControlledEvidenceActionQualification[]
   routingBackfillBlockerObservations ApprovalRoutingBackfillBlockerObservation[]
   routingProducerProvenance    ApprovalRoutingProducerProvenance?
+  inventoryTransferSubmissionIntent  InventoryTransferApprovalSubmissionIntent?  @relation("InventoryTransferApprovalIntentGraph")
+  stockCountReviewSubmissionIntent   StockCountReviewSubmissionIntent?           @relation("StockCountReviewIntentGraph")
 
   @@unique([id, tenantId, companyId], map: "ApprovalInstance_scope_key")
+  @@unique([id, tenantId, companyId, documentType, documentId], map: "ApprovalInstance_exact_document_scope_key")
   @@index([tenantId, documentType, documentId])
   @@index([tenantId, companyId, status], map: "ApprovalInstance_tenantId_companyId_status_idx")
 }

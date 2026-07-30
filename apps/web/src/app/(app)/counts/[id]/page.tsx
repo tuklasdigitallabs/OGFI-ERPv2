@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
@@ -173,7 +174,9 @@ export default async function CountDetailPage({
     !count.hasUncountedLines;
   const canShowEnteredCountFacts =
     isAssignedEntryActor || count.canShowSystemQuantity;
-  const canReviewCount = count.canReviewCurrentActor;
+  const usesApprovalInbox =
+    process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
+  const canReviewCount = count.canReviewCurrentActor && !usesApprovalInbox;
   const isActiveMovementFreeze =
     count.freezeMovements &&
     ["IN_PROGRESS", "RECOUNT_REQUESTED", "SUBMITTED"].includes(count.status);
@@ -301,6 +304,11 @@ export default async function CountDetailPage({
             {canSubmitCount ? (
               <form action={submitCountAction}>
                 <input name="id" type="hidden" value={count.id} />
+                <input
+                  name="idempotencyKey"
+                  type="hidden"
+                  value={`ui:stock-count-review:${randomUUID()}`}
+                />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
                   Submit for Review
                 </button>
@@ -320,7 +328,21 @@ export default async function CountDetailPage({
             </div>
           ) : null}
 
-          {count.status === "SUBMITTED" && canReview && !canReviewCount ? (
+          {count.status === "SUBMITTED" && usesApprovalInbox ? (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+              <p className="font-semibold">Approval Inbox review</p>
+              <p className="mt-1 leading-6">
+                This count is following the configured independent approval route.
+                Assigned reviewers must act from the Approval Inbox; direct review
+                on this count page is disabled.
+              </p>
+              {canReview ? (
+                <ButtonLink href="/approvals" className="mt-3 bg-blue-600 text-white hover:bg-blue-700">
+                  Open Approval Inbox
+                </ButtonLink>
+              ) : null}
+            </div>
+          ) : count.status === "SUBMITTED" && canReview && !canReviewCount ? (
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <p className="font-semibold text-slate-950">Independent review required</p>
               <p className="mt-1 leading-6">

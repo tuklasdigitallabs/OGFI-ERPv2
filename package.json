@@ -13,6 +13,8 @@
     "test:disposable-db-lifecycle": "node --test scripts/disposable-postgres-lifecycle.test.mjs",
     "test:inventory-pilot-synthetic-manifest": "node scripts/inventory-pilot-synthetic-manifest.test.mjs",
     "test:inventory-pilot-synthetic-db": "node scripts/run-disposable-postgres-tests.mjs inventory-synthetic-baseline -- node packages/database/scripts/inventory-pilot-synthetic-fixture.mjs",
+    "test:inventory-pilot-activation": "pnpm --filter @ogfi/web test:inventory-pilot-activation",
+    "test:inventory-pilot-approval": "pnpm --filter @ogfi/web test:inventory-pilot-approval",
     "test:access-control": "pnpm --filter @ogfi/web test:access-control",
     "test:authorization-adapters": "pnpm --filter @ogfi/web test:authorization-adapters",
     "test:authorization-admin-platform": "pnpm --filter @ogfi/web test:authorization-admin-platform",

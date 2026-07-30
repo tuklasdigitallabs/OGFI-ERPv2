@@ -6,7 +6,7 @@ import {
 } from "./approvalRoutingRegistry";
 
 export const APPROVAL_PRODUCER_CAPABILITY_VERSION =
-  "dec-0247-c1.private-binary-observer-sql.2";
+  "dec-0261.inventory-pilot-families.1";
 
 export const approvalProducerStableErrors = Object.freeze({
   barrierRetry: "APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY",
@@ -195,6 +195,52 @@ const requiredCapabilityDiscoveryFacts = {
     },
     stableErrors: errors("APPROVAL_RULE_NOT_CONFIGURED", "PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT"),
     idempotency: "Duplicate amendments fail closed unless a future request hash proves the identical parent snapshot and proposal.",
+  },
+  InventoryTransfer: {
+    documentType: "InventoryTransfer",
+    sourceRelation: "InventoryTransfer",
+    serializationRelation: "InventoryTransfer",
+    producer: { serviceFile: "transfers.ts", functionName: "submitInventoryTransfer" },
+    proposedDatabaseCapability: proposedDatabaseCapability("inventory_transfer"),
+    sourceStatuses: { admitted: ["DRAFT", "RETURNED"], committed: ["PENDING_APPROVAL"] },
+    ruleInput: "Active sealed InventoryTransfer rule plus the locked DEC-0261 pilot revision and activation attestation.",
+    requiredPermissionCode: approvalRoutingPolicies.InventoryTransfer.requiredPermissionCode,
+    derivation: {
+      scope: "Two required LOCATION scope groups from locked source and destination endpoints.",
+      due: "Locked InventoryTransfer.requiredByDate.",
+      prohibitedActors: approvalRoutingPolicies.InventoryTransfer.prohibitedActorSources,
+      activation: firstPending,
+      sourceLink: "ApprovalInstance.documentId equals InventoryTransfer.id; the typed submission intent pins source and pilot revisions.",
+    },
+    concurrency: {
+      lock: "Company/family barrier, pilot activation revision, exact transfer, endpoints, ordered lines, sealed rule, then graph.",
+      compareAndSet: "Versioned DRAFT or RETURNED to PENDING_APPROVAL with one typed intent and one pending graph.",
+    },
+    stableErrors: errors("INVENTORY_TRANSFER_APPROVAL_DISABLED", "INVENTORY_PILOT_CLASSIFICATION_DENIED"),
+    idempotency: "The append-only transfer submission intent returns only an exact source/configuration/request-hash replay; every mismatch conflicts.",
+  },
+  StockCountAttemptReview: {
+    documentType: "StockCountAttemptReview",
+    sourceRelation: "StockCountAttempt",
+    serializationRelation: "StockCountSession",
+    producer: { serviceFile: "stockCounts.ts", functionName: "submitStockCount" },
+    proposedDatabaseCapability: proposedDatabaseCapability("stock_count_attempt_review"),
+    sourceStatuses: { admitted: ["IN_PROGRESS"], committed: ["SUBMITTED"] },
+    ruleInput: "Active sealed StockCountAttemptReview rule plus the locked DEC-0261 pilot revision and activation attestation.",
+    requiredPermissionCode: approvalRoutingPolicies.StockCountAttemptReview.requiredPermissionCode,
+    derivation: {
+      scope: "One LOCATION target from the locked attempt InventoryLocation parent.",
+      due: "No due timestamp.",
+      prohibitedActors: approvalRoutingPolicies.StockCountAttemptReview.prohibitedActorSources,
+      activation: firstPending,
+      sourceLink: "ApprovalInstance.documentId equals current StockCountAttempt.id; typed intent pins attempt, session, lines, and pilot revision.",
+    },
+    concurrency: {
+      lock: "Company/family barrier, pilot activation revision, session, current attempt, ordered attempt lines, sealed rule, then graph.",
+      compareAndSet: "Versioned session and current attempt IN_PROGRESS to SUBMITTED with one immutable review intent.",
+    },
+    stableErrors: errors("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_DISABLED", "INVENTORY_PILOT_CLASSIFICATION_DENIED"),
+    idempotency: "The append-only count-review intent permits only an exact attempt/session/configuration/request-hash replay.",
   },
   WastageReport: {
     documentType: "WastageReport",
@@ -508,6 +554,8 @@ const currentTransactionFacts = {
   PurchaseOrder: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks PurchaseOrder then recommendation→quotation-request→Purchase Request lineage, re-reads authoritative status and scope, and claims DRAFT before graph creation with exact scoped linkage predicates; durable replay identity remains absent." },
   PurchaseOrderBalanceClosure: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Parent PurchaseOrder is locked and revalidated; the closure child is now created before the approval graph in the same transaction, but has no request-hash replay contract or durable child intent identity." },
   PurchaseOrderAmendment: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks and re-reads the scoped PurchaseOrder before snapshotting, creates the amendment child before graph work, and claims ISSUED-to-AMENDMENT_PENDING before routing with exact parent scope/status predicates; durable replay identity remains absent." },
+  InventoryTransfer: { lock: "PARTIAL", cas: "ABSENT", replay: "ABSENT", fact: "The legacy producer locks the transfer and lines but transitions directly to REQUESTED; DEC-0260/0261 normalized graph, source-version, classifier, and typed-intent controls are not yet implemented." },
+  StockCountAttemptReview: { lock: "PARTIAL", cas: "ABSENT", replay: "ABSENT", fact: "The legacy count submit locks session/location and mirrors attempt state, but creates no normalized review graph or typed intent and has no source-version replay contract." },
   WastageReport: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Shared company barrier now locks the scoped WastageReport through InventoryLocation→Location, reloads lines and policy in-transaction, and claims DRAFT/RETURNED before approval graph creation; durable replay identity remains absent." },
   StockAdjustment: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Shared company barrier now locks the scoped StockAdjustment through InventoryLocation→Location, reloads header/lines, requires a sealed rule, and claims DRAFT/SUBMITTED/RETURNED before approval graph creation; durable replay identity remains absent." },
   FinanceCloseRun: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Run row is explicitly locked and pending-action snapshot claims CLOSED plus the exact expected version before approval graph creation; durable replay identity remains absent, while accounting-period/readiness child locking remains a separate finance-control gate." },
@@ -564,6 +612,8 @@ const shadowObserverNames = {
   PurchaseOrder: "approval_shadow.observe_purchase_order_v1",
   PurchaseOrderBalanceClosure: "approval_shadow.observe_purchase_order_balance_closure_v1",
   PurchaseOrderAmendment: "approval_shadow.observe_purchase_order_amendment_v1",
+  InventoryTransfer: "approval_shadow.observe_inventory_transfer_v1",
+  StockCountAttemptReview: "approval_shadow.observe_stock_count_attempt_review_v1",
   WastageReport: "approval_shadow.observe_wastage_report_v1",
   StockAdjustment: "approval_shadow.observe_stock_adjustment_v1",
   FinanceCloseRun: "approval_shadow.observe_finance_close_run_v1",
@@ -585,6 +635,8 @@ const shadowObserverLineage = {
   PurchaseOrder: "PurchaseOrder through PurchaseRequest and QuotationRecommendation.",
   PurchaseOrderBalanceClosure: "PurchaseOrderBalanceClosure through its parent PurchaseOrder, PurchaseRequest, and QuotationRecommendation.",
   PurchaseOrderAmendment: "PurchaseOrderAmendment through its parent PurchaseOrder, PurchaseRequest, and QuotationRecommendation.",
+  InventoryTransfer: "InventoryTransfer through both endpoint Locations, every transfer line, both InventoryLocations, and every Item.",
+  StockCountAttemptReview: "StockCountAttempt through its parent StockCountSession, current-attempt link, InventoryLocation, Location, and attempt lines.",
   WastageReport: "WastageReport through InventoryLocation.",
   StockAdjustment: "StockAdjustment through InventoryLocation.",
   FinanceCloseRun: "FinanceCloseRun through its company and pending sensitive-action config snapshot.",
@@ -697,6 +749,8 @@ const sourceBacklinks = {
   PurchaseOrder: null,
   PurchaseOrderBalanceClosure: null,
   PurchaseOrderAmendment: null,
+  InventoryTransfer: null,
+  StockCountAttemptReview: null,
   WastageReport: null,
   StockAdjustment: null,
   FinanceCloseRun: null,
@@ -753,6 +807,30 @@ const observerRelationCatalog = {
       predicate("Location", "PurchaseRequest.requestLocationId = Location.id"),
       predicate("Location", "PurchaseOrder.deliveryLocationId = Location.id"),
     ], optional: [], children: [],
+  },
+  InventoryTransfer: {
+    mandatory: [
+      predicate("Location", "InventoryTransfer.sourceLocationId = source Location.id"),
+      predicate("Location", "InventoryTransfer.destinationLocationId = destination Location.id"),
+    ],
+    optional: [],
+    children: [
+      predicate("InventoryTransferLine", "every present InventoryTransferLine.inventoryTransferId = InventoryTransfer.id has exact scope"),
+      predicate("InventoryLocation", "every transfer line source/destination InventoryLocation has exact scope and the matching endpoint parent"),
+      predicate("Item", "every present transfer line itemId equals a same-scope Item.id"),
+    ],
+  },
+  StockCountAttemptReview: {
+    mandatory: [
+      predicate("StockCountSession", "StockCountAttempt.stockCountSessionId = StockCountSession.id and StockCountSession.currentAttemptId = StockCountAttempt.id"),
+      predicate("InventoryLocation", "StockCountAttempt.inventoryLocationId = InventoryLocation.id and matches the session"),
+      predicate("Location", "InventoryLocation.locationId = Location.id"),
+    ],
+    optional: [],
+    children: [
+      predicate("StockCountAttemptLine", "every present StockCountAttemptLine.stockCountAttemptId = StockCountAttempt.id has exact scope and location"),
+      predicate("Item", "every present attempt line itemId equals a same-scope Item.id"),
+    ],
   },
   WastageReport: {
     mandatory: [

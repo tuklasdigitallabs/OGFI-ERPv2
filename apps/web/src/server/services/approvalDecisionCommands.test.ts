@@ -11,7 +11,7 @@ import { supportedApprovalDocumentTypes } from "./approvalRoutingRegistry";
 const approvalInstanceId = "11111111-1111-4111-8111-111111111111";
 
 describe("canonical approval decision commands", () => {
-  it("accepts approve and reject commands for every registered family", () => {
+  it("accepts approve commands for every registered family and only supported terminal commands", () => {
     for (const family of supportedApprovalDocumentTypes) {
       expect(
         parseCanonicalApprovalDecisionCommand({
@@ -20,14 +20,16 @@ describe("canonical approval decision commands", () => {
           decision: "APPROVE",
         }).family,
       ).toBe(family);
-      expect(
-        parseCanonicalApprovalDecisionCommand({
-          approvalInstanceId,
-          family,
-          decision: "REJECT",
-          remarks: "Policy requirements were not met",
-        }).family,
-      ).toBe(family);
+      if (canonicalApprovalDecisionCapabilities[family].includes("REJECT")) {
+        expect(
+          parseCanonicalApprovalDecisionCommand({
+            approvalInstanceId,
+            family,
+            decision: "REJECT",
+            remarks: "Policy requirements were not met",
+          }).family,
+        ).toBe(family);
+      }
     }
   });
 

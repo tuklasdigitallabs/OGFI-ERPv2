@@ -25,6 +25,7 @@ export const permissions = {
   transferView: "inventory.transfer.view",
   transferCreate: "inventory.transfer.create",
   transferSubmit: "inventory.transfer.submit",
+  transferApprove: "inventory.transfer.approve",
   transferCancel: "inventory.transfer.cancel",
   transferDispatch: "inventory.transfer.dispatch",
   transferReceive: "inventory.transfer.receive",
@@ -184,6 +185,8 @@ export function canUseApprovals(permissionCodes: string[]) {
     permissions.purchaseRequestApprove,
     permissions.quoteApprove,
     permissions.purchaseOrderApprove,
+    permissions.transferApprove,
+    permissions.stockCountReview,
     permissions.wastageApprove,
     permissions.stockAdjustmentApprove,
     permissions.financeBudgetApprove,
@@ -217,6 +220,7 @@ export function canUseTransfers(permissionCodes: string[]) {
     permissionCodes.includes(permissions.transferView) ||
     permissionCodes.includes(permissions.transferCreate) ||
     permissionCodes.includes(permissions.transferSubmit) ||
+    permissionCodes.includes(permissions.transferApprove) ||
     permissionCodes.includes(permissions.transferCancel) ||
     permissionCodes.includes(permissions.transferDispatch) ||
     permissionCodes.includes(permissions.transferReceive) ||

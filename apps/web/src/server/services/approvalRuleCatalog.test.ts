@@ -17,6 +17,8 @@ describe("approval-rule composer catalog", () => {
       "PurchaseOrder",
       "PurchaseOrderBalanceClosure",
       "PurchaseOrderAmendment",
+      "InventoryTransfer",
+      "StockCountAttemptReview",
       "WastageReport",
       "StockAdjustment",
       "StockCountVarianceAdjustment",
@@ -30,6 +32,10 @@ describe("approval-rule composer catalog", () => {
       .toBe(permissions.purchaseOrderApprove);
     expect(getApprovalRuleCatalogEntry("StockCountVarianceAdjustment")?.requiredPermissionCode)
       .toBe(permissions.stockAdjustmentApprove);
+    expect(getApprovalRuleCatalogEntry("InventoryTransfer")?.requiredPermissionCode)
+      .toBe(permissions.transferApprove);
+    expect(getApprovalRuleCatalogEntry("StockCountAttemptReview")?.requiredPermissionCode)
+      .toBe(permissions.stockCountReview);
     expect(getApprovalRuleCatalogEntry("BudgetRevision")).toBeUndefined();
   });
 

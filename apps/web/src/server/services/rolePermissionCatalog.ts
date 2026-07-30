@@ -171,6 +171,12 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Transfers",
     sensitive: false
   },
+  [permissions.transferApprove]: {
+    label: "Approve transfers",
+    description: "Approve assigned pilot stock transfers through the controlled approval workflow.",
+    group: "Transfers",
+    sensitive: true,
+  },
   [permissions.transferCancel]: {
     label: "Cancel transfers",
     description: "Cancel transfer requests with reason and audit history.",

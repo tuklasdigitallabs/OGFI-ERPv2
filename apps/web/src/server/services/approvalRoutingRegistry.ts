@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { permissions } from "./authorization";
 
-export const APPROVAL_ROUTING_MAPPING_VERSION = "2026-07-22.1";
+export const APPROVAL_ROUTING_MAPPING_VERSION = "2026-07-30.1";
 
 export const supportedApprovalDocumentTypes = [
   "PurchaseRequest",
@@ -9,6 +9,8 @@ export const supportedApprovalDocumentTypes = [
   "PurchaseOrder",
   "PurchaseOrderBalanceClosure",
   "PurchaseOrderAmendment",
+  "InventoryTransfer",
+  "StockCountAttemptReview",
   "WastageReport",
   "StockAdjustment",
   "FinanceCloseRun",
@@ -42,6 +44,8 @@ const policyList: readonly ApprovalRoutingPolicy[] = [
   { documentType: "PurchaseOrder", requiredPermissionCode: permissions.purchaseOrderApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "deliveryLocationId", dueSource: "expectedDeliveryDate", prohibitedActorSources: ["createdByUserId:CREATOR", "purchaseRequest.requesterUserId:REQUESTER", "quotationRecommendation.preparedByUserId:PREPARER"] },
   { documentType: "PurchaseOrderBalanceClosure", requiredPermissionCode: permissions.purchaseOrderApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "purchaseOrder.deliveryLocationId", dueSource: "purchaseOrder.expectedDeliveryDate", prohibitedActorSources: ["requestedByUserId:REQUESTER", "purchaseOrder.createdByUserId:CREATOR", "purchaseOrder.purchaseRequest.requesterUserId:REQUESTER", "purchaseOrder.quotationRecommendation.preparedByUserId:PREPARER"] },
   { documentType: "PurchaseOrderAmendment", requiredPermissionCode: permissions.purchaseOrderApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "purchaseOrder.deliveryLocationId", dueSource: "purchaseOrder.expectedDeliveryDate", prohibitedActorSources: ["requestedByUserId:REQUESTER", "purchaseOrder.createdByUserId:CREATOR", "purchaseOrder.purchaseRequest.requesterUserId:REQUESTER", "purchaseOrder.quotationRecommendation.preparedByUserId:PREPARER"] },
+  { documentType: "InventoryTransfer", requiredPermissionCode: permissions.transferApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "sourceLocationId+destinationLocationId", dueSource: "requiredByDate", prohibitedActorSources: ["requestedByUserId:REQUESTER"] },
+  { documentType: "StockCountAttemptReview", requiredPermissionCode: permissions.stockCountReview, allowedSourceStatuses: ["SUBMITTED"], scopeSource: "inventoryLocation.locationId", dueSource: "NONE", prohibitedActorSources: ["createdByUserId:CREATOR", "assignedToUserId:ASSIGNED_COUNTER", "stockCountSession.createdByUserId:SESSION_CREATOR", "stockCountSession.assignedToUserId:SESSION_ASSIGNED_COUNTER", "stockCountSession.attempts.lines.countedByUserId:COUNTER"] },
   { documentType: "WastageReport", requiredPermissionCode: permissions.wastageApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "inventoryLocation.locationId", dueSource: "NONE", prohibitedActorSources: ["reportedByUserId:REPORTER"] },
   { documentType: "StockAdjustment", requiredPermissionCode: permissions.stockAdjustmentApprove, allowedSourceStatuses: ["PENDING_APPROVAL"], scopeSource: "inventoryLocation.locationId", dueSource: "NONE", prohibitedActorSources: ["requestedByUserId:REQUESTER"] },
   { documentType: "FinanceCloseRun", requiredPermissionCode: permissions.financePeriodCloseManage, allowedSourceStatuses: ["CLOSED"], scopeSource: "companyId", dueSource: "NONE", prohibitedActorSources: ["initiatedByUserId:INITIATOR", "configSnapshot.pendingSensitiveApproval.requestedByUserId:REQUESTER"] },

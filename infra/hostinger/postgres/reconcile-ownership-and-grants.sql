@@ -329,6 +329,15 @@ BEGIN
     'GRANT EXECUTE ON FUNCTION public.controlled_evidence_canonical_json(JSONB) TO %I',
     runtime_role
   );
+  -- Runtime typed-intent checks call only the pure JSON canonicalizer. The
+  -- revision projection belongs to the migrator-owned configuration plane and
+  -- deliberately remains unavailable to the shared application runtime.
+  IF to_regprocedure('public.inventory_pilot_canonical_json(jsonb)') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.inventory_pilot_canonical_json(JSONB) TO %I',
+      runtime_role
+    );
+  END IF;
 
   FOREACH protected_table IN ARRAY ARRAY[
     'AuditEvent',
@@ -338,6 +347,52 @@ BEGIN
     'AttachmentScanAttempt',
     'ControlledEvidenceActionQualification',
     'ControlledEvidenceActionSelection'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
+  END LOOP;
+
+  -- DEC-0261: pilot configuration, membership, and activation authority is a
+  -- migrator-owned control plane. Runtime may classify against it but cannot
+  -- manufacture or alter cohort authority.
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryPilotConfigurationRevision',
+    'InventoryPilotEndpointMembership',
+    'InventoryPilotItemMembership',
+    'InventoryPilotFamilyActivationEvent',
+    'InventoryPilotFamilyActivation'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', protected_table, runtime_role);
+  END LOOP;
+
+  -- Submission intents are immutable application evidence: runtime can append
+  -- and read them, never rewrite, delete, truncate, trigger, or reference them.
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryTransferApprovalSubmissionIntent',
+    'StockCountReviewSubmissionIntent'
   ]
   LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
