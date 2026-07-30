@@ -27,6 +27,10 @@ export default defineConfig({
   forbidOnly: true,
   retries: 0,
   workers: 1,
+  // Keep raw Playwright artifacts separate from reporter output. Playwright
+  // clears the HTML reporter directory before writing it and rejects a parent
+  // or child relationship that could delete retained test evidence.
+  outputDir: "test-results/production-auth-artifacts",
   reporter: [
     ["line"],
     ["html", { open: "never", outputFolder: "test-results/production-auth-html" }],

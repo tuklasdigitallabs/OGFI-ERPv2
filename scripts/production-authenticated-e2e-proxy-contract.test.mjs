@@ -9,6 +9,7 @@ test("production-authenticated CI edge remains a pinned loopback Nginx to Caddy 
   const compose = read("infra/ci/production-authenticated-e2e/compose.yaml");
   const caddy = read("infra/ci/production-authenticated-e2e/Caddyfile");
   const nginx = read("infra/ci/production-authenticated-e2e/nginx.conf.template");
+  const playwright = read("apps/web/production-authenticated.playwright.config.ts");
 
   assert.match(compose, /CADDY_BUILDER_IMAGE: docker\.io\/library\/caddy:2\.11\.4-builder-alpine@sha256:[a-f0-9]{64}/);
   assert.match(compose, /CADDY_RUNTIME_IMAGE: docker\.io\/library\/caddy:2\.11\.4-alpine@sha256:[a-f0-9]{64}/);
@@ -40,4 +41,6 @@ test("production-authenticated CI edge remains a pinned loopback Nginx to Caddy 
   assert.match(compose, /mode: 0400/);
   assert.doesNotMatch(compose, /ports:/);
   assert.doesNotMatch(caddy, /tls internal/);
+  assert.match(playwright, /outputDir: "test-results\/production-auth-artifacts"/);
+  assert.match(playwright, /outputFolder: "test-results\/production-auth-html"/);
 });

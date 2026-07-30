@@ -77,7 +77,12 @@ export function validateProductionAuthenticatedE2eEnvironment(environment = proc
 
 function run(command, args, environment) {
   const result = spawnSync(command, args, { cwd: workspaceRoot, env: environment, stdio: "inherit" });
-  if (result.status !== 0) throw new Error(`PRODUCTION_AUTH_E2E_COMMAND_FAILED:${command}`);
+  if (result.status !== 0) {
+    const outcome = result.signal ? `signal=${result.signal}` : `status=${result.status ?? "unknown"}`;
+    throw new Error(
+      `PRODUCTION_AUTH_E2E_COMMAND_FAILED:${command}:${args.join(" ")}:${outcome}`,
+    );
+  }
 }
 
 function waitForHttpsReady(caFile) {

@@ -1,6 +1,6 @@
 # OGFI ERP — Current Pending Implementation Plan
 
-**As of:** July 26, 2026
+**As of:** July 30, 2026
 **Status:** Active implementation register  
 **Scope:** Production-readiness implementation remaining outside formal user UAT execution and final owner signoff
 
@@ -11,9 +11,10 @@ This document is the working register for implementation that remains before OGF
 The delivery approach is:
 
 1. Stabilize and verify the shared production foundation.
-2. Complete one workspace at a time in dependency order.
-3. Apply the full workspace completion gate before moving to the next workspace.
-4. Stabilize Phase I and Phase 1.5 before certifying later phases for production.
+2. Complete the confirmed Inventory Control Pilot boundary in dependency order.
+3. Apply the full completion gate to every workflow admitted to that pilot.
+4. Keep unrelated later-phase work visible but clearly labeled as deferred from the pilot.
+5. Resume broader Phase I/Phase 1.5 certification only after the urgent pilot is stable.
 
 Formal UAT execution, evidence collection with real users, owner signoff, and the final GO / NO-GO decision remain separate release activities.
 
@@ -21,7 +22,22 @@ Formal UAT execution, evidence collection with real users, owner signoff, and th
 
 The fastest safe route to Phase I/UAT readiness is to close the shared disposable-PostgreSQL evidence gap before adding higher-risk writers. The runner must use a verified ephemeral, non-production target and execute the existing concurrent race, rollback, authorization/scope, segregation-of-duties, replay, and zero-adjacent-ledger suites for completed approval, cancellation, and terminal-source fences. An unavailable or misconfigured database is a hard **NO-GO** and must not be counted as passing evidence. After this foundation is evidenced, continue with bounded non-posting source fences, then complete visible workspace surfaces and the isolated Phase I UAT/recovery gates in dependency order. Approval routing remains disabled and C4 remains dormant until its separate policy and evidence gates are satisfied.
 
-Runner safety validation now passes **15/15** lifecycle-contract tests, including target allowlisting, generated identity binding, credential scrubbing, marker attestation, and adversarial-target rejection. An exact runner invocation still fails closed with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`; therefore no PostgreSQL race, rollback, ACL, or UAT evidence is credited yet.
+Runner safety validation passes **15/15** lifecycle-contract tests, including target allowlisting, generated identity binding, credential scrubbing, marker attestation, and adversarial-target rejection. On July 30, an isolated detached candidate for `61578d2` used a dedicated loopback-only PostgreSQL 17 container and passed the aggregate authorization gate: 1,556 unit/manifest tests plus every database-backed authentication, access-control, adapter, administration/platform, Finance, procurement/inventory, projects/operations, workforce, route, controlled-evidence, denial, migration-ledger, adversarial-role, and seed-repeatability family. Disposable database cleanup was confirmed. This is strong local preflight evidence; hosted exact-SHA CI and signed UAT evidence remain mandatory and receive no automatic credit from the local run.
+
+### Urgent Inventory Control Pilot priority — July 30, 2026
+
+`DEC-0258` replaces broad workspace expansion as the immediate release priority. The confirmed target is a bounded connected Inventory Control Pilot for one warehouse, one or two branches, named users, and a selected catalog of high-risk items. The admitted control chain is organization/scope and production identity; supplier/item/UOM/location master data; Purchase Request, quotation, Purchase Order, and independent approval; receiving and discrepancy/reversal handling; immutable ledger-derived balances; transfers; blind counts and recount/correction lineage; wastage; controlled stock adjustments and reversals; evidence, audit, exception reporting/export; and hosted deployment/recovery.
+
+Phase 1.5 Projects, Expansion, Marketing, Workforce, broad Restaurant Operations, recipe/POS consumption integration, and Finance transaction workspaces are deferred from this pilot but remain visible in navigation by explicit owner direction. They must be clearly labeled `Deferred`, `Preview`, or `Not in Inventory Pilot`, receive no current delivery effort or pilot production-readiness credit, and must not gain new authority through pilot roles. Existing server authorization remains mandatory; unsafe or incomplete actions stay disabled with an explicit reason while already-safe working behavior need not be removed. Deferring Finance delivery does not remove independent Accounting review for opening values, material or repeated loss, suspicious wastage, or stock adjustments. A variance is an investigation signal, not proof of theft; the current ledger has no ordinary sales/POS or recipe-consumption movement and those events must not be disguised as wastage or adjustments.
+
+Delivery is split into two controlled stages:
+
+1. **Test-data/shadow UAT:** may start on staging after named roles, pilot scope, test opening stock, approval routes, and read-only pilot-readiness checks are complete. It receives no operational stock-of-record or production-authentication credit.
+2. **Operational pilot:** remains **NO-GO** until unique production accounts/MFA, exact-scope authorization, active named pilot approval routes and no-self controls, an approved immutable opening-stock cutover, count/recount correction lineage, exact-candidate database and production-authenticated desktop/mobile evidence, hosted backup/isolated restore/rollback, and signed human UAT all pass.
+
+The dependency order is therefore: close production-authenticated browser evidence; add an explicit visible pilot-scope classification without removing deferred navigation; activate only approved pilot-family routing with a usable work surface; complete the opening-stock cutover and immutable count/recount-to-correction path; close receiving, transfer, wastage, adjustment, reversal, audit, and exception-report browser/data-integrity gaps; execute the 15 Phase I UAT scenarios with `P1-UAT-011` receiving no credit until its disabled runtime is replaced by the approved lineage-safe implementation; rehearse hosted recovery; then admit one supervised branch/warehouse cohort. Broader module work resumes only for a demonstrated pilot blocker or after pilot stabilization.
+
+The requested Code Spark and exact GPT-5.4 council models were unavailable. Independent Product/Workflow, Architecture, QA, and Release reviews used the closest permitted GPT-5.6 role fallbacks and unanimously selected this boundary without relaxing any hard gate.
 
 ## 2. Shared Production Foundation
 
@@ -50,6 +66,7 @@ These items must be completed once at platform level. A workspace must not be ce
 - Remaining closure blockers: configure protection that requires the `CI / checks` gate, provision secret-safe ephemeral local-auth password/MFA fixtures, and pass hosted desktop/mobile E2E through loopback HTTPS against production-mode `next start`. Demo authentication and weakened origin/cookie/session checks are prohibited.
 - Knowledge-base and glossary assessment: no update required for this slice because it changes internal engineering verification only and introduces no end-user term or workflow behavior.
 - Exact-candidate authorization correction: the hosted `authenticationDatabase.integration` suite correctly failed closed because its runner supplied `OGFI_DISPOSABLE_DATABASE_NONCE_SHA256`, the hash-only marker required to attest the disposable database, while the safety filter incorrectly treated that already-validated hash as a forbidden credential. The filter now permits only that digest marker; raw nonce, teardown confirmation, admin URL, direct URL, passwords, tokens, and all other credential-like inputs remain rejected. A focused safety regression covers the accepted hash marker, and web TypeScript checking passes. Hosted database-backed authorization and production-authenticated E2E must re-run and pass on the corrective exact SHA before SPF-001, SPF-004 revalidation, or SPF-009 receive any new credit.
+- Production-authenticated runner preflight on July 30 found that Playwright rejected the HTML report nested under its default artifact directory because reporter cleanup could delete retained evidence. Raw artifacts and the HTML report now use sibling directories, and the static proxy/evidence contract asserts both paths. The same local candidate passes the two production-auth runner/proxy contracts and an isolated Node 22 production build with compile, type validation, static generation, optimization, and traces. The disposable lifecycle repeatedly passes all 141 migrations, exact-ledger drift rejection, deterministic seed, throttle race/rollback probes, and 17 append-only checks. Command failures now identify the non-secret subcommand plus exit status/signal instead of collapsing to an ambiguous `pnpm` failure. Local all-in-one browser acceptance remains open after the runner exited during its post-build setup, so no desktop/mobile authentication credit is claimed; the next local/hosted run must use the corrected diagnostics and the hosted exact-SHA lane remains mandatory.
 
 ### SPF-002 implementation evidence — July 21, 2026
 
@@ -450,6 +467,8 @@ These are implementation-progress estimates, not production-readiness claims. Th
 | Projects & Implementation Tracker | **64%** | Foundation, task, link, evidence, risk, and activity surfaces exist; full production-readiness review, browser, hosted, and UAT remain. |
 
 **Phase I implementation estimate:** **65%** evidence-weighted. This does not advance the release decision: strict release status remains **NO-GO** until production authentication/MFA, hosted DEC-0248 deployment/recovery, signed evidence, real UAT, and owner approval are available.
+
+**Inventory Control Pilot implementation estimate:** **63%** evidence-weighted at the July 30 scope freeze. This narrower target is not assigned an artificially higher percentage because it deliberately concentrates on the least-complete but highest-risk Phase I controls: pilot-family approval activation, opening-stock cutover, immutable recount/correction lineage, wastage/adjustment control, exception reporting, production authentication, and recovery. Test-data/shadow UAT is the next admissible operating stage; live stock-of-record use remains **NO-GO**.
 
 ### Workspace 2 Administration implementation checkpoint — July 24, 2026
 
