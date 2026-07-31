@@ -33,6 +33,8 @@ const producerManifest = [
   ["workforce.ts", "submitOvertimeRecord", "EmployeeOvertimeRecord"],
   ["workforce.ts", "submitWorkforceSchedule", "WorkforceSchedule"],
   ["workforce.ts", "reviewAttendanceImportBatch", "AttendanceImportBatch"],
+  ["transfers.ts", "submitInventoryTransfer", "InventoryTransfer"],
+  ["stockCounts.ts", "submitStockCount", "StockCountAttemptReview"],
 ] as const;
 
 describe("approval producer shared-lock participation", () => {
@@ -53,9 +55,12 @@ describe("approval producer shared-lock participation", () => {
     expect(source).not.toMatch(/generation|provenance|readiness|certif|mappingHash|capabilityHash/i);
   });
 
-  test("covers the exact closed 18-family producer registry with literals", () => {
-    expect(producerManifest).toHaveLength(18);
-    expect(producerManifest.map(([, , family]) => family).sort()).toEqual(
+  test("covers the exact closed 21-family producer registry with literals", () => {
+    expect(producerManifest).toHaveLength(20);
+    expect([
+      ...producerManifest.map(([, , family]) => family),
+      "OpeningInventoryCutover",
+    ].sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
 
@@ -75,14 +80,26 @@ describe("approval producer shared-lock participation", () => {
       );
     }
 
+    const openingSource = exportedFunction(
+      serviceSource("openingInventoryCutovers.ts"),
+      "submitOpeningInventoryCutoverForApproval",
+    );
+    const locationScopeAt = openingSource.indexOf("assertLiveScopedPermission");
+    const directBarrierAt = openingSource.indexOf("acquireApprovalProducerBarrierShared");
+    const approvalGraphAt = openingSource.indexOf("tx.approvalInstance.findFirst");
+    expect(locationScopeAt).toBeGreaterThanOrEqual(0);
+    expect(directBarrierAt).toBeGreaterThan(locationScopeAt);
+    expect(approvalGraphAt).toBeGreaterThan(directBarrierAt);
+    expect(openingSource).toContain('documentType: "OpeningInventoryCutover"');
+
     const combinedSource = [...sources.values()].join("\n");
     const wrapperCalls = combinedSource.match(/withApprovalProducerTransaction\(/g) ?? [];
     const literalCalls = combinedSource.match(
       /withApprovalProducerTransaction\(\s*\{[\s\S]*?documentType:\s*"[A-Za-z]+"[\s\S]*?\},\s*async \(tx\)/g,
     ) ?? [];
-    // The registry covers 18 producer families; terminal and lifecycle
+    // The wrapper registry covers 20 producer families; terminal and lifecycle
     // writers in those same services also participate in the shared barrier.
-    expect(wrapperCalls).toHaveLength(43);
-    expect(literalCalls).toHaveLength(43);
+    expect(wrapperCalls).toHaveLength(46);
+    expect(literalCalls).toHaveLength(46);
   });
 });

@@ -58,6 +58,16 @@ describe("Food Cost Analysis navigation", () => {
 });
 
 describe("Inventory Control Pilot navigation", () => {
+  it("shows the dedicated opening-inventory workspace only when the dedicated view permission is projected", () => {
+    const sections = getNavigationSections(
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, true,
+    );
+    const item = sections.flatMap((section) => section.items).find((candidate) => candidate.label === "Opening Inventory");
+    expect(item).toMatchObject({ href: "/opening-inventory", activeKey: "opening-inventory" });
+  });
+
   function navigationWithAllAccess(inventoryControlPilot: boolean) {
     return getNavigationSections(
       true,

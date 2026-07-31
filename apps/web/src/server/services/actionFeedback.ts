@@ -13,6 +13,50 @@ const actionSuccessMessages: Record<string, string> = {
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  OPENING_INVENTORY_CONFIGURATION_NOT_SEALED:
+    "The selected configuration is not sealed. Refresh and use a sealed opening-inventory configuration.",
+  OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED:
+    "Your current authorized scope does not allow this opening-inventory action.",
+  OPENING_INVENTORY_ITEM_SCOPE_DENIED:
+    "One or more selected items are outside the approved opening-inventory scope. Refresh the preparation task.",
+  OPENING_INVENTORY_SOURCE_ATTEMPT_NOT_REVIEWED:
+    "Use a reviewed opening stock-count attempt with the required freeze and evidence details.",
+  OPENING_INVENTORY_SOURCE_COUNT_COVERAGE_INVALID:
+    "The reviewed source count does not cover the required opening-inventory scope. Review the count coverage.",
+  OPENING_INVENTORY_SOURCE_ATTEMPT_ALREADY_BOUND:
+    "That source count attempt is already retained by another opening-inventory batch. Choose the correct batch or prepare a new reviewed count.",
+  OPENING_INVENTORY_EVIDENCE_REQUIRED:
+    "Add the required controlled evidence before continuing.",
+  OPENING_INVENTORY_VALUATION_REQUIRED:
+    "Complete every required opening valuation line before continuing.",
+  OPENING_INVENTORY_CONCURRENT_MODIFICATION:
+    "This batch changed while the action was being prepared. Refresh and review the latest status before retrying.",
+  OPENING_INVENTORY_APPROVAL_RULE_NOT_CONFIGURED:
+    "The required opening-inventory approval route is not configured. Ask an authorized administrator to complete the approval setup.",
+  OPENING_INVENTORY_APPROVAL_ALREADY_SUBMITTED:
+    "This batch is already in the approval process. Refresh and review its current approval status.",
+  OPENING_INVENTORY_COMMAND_NOT_REQUESTABLE:
+    "That controlled command is not available for the current batch or cohort state. Refresh and use the next available action.",
+  OPENING_INVENTORY_COMMAND_IDEMPOTENCY_CONFLICT:
+    "This request conflicts with an existing command request. Refresh Activity before trying again.",
+  OPENING_INVENTORY_COMMAND_REQUESTER_CONFLICT:
+    "A different eligible requester must submit this controlled command.",
+  OPENING_INVENTORY_COMMAND_IN_FLIGHT:
+    "A command of this type is already pending, claimed, or awaiting a controlled retry for the same target. Review Activity before requesting another.",
+  OPENING_INVENTORY_AUTHORITY_STALE:
+    "Your authority or MFA verification is no longer current. Refresh your session and complete the required verification before retrying.",
+  OPENING_INVENTORY_RECOVERY_PREDECESSOR_NOT_FULLY_REVERSED:
+    "The earlier opening-inventory cohort must be fully reversed before this recovery action can continue.",
+  OPENING_INVENTORY_SOURCE_CUTOFF_AFTER_EFFECTIVE_AT:
+    "The source count cutoff must be on or before the opening-inventory effective time.",
+  OPENING_INVENTORY_CUTOVER_POLICY_NOT_READY:
+    "The opening-inventory activation policy is not ready. Review the required controlled policy settings.",
+  OPENING_INVENTORY_CUTOVER_WINDOW_NOT_CONFIGURED:
+    "The opening-inventory activation window is not configured. Ask an authorized administrator to complete the policy setup.",
+  OPENING_INVENTORY_EFFECTIVE_AT_IN_FUTURE:
+    "This cohort cannot be activated before its effective opening-inventory time.",
+  APPROVAL_STEP_ELIGIBLE_ACTOR_NOT_AVAILABLE:
+    "No eligible actor is currently available for this approval step. Ask an authorized administrator to review the approval routing.",
   SUPPLIER_REFERENCE_PRICE_REQUIRED:
     "Enter a reference unit price before setting its effective date.",
   EVIDENCE_LEGAL_HOLD_PLACED:

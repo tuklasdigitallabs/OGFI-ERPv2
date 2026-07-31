@@ -101,6 +101,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - [`DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md`](DEC-0260-INVENTORY-PILOT-TRANSFER-AND-COUNT-APPROVAL-SEMANTICS.md) — mandatory normalized approval for admitted pilot transfers and attempt-grained ordinary count review, with exact family keys, segregation, fail-closed scope, immutable cycles, and activation gates
 - [`DEC-0261-INVENTORY-PILOT-RELATIONAL-CLASSIFIER-ACTIVATION-AND-SUBMISSION-INTENTS.md`](DEC-0261-INVENTORY-PILOT-RELATIONAL-CLASSIFIER-ACTIVATION-AND-SUBMISSION-INTENTS.md) — sealed relational pilot revisions, exact endpoint/item classification, family-specific CAS activation events, source versions, and append-only typed approval-submission intents
 - [`DEC-0262-SUBMITTED-STOCK-COUNT-CANCELLATION-GUARD.md`](DEC-0262-SUBMITTED-STOCK-COUNT-CANCELLATION-GUARD.md) — exact additive `SUBMITTED -> CANCELLED` stock-count attempt guard exception with immutable evidence, atomic graph/session/attempt settlement, version fencing, and zero inventory movement
+- [`DEC-0263-IMMUTABLE-OPENING-STOCK-CUTOVER.md`](DEC-0263-IMMUTABLE-OPENING-STOCK-CUTOVER.md) — dedicated sealed opening-stock cohort, atomic reviewed-count child batches, separate Operations/Accounting approval, cutover fence, isolated executor, deterministic ledger/reconciliation, and forward-only correction contract
 
 ## Suggested future decision records
 

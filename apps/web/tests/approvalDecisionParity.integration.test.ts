@@ -69,16 +69,16 @@ async function waitForBlockedPid(blockerPid: number, excludedPids: number[] = []
 }
 
 describe("canonical approval decision capability matrix", () => {
-  test("declares exactly 18 approve, 14 return, and 18 reject capabilities", () => {
+  test("declares exactly 21 approve, 16 return, and 20 reject capabilities", () => {
     const supported = supportedApprovalDocumentTypes.flatMap((family) =>
       canonicalApprovalDecisionCapabilities[family].map((decision) => ({
         family,
         decision,
       })),
     );
-    expect(supported.filter(({ decision }) => decision === "APPROVE")).toHaveLength(18);
-    expect(supported.filter(({ decision }) => decision === "RETURN")).toHaveLength(14);
-    expect(supported.filter(({ decision }) => decision === "REJECT")).toHaveLength(18);
+    expect(supported.filter(({ decision }) => decision === "APPROVE")).toHaveLength(21);
+    expect(supported.filter(({ decision }) => decision === "RETURN")).toHaveLength(16);
+    expect(supported.filter(({ decision }) => decision === "REJECT")).toHaveLength(20);
   });
 
   test("prohibited-actor executable matrix is complete and excludes only policy-blocked families", () => {
@@ -97,11 +97,11 @@ describe("canonical approval decision capability matrix", () => {
       ),
     ).toEqual(prohibitedActorPolicyBlockedCommands);
     expect(prohibitedActorCases.filter(([, decision]) => decision === "APPROVE"))
-      .toHaveLength(17);
+      .toHaveLength(20);
     expect(prohibitedActorCases.filter(([, decision]) => decision === "RETURN"))
-      .toHaveLength(14);
+      .toHaveLength(16);
     expect(prohibitedActorCases.filter(([, decision]) => decision === "REJECT"))
-      .toHaveLength(18);
+      .toHaveLength(20);
   });
 
   test.each(

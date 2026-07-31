@@ -11,6 +11,8 @@ DECLARE
   owner_role text := current_setting('ogfi.contract.owner_role');
   migrator_role text := current_setting('ogfi.contract.migrator_role');
   runtime_role text := current_setting('ogfi.contract.runtime_role');
+  opening_stock_owner_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_owner');
+  opening_stock_executor_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_executor');
   obj record;
   grantee_obj record;
   protected_table text;
@@ -18,6 +20,8 @@ DECLARE
   owner_oid oid;
   migrator_oid oid;
   runtime_oid oid;
+  opening_stock_owner_oid oid;
+  opening_stock_executor_oid oid;
   approval_shadow_schema_oid oid;
 BEGIN
   IF current_database() <> database_name THEN
@@ -26,15 +30,22 @@ BEGIN
   SELECT oid INTO STRICT owner_oid FROM pg_roles WHERE rolname = owner_role AND NOT rolcanlogin;
   SELECT oid INTO STRICT migrator_oid FROM pg_roles WHERE rolname = migrator_role;
   SELECT oid INTO STRICT runtime_oid FROM pg_roles WHERE rolname = runtime_role;
+  SELECT oid INTO STRICT opening_stock_owner_oid FROM pg_roles WHERE rolname = opening_stock_owner_role AND NOT rolcanlogin;
+  SELECT oid INTO STRICT opening_stock_executor_oid FROM pg_roles WHERE rolname = opening_stock_executor_role AND rolcanlogin;
   IF session_user <> migrator_role OR current_user <> owner_role THEN
     RAISE EXCEPTION 'Ownership reconciliation requires the controlled migrator with owner role active';
   END IF;
   IF (SELECT count(*) FROM pg_auth_members
-      WHERE roleid IN (owner_oid, migrator_oid, runtime_oid)
-         OR member IN (owner_oid, migrator_oid, runtime_oid)) <> 1
+      WHERE roleid IN (owner_oid, migrator_oid, runtime_oid, opening_stock_owner_oid, opening_stock_executor_oid)
+         OR member IN (owner_oid, migrator_oid, runtime_oid, opening_stock_owner_oid, opening_stock_executor_oid)) <> 2
      OR NOT EXISTS (
        SELECT 1 FROM pg_auth_members
-       WHERE roleid = owner_oid AND member = migrator_oid
+     WHERE roleid = owner_oid AND member = migrator_oid
+         AND NOT admin_option AND NOT inherit_option AND set_option
+     )
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_auth_members
+       WHERE roleid = opening_stock_owner_oid AND member = migrator_oid
          AND NOT admin_option AND NOT inherit_option AND set_option
      ) THEN
     RAISE EXCEPTION 'Refusing reconciliation: controlled role membership graph is not exact';
@@ -66,6 +77,7 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proowner <> owner_oid
+      AND p.oid NOT IN ('public.execute_opening_inventory_command(uuid)'::regprocedure, 'public.append_opening_inventory_cohort_seal_event()'::regprocedure)
       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
     ORDER BY p.oid
   LOOP
@@ -285,10 +297,18 @@ BEGIN
   END IF;
 
   EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', database_name);
-  EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I', database_name, migrator_role, runtime_role);
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I, %I', database_name, migrator_role, runtime_role, opening_stock_executor_role);
   REVOKE CREATE ON SCHEMA public FROM PUBLIC;
   EXECUTE format('REVOKE ALL ON SCHEMA public FROM %I', runtime_role);
   EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', runtime_role);
+  EXECUTE format('REVOKE ALL ON SCHEMA public FROM %I', opening_stock_executor_role);
+  EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', opening_stock_executor_role);
+
+  EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA public FROM %I', opening_stock_executor_role);
+  EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM %I', opening_stock_executor_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON TABLES FROM %I', owner_role, opening_stock_executor_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON SEQUENCES FROM %I', owner_role, opening_stock_executor_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM %I', owner_role, opening_stock_executor_role);
 
   EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA public FROM %I', runtime_role);
   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
@@ -308,11 +328,27 @@ BEGIN
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON FUNCTIONS FROM PUBLIC', owner_role);
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE ALL ON FUNCTIONS FROM %I', owner_role, runtime_role);
 
+  -- InventoryBalance is a database-derived cache. Runtime may read it, but all
+  -- mutations are owned by the pinned InventoryMovement AFTER INSERT trigger.
+  REVOKE ALL ON TABLE public."InventoryBalance" FROM PUBLIC;
+  EXECUTE format('REVOKE ALL ON TABLE public."InventoryBalance" FROM %I', runtime_role);
+  FOR column_name IN
+    SELECT a.attname
+      FROM pg_attribute a
+     WHERE a.attrelid = 'public."InventoryBalance"'::regclass
+       AND a.attnum > 0 AND NOT a.attisdropped
+  LOOP
+    EXECUTE format('REVOKE ALL (%I) ON TABLE public."InventoryBalance" FROM PUBLIC', column_name);
+    EXECUTE format('REVOKE ALL (%I) ON TABLE public."InventoryBalance" FROM %I', column_name, runtime_role);
+  END LOOP;
+  EXECUTE format('GRANT SELECT ON TABLE public."InventoryBalance" TO %I', runtime_role);
+
   FOR obj IN
     SELECT p.oid, p.prokind, n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) AS args
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
+      AND p.oid NOT IN ('public.execute_opening_inventory_command(uuid)'::regprocedure, 'public.append_opening_inventory_cohort_seal_event()'::regprocedure)
       AND NOT EXISTS (
         SELECT 1 FROM pg_depend d
         WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
@@ -338,6 +374,72 @@ BEGIN
       runtime_role
     );
   END IF;
+  FOREACH protected_table IN ARRAY ARRAY[
+    'public.is_opening_inventory_executor_session()',
+    'public.is_opening_inventory_executor_context()',
+    'public.opening_inventory_utc_json_timestamp(timestamp without time zone)',
+    'public.assert_opening_inventory_command_requester_segregation(uuid,uuid,"OpeningInventoryExecutionCommandType")'
+  ] LOOP
+    IF to_regprocedure(protected_table) IS NOT NULL THEN
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', protected_table, runtime_role);
+    END IF;
+  END LOOP;
+
+  -- Opening-stock cutover is command-driven. The shared runtime can inspect
+  -- cutover state and append a command, but cannot claim/consume it or invoke
+  -- the executor routine. The dedicated executor gets no direct table or
+  -- sequence rights: it can only call the exact source-bound routine.
+  FOREACH protected_table IN ARRAY ARRAY[
+    'OpeningInventoryCohort',
+    'OpeningInventoryCutover',
+    'OpeningInventoryCutoverLine',
+    'OpeningInventoryReconciliation',
+    'OpeningInventoryApprovalAttestation',
+    'OpeningInventoryCohortEvent'
+  ] LOOP
+    IF to_regclass(format('public.%I', protected_table)) IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+      EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', protected_table, runtime_role);
+    END IF;
+  END LOOP;
+  IF to_regclass('public."OpeningInventoryCohort"') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT INSERT (id, "tenantId", "companyId", "configurationRevisionId", "configurationRevisionNumber", "configurationDigest", "publicReference", "predecessorCohortId", generation, "effectiveAt", status, "canonicalJson", "cohortDigest", version, "createdByUserId", "createdAt", "updatedAt") ON TABLE public."OpeningInventoryCohort" TO %I',
+      runtime_role
+    );
+    EXECUTE format(
+      'GRANT UPDATE (status, version, "sealedByUserId", "sealedAt", "cancelledByUserId", "cancelledAt", "cancellationReason", "updatedAt") ON TABLE public."OpeningInventoryCohort" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."OpeningInventoryCutover"') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT INSERT (id, "cohortId", "tenantId", "companyId", "inventoryLocationId", "locationId", "stockCountSessionId", "stockCountAttemptId", status, version, "idempotencyKey", "evidenceManifestJson", "evidenceDigest", "valuationCanonicalJson", "valuationDigest", "cutoverCanonicalJson", "cutoverDigest", "requestedByUserId", "requestedAt", "createdAt", "updatedAt") ON TABLE public."OpeningInventoryCutover" TO %I',
+      runtime_role
+    );
+    EXECUTE format(
+      'GRANT UPDATE (status, version, "reviewedByUserId", "reviewedAt", "approvalInstanceId", "approvedAt", "cancelledAt", "cancellationReason", "updatedAt") ON TABLE public."OpeningInventoryCutover" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."OpeningInventoryCutoverLine"') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT INSERT (id, "cutoverId", "tenantId", "companyId", "inventoryLocationId", "itemId", "uomId", "stockCountAttemptId", "stockCountAttemptLineId", "lineNumber", "lotKey", "lotNumber", "expiryDate", "sourceSystemQuantityBaseUom", "sourceCountedQuantityBaseUom", "sourceVarianceQuantityBaseUom", "openingQuantityBaseUom", "unitCost", "openingValue", "lineCanonicalJson", "lineDigest", "createdAt") ON TABLE public."OpeningInventoryCutoverLine" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."OpeningInventoryApprovalAttestation"') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT INSERT (id, "cutoverId", "tenantId", "companyId", "inventoryLocationId", "approvalInstanceId", "approvalInstanceStepId", "stepOrder", "decisionActorUserId", "requiredPermissionId", "requiredPermissionCode", "authSessionId", "privilegeEpochAtIssue", "mfaVerifiedAt", "mfaMode", "mfaValidUntil", decision, "actedAt", "canonicalJson", "attestationDigest", "createdAt") ON TABLE public."OpeningInventoryApprovalAttestation" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."OpeningInventoryExecutionCommand"') IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE public."OpeningInventoryExecutionCommand" FROM %I', runtime_role);
+    EXECUTE format('GRANT SELECT, INSERT ON TABLE public."OpeningInventoryExecutionCommand" TO %I', runtime_role);
+  END IF;
+  -- The two opening-stock SECURITY DEFINER routines are deliberately handled
+  -- only by the separate superuser handoff after this ordinary reconciliation.
 
   FOREACH protected_table IN ARRAY ARRAY[
     'AuditEvent',

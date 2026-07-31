@@ -130,8 +130,18 @@ async function verifyControlledDatabaseIdentity(): Promise<void> {
   );
   expect(expectedRunId).toMatch(/^[A-Za-z0-9._-]{6,128}$/);
   expect(expectedNonceSha256).toMatch(/^[a-f0-9]{64}$/);
-  expect(expectedSessionUser).toMatch(/^ogfi_test_[a-z0-9_]+_migrator$/);
-  expect(expectedCurrentUser).toMatch(/^ogfi_test_[a-z0-9_]+_owner$/);
+  const migratorIdentity = /^ogfi_([a-f0-9]{32})_migrator$/.exec(
+    expectedSessionUser,
+  );
+  const ownerIdentity = /^ogfi_([a-f0-9]{32})_owner$/.exec(
+    expectedCurrentUser,
+  );
+  expect(migratorIdentity).not.toBeNull();
+  expect(ownerIdentity).not.toBeNull();
+  expect(migratorIdentity?.[1]).toBe(ownerIdentity?.[1]);
+  expect(migratorIdentity?.[1]?.slice(0, 16)).toBe(
+    expectedDatabaseName.slice(-16),
+  );
   expect(expectedSessionUser).not.toBe(expectedCurrentUser);
 
   const identities = await prisma.$queryRawUnsafe<DatabaseIdentityRow[]>(`

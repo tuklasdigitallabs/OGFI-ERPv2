@@ -52,6 +52,19 @@ export const permissions = {
   stockAdjustmentPost: "inventory.stock_adjustment.post",
   stockAdjustmentReverse: "inventory.stock_adjustment.reverse",
   stockAdjustmentCancel: "inventory.stock_adjustment.cancel",
+  openingInventoryView: "inventory.opening_inventory.view",
+  openingInventoryPrepare: "inventory.opening_inventory.prepare",
+  openingInventorySubmit: "inventory.opening_inventory.submit",
+  openingInventoryOperationsReview:
+    "inventory.opening_inventory.review.operations",
+  openingInventoryAccountingReview:
+    "inventory.opening_inventory.review.accounting",
+  openingInventoryRequestExecute:
+    "inventory.opening_inventory.request_execute",
+  openingInventoryRequestActivate:
+    "inventory.opening_inventory.request_activate",
+  openingInventoryRequestReverse:
+    "inventory.opening_inventory.request_reverse",
   receivingView: "inventory.receiving.view",
   receivingCreate: "inventory.receiving.create",
   receivingPost: "inventory.receiving.post",
@@ -189,6 +202,8 @@ export function canUseApprovals(permissionCodes: string[]) {
     permissions.stockCountReview,
     permissions.wastageApprove,
     permissions.stockAdjustmentApprove,
+    permissions.openingInventoryOperationsReview,
+    permissions.openingInventoryAccountingReview,
     permissions.financeBudgetApprove,
     permissions.financeExpenseRequestApprove,
     permissions.financeCashAdvanceApprove,

@@ -9,7 +9,7 @@ import {
 import { supportedApprovalDocumentTypes } from "./approvalRoutingRegistry";
 
 describe("normalized approval decision capability contract", () => {
-  it("covers every registered family with the exact 20/15/19 command matrix", () => {
+  it("covers every registered family with the exact 21/16/20 command matrix", () => {
     expect(Object.keys(canonicalApprovalDecisionCapabilities).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
@@ -17,17 +17,17 @@ describe("normalized approval decision capability contract", () => {
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("APPROVE"),
       ),
-    ).toHaveLength(20);
+    ).toHaveLength(21);
     expect(
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("RETURN"),
       ),
-    ).toHaveLength(15);
+    ).toHaveLength(16);
     expect(
       supportedApprovalDocumentTypes.filter((family) =>
         canonicalApprovalDecisionCapabilities[family].includes("REJECT"),
       ),
-    ).toHaveLength(19);
+    ).toHaveLength(20);
   });
 
   it("pins the exact closed family/action sets and rejects runtime mutation", () => {
@@ -65,7 +65,7 @@ describe("normalized approval decision capability contract", () => {
   it("publishes a stable versioned digest for the subsequent cutover cursor", () => {
     expect(APPROVAL_DECISION_CAPABILITY_VERSION).toBe("2");
     expect(APPROVAL_DECISION_CAPABILITY_HASH).toBe(
-      "584834b6085e75e25de7703b63ca7e0a800a9e609f9811a3a511822dbbe89e03",
+      "260e1cc424aa79b053ef004534a1df8f0bb32f43c0558dbbebde97275f68d7ea",
     );
   });
 

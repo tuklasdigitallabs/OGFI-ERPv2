@@ -112,7 +112,7 @@ export function EntryModal({
           ref={triggerRef}
           aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
           className={cn(
-            "inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+            "inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
             !triggerHasCustomBackground && "bg-blue-600 hover:bg-blue-700",
             !triggerHasCustomTextColor && "text-white",
             triggerDisabled && "cursor-not-allowed opacity-50 hover:bg-blue-600",

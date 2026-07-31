@@ -850,6 +850,57 @@ enum InventoryPilotEndpointCapability {
   TRANSFER_SOURCE
   TRANSFER_DESTINATION
   COUNT_LOCATION
+  OPENING_STOCK_LOCATION
+}
+
+enum OpeningInventoryCohortStatus {
+  DRAFT
+  SEALED
+  FROZEN
+  STAGED
+  ACTIVE
+  CANCELLED
+  REVERSING
+  REVERSED
+}
+
+enum OpeningInventoryCutoverStatus {
+  DRAFT
+  PENDING_APPROVAL
+  RETURNED
+  REJECTED
+  APPROVED
+  RECONCILED
+  ACTIVE
+  CANCELLED
+  REVERSING
+  REVERSED
+}
+
+enum OpeningInventoryCohortEventType {
+  COHORT_SEALED
+  COHORT_FROZEN
+  LOCATION_STAGED
+  COHORT_ACTIVATED
+  COHORT_CANCELLED
+  COHORT_REVERSAL_REQUESTED
+  COHORT_REVERSED
+}
+
+enum OpeningInventoryExecutionCommandType {
+  FREEZE_COHORT
+  STAGE_LOCATION
+  ACTIVATE_COHORT
+  REVERSE_LOCATION
+}
+
+enum OpeningInventoryExecutionCommandStatus {
+  PENDING
+  CLAIMED
+  SUCCEEDED
+  FAILED_RETRYABLE
+  FAILED_TERMINAL
+  CANCELLED
 }
 
 enum InventoryPilotApprovalFamily {
@@ -1012,6 +1063,13 @@ model Tenant {
   inventoryPilotFamilyActivationEvents       InventoryPilotFamilyActivationEvent[]
   inventoryTransferApprovalSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
   stockCountReviewSubmissionIntents          StockCountReviewSubmissionIntent[]
+  openingInventoryCohorts                    OpeningInventoryCohort[]
+  openingInventoryCutovers                   OpeningInventoryCutover[]
+  openingInventoryCutoverLines               OpeningInventoryCutoverLine[]
+  openingInventoryReconciliations            OpeningInventoryReconciliation[]
+  openingInventoryApprovalAttestations       OpeningInventoryApprovalAttestation[]
+  openingInventoryCohortEvents               OpeningInventoryCohortEvent[]
+  openingInventoryExecutionCommands          OpeningInventoryExecutionCommand[]
   inventoryTransferLines                  InventoryTransferLine[]
   inventoryTransferReceipts               InventoryTransferReceipt[]
   inventoryTransferReceiptLines           InventoryTransferReceiptLine[]
@@ -1199,6 +1257,13 @@ model Company {
   inventoryPilotFamilyActivationEvents       InventoryPilotFamilyActivationEvent[]
   inventoryTransferApprovalSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
   stockCountReviewSubmissionIntents          StockCountReviewSubmissionIntent[]
+  openingInventoryCohorts                    OpeningInventoryCohort[]
+  openingInventoryCutovers                   OpeningInventoryCutover[]
+  openingInventoryCutoverLines               OpeningInventoryCutoverLine[]
+  openingInventoryReconciliations            OpeningInventoryReconciliation[]
+  openingInventoryApprovalAttestations       OpeningInventoryApprovalAttestation[]
+  openingInventoryCohortEvents               OpeningInventoryCohortEvent[]
+  openingInventoryExecutionCommands          OpeningInventoryExecutionCommand[]
   inventoryTransferLines                  InventoryTransferLine[]
   inventoryTransferReceipts               InventoryTransferReceipt[]
   inventoryTransferReceiptLines           InventoryTransferReceiptLine[]
@@ -2867,11 +2932,13 @@ model Uom {
   stockCountAttemptLines        StockCountAttemptLine[]
   wastageLines                  WastageLine[]
   stockAdjustmentLines          StockAdjustmentLine[]
+  openingInventoryCutoverLines  OpeningInventoryCutoverLine[]
   recipeVersionYields           RecipeVersion[]                @relation("RecipeVersionYieldUom")
   recipeVersionServings         RecipeVersion[]                @relation("RecipeVersionServingUom")
   recipeLines                   RecipeLine[]
 
   @@unique([companyId, uomCode])
+  @@unique([id, tenantId, companyId], map: "Uom_exact_scope_key")
   @@index([tenantId, companyId, status])
 }
 
@@ -2916,6 +2983,7 @@ model Item {
   stockAdjustmentLines          StockAdjustmentLine[]
   recipeLines                   RecipeLine[]
   inventoryPilotMemberships     InventoryPilotItemMembership[]
+  openingInventoryCutoverLines  OpeningInventoryCutoverLine[]
 
   @@unique([companyId, itemCode])
   @@unique([id, tenantId, companyId], map: "Item_exact_scope_key")
@@ -3818,6 +3886,7 @@ model InventoryLocation {
   stockAdjustments                  StockAdjustment[]
   stockAdjustmentLines              StockAdjustmentLine[]
   inventoryPilotEndpointMemberships InventoryPilotEndpointMembership[]
+  openingInventoryCutovers          OpeningInventoryCutover[]
 
   @@unique([companyId, code])
   @@unique([id, tenantId, companyId, locationId], map: "InventoryLocation_exact_parent_scope_key")
@@ -3911,11 +3980,259 @@ model InventoryPilotConfigurationRevision {
   activationEvents          InventoryPilotFamilyActivationEvent[]
   transferSubmissionIntents InventoryTransferApprovalSubmissionIntent[]
   stockCountReviewIntents   StockCountReviewSubmissionIntent[]
+  openingInventoryCohorts   OpeningInventoryCohort[]
 
   @@unique([tenantId, companyId, revisionNumber], map: "InventoryPilotConfigurationRevision_scope_revision_key")
   @@unique([id, tenantId, companyId, revisionNumber], map: "InventoryPilotConfigurationRevision_exact_scope_key")
   @@unique([id, tenantId, companyId, revisionNumber, configurationDigest], map: "InventoryPilotConfigurationRevision_exact_digest_key")
   @@index([tenantId, companyId, sealedAt], map: "InventoryPilotConfigurationRevision_scope_sealed_idx")
+}
+
+model OpeningInventoryCohort {
+  id                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                       @db.Uuid
+  companyId                   String                       @db.Uuid
+  configurationRevisionId     String                       @db.Uuid
+  configurationRevisionNumber Int
+  configurationDigest         String                       @db.Char(64)
+  publicReference             String                       @db.VarChar(64)
+  predecessorCohortId         String?                      @unique @db.Uuid
+  generation                  Int                          @default(1)
+  effectiveAt                 DateTime
+  status                      OpeningInventoryCohortStatus @default(DRAFT)
+  canonicalJson               String                       @db.Text
+  cohortDigest                String                       @db.Char(64)
+  version                     Int                          @default(1)
+  createdByUserId             String                       @db.Uuid
+  sealedByUserId              String?                      @db.Uuid
+  sealedAt                    DateTime?
+  frozenByUserId              String?                      @db.Uuid
+  frozenAt                    DateTime?
+  activatedByUserId           String?                      @db.Uuid
+  activatedAt                 DateTime?
+  cancelledByUserId           String?                      @db.Uuid
+  cancelledAt                 DateTime?
+  cancellationReason          String?                      @db.Text
+  reversedByUserId            String?                      @db.Uuid
+  reversedAt                  DateTime?
+  reversalReason              String?                      @db.Text
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                     Company                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryCohort_company_scope_fkey")
+  configurationRevision       InventoryPilotConfigurationRevision @relation(fields: [configurationRevisionId, tenantId, companyId, configurationRevisionNumber, configurationDigest], references: [id, tenantId, companyId, revisionNumber, configurationDigest], onDelete: Restrict, map: "OpeningInventoryCohort_revision_exact_fkey")
+  predecessorCohort           OpeningInventoryCohort?      @relation("OpeningInventoryCohortRecoveryChain", fields: [predecessorCohortId], references: [id], onDelete: Restrict)
+  successorCohort             OpeningInventoryCohort?      @relation("OpeningInventoryCohortRecoveryChain")
+  cutovers                    OpeningInventoryCutover[]
+  events                      OpeningInventoryCohortEvent[]
+  executionCommands           OpeningInventoryExecutionCommand[]
+
+  @@unique([companyId, publicReference], map: "OpeningInventoryCohort_company_public_reference_key")
+  @@unique([tenantId, companyId, configurationRevisionId, effectiveAt, generation], map: "OpeningInventoryCohort_revision_effective_generation_key")
+  @@unique([id, tenantId, companyId], map: "OpeningInventoryCohort_exact_scope_key")
+  @@unique([id, tenantId, companyId, version, status], map: "OpeningInventoryCohort_state_exact_key")
+  @@index([tenantId, companyId, status, effectiveAt], map: "OpeningInventoryCohort_scope_status_effective_idx")
+}
+
+model OpeningInventoryCutover {
+  id                         String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cohortId                   String                        @db.Uuid
+  tenantId                   String                        @db.Uuid
+  companyId                  String                        @db.Uuid
+  inventoryLocationId        String                        @db.Uuid
+  locationId                 String                        @db.Uuid
+  stockCountSessionId        String                        @db.Uuid
+  stockCountAttemptId        String                        @db.Uuid
+  status                     OpeningInventoryCutoverStatus @default(DRAFT)
+  version                    Int                           @default(1)
+  idempotencyKey             String                        @db.VarChar(160)
+  evidenceManifestJson       String                        @db.Text
+  evidenceDigest             String                        @db.Char(64)
+  valuationCanonicalJson     String                        @db.Text
+  valuationDigest            String                        @db.Char(64)
+  cutoverCanonicalJson       String                        @db.Text
+  cutoverDigest              String                        @db.Char(64)
+  requestedByUserId          String                        @db.Uuid
+  requestedAt                DateTime                      @default(now())
+  reviewedByUserId           String?                       @db.Uuid
+  reviewedAt                 DateTime?
+  approvalInstanceId         String?                       @db.Uuid
+  approvedAt                 DateTime?
+  stagedAt                   DateTime?
+  reconciledAt               DateTime?
+  cancelledAt                DateTime?
+  cancellationReason         String?                       @db.Text
+  reversalRequestedAt        DateTime?
+  reversedAt                 DateTime?
+  reversalReason             String?                       @db.Text
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
+  cohort                     OpeningInventoryCohort       @relation(fields: [cohortId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "OpeningInventoryCutover_cohort_exact_fkey")
+  tenant                     Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                    Company                       @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryCutover_company_scope_fkey")
+  inventoryLocation          InventoryLocation             @relation(fields: [inventoryLocationId, tenantId, companyId, locationId], references: [id, tenantId, companyId, locationId], onDelete: Restrict, map: "OpeningInventoryCutover_inventory_location_exact_fkey")
+  stockCountAttempt          StockCountAttempt             @relation(fields: [stockCountAttemptId, tenantId, companyId, stockCountSessionId], references: [id, tenantId, companyId, stockCountSessionId], onDelete: Restrict, map: "OpeningInventoryCutover_attempt_exact_fkey")
+  lines                      OpeningInventoryCutoverLine[]
+  reconciliations            OpeningInventoryReconciliation[]
+  approvalAttestations       OpeningInventoryApprovalAttestation[]
+  executionCommands          OpeningInventoryExecutionCommand[]
+
+  @@unique([cohortId, inventoryLocationId], map: "OpeningInventoryCutover_cohort_location_key")
+  @@unique([cohortId, idempotencyKey], map: "OpeningInventoryCutover_cohort_idempotency_key")
+  @@unique([id, tenantId, companyId, inventoryLocationId], map: "OpeningInventoryCutover_exact_scope_key")
+  @@index([tenantId, companyId, inventoryLocationId, status], map: "OpeningInventoryCutover_scope_location_status_idx")
+}
+
+model OpeningInventoryCutoverLine {
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cutoverId               String                   @db.Uuid
+  tenantId                String                   @db.Uuid
+  companyId               String                   @db.Uuid
+  inventoryLocationId     String                   @db.Uuid
+  itemId                  String                   @db.Uuid
+  uomId                   String                   @db.Uuid
+  stockCountAttemptId     String                   @db.Uuid
+  stockCountAttemptLineId String                   @db.Uuid
+  lineNumber              Int
+  lotKey                  String                   @db.Text
+  lotNumber               String?
+  expiryDate              DateTime?
+  sourceSystemQuantityBaseUom   Decimal           @db.Decimal(18, 6)
+  sourceCountedQuantityBaseUom  Decimal           @db.Decimal(18, 6)
+  sourceVarianceQuantityBaseUom Decimal           @db.Decimal(18, 6)
+  openingQuantityBaseUom  Decimal                  @db.Decimal(18, 6)
+  unitCost                Decimal                  @db.Decimal(18, 6)
+  openingValue            Decimal                  @db.Decimal(18, 6)
+  lineCanonicalJson      String                   @db.Text
+  lineDigest              String                   @db.Char(64)
+  postedMovementId        String?                  @unique @db.Uuid
+  createdAt               DateTime                 @default(now())
+  cutover                 OpeningInventoryCutover  @relation(fields: [cutoverId, tenantId, companyId, inventoryLocationId], references: [id, tenantId, companyId, inventoryLocationId], onDelete: Restrict, map: "OpeningInventoryCutoverLine_cutover_exact_fkey")
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                 Company                  @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryCutoverLine_company_scope_fkey")
+  item                    Item                     @relation(fields: [itemId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "OpeningInventoryCutoverLine_item_exact_fkey")
+  uom                     Uom                      @relation(fields: [uomId], references: [id], onDelete: Restrict)
+  stockCountAttemptLine   StockCountAttemptLine    @relation(fields: [stockCountAttemptLineId], references: [id], onDelete: Restrict)
+  postedMovement           InventoryMovement?       @relation("OpeningInventoryCutoverLinePostedMovement", fields: [postedMovementId], references: [id], onDelete: Restrict)
+
+  @@unique([cutoverId, lineNumber], map: "OpeningInventoryCutoverLine_cutover_line_key")
+  @@unique([cutoverId, stockCountAttemptLineId], map: "OpeningInventoryCutoverLine_cutover_attempt_line_key")
+  @@unique([cutoverId, itemId, lotKey], map: "OpeningInventoryCutoverLine_cutover_stock_key")
+  @@index([tenantId, companyId, inventoryLocationId, itemId, lotKey], map: "OpeningInventoryCutoverLine_scope_stock_key_idx")
+}
+
+model OpeningInventoryReconciliation {
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cutoverId             String                    @db.Uuid
+  tenantId              String                    @db.Uuid
+  companyId             String                    @db.Uuid
+  inventoryLocationId   String                    @db.Uuid
+  reconciliationType    String                    @db.VarChar(48)
+  lineCount             Int
+  quantityDigest        String                    @db.Char(64)
+  valuationDigest       String                    @db.Char(64)
+  reconciliationJson    String                    @db.Text
+  reconciliationDigest  String                    @db.Char(64)
+  reconciledByUserId    String                    @db.Uuid
+  reconciledAt          DateTime
+  createdAt             DateTime                  @default(now())
+  cutover               OpeningInventoryCutover   @relation(fields: [cutoverId, tenantId, companyId, inventoryLocationId], references: [id, tenantId, companyId, inventoryLocationId], onDelete: Restrict, map: "OpeningInventoryReconciliation_cutover_exact_fkey")
+  tenant                Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                    @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryReconciliation_company_scope_fkey")
+
+  @@unique([cutoverId, reconciliationType], map: "OpeningInventoryReconciliation_cutover_type_key")
+  @@index([tenantId, companyId, inventoryLocationId, reconciledAt], map: "OpeningInventoryReconciliation_scope_reconciled_idx")
+}
+
+model OpeningInventoryApprovalAttestation {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cutoverId              String                   @db.Uuid
+  tenantId               String                   @db.Uuid
+  companyId              String                   @db.Uuid
+  inventoryLocationId    String                   @db.Uuid
+  approvalInstanceId     String                   @db.Uuid
+  approvalInstanceStepId String                   @db.Uuid
+  stepOrder              Int
+  decisionActorUserId    String                   @db.Uuid
+  requiredPermissionId   String                   @db.Uuid
+  requiredPermissionCode String                   @db.VarChar(160)
+  authSessionId          String                   @db.Uuid
+  privilegeEpochAtIssue  Int
+  mfaVerifiedAt          DateTime
+  mfaMode                String                   @db.VarChar(48)
+  mfaValidUntil          DateTime
+  decision               String                   @db.VarChar(24) @default("APPROVED")
+  actedAt                DateTime
+  canonicalJson          String                   @db.Text
+  attestationDigest      String                   @db.Char(64)
+  createdAt              DateTime                 @default(now())
+  cutover                OpeningInventoryCutover  @relation(fields: [cutoverId, tenantId, companyId, inventoryLocationId], references: [id, tenantId, companyId, inventoryLocationId], onDelete: Restrict, map: "OpeningInventoryApprovalAttestation_cutover_exact_fkey")
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                Company                  @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryApprovalAttestation_company_scope_fkey")
+
+  @@unique([cutoverId, approvalInstanceStepId], map: "OpeningInventoryApprovalAttestation_cutover_step_key")
+  @@index([tenantId, companyId, approvalInstanceId, actedAt], map: "OpeningInventoryApprovalAttestation_scope_instance_acted_idx")
+}
+
+model OpeningInventoryCohortEvent {
+  id                  String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cohortId            String                          @db.Uuid
+  tenantId            String                          @db.Uuid
+  companyId           String                          @db.Uuid
+  sequenceNumber      Int
+  eventType           OpeningInventoryCohortEventType
+  priorEventId        String?                         @db.Uuid
+  canonicalJson       String                          @db.Text
+  eventDigest         String                          @db.Char(64)
+  actorUserId         String                          @db.Uuid
+  occurredAt          DateTime
+  createdAt           DateTime                        @default(now())
+  cohort              OpeningInventoryCohort          @relation(fields: [cohortId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "OpeningInventoryCohortEvent_cohort_exact_fkey")
+  tenant              Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company             Company                          @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryCohortEvent_company_scope_fkey")
+  priorEvent          OpeningInventoryCohortEvent?     @relation("OpeningInventoryCohortEventChain", fields: [priorEventId], references: [id], onDelete: Restrict)
+  nextEvent           OpeningInventoryCohortEvent?     @relation("OpeningInventoryCohortEventChain")
+
+  @@unique([cohortId, sequenceNumber], map: "OpeningInventoryCohortEvent_cohort_sequence_key")
+  @@unique([priorEventId], map: "OpeningInventoryCohortEvent_prior_successor_key")
+  @@index([tenantId, companyId, cohortId, occurredAt], map: "OpeningInventoryCohortEvent_scope_occurred_idx")
+}
+
+model OpeningInventoryExecutionCommand {
+  id                    String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cohortId              String                                 @db.Uuid
+  cutoverId             String?                                @db.Uuid
+  tenantId              String                                 @db.Uuid
+  companyId             String                                 @db.Uuid
+  commandType           OpeningInventoryExecutionCommandType
+  status                OpeningInventoryExecutionCommandStatus @default(PENDING)
+  idempotencyKey        String                                 @db.VarChar(160)
+  expectedCohortVersion Int
+  expectedCutoverVersion Int?
+  canonicalJson         String                                 @db.Text
+  commandDigest         String                                 @db.Char(64)
+  requestedByUserId     String                                 @db.Uuid
+  requestedAuthSessionId String                                @db.Uuid
+  requestedPrivilegeEpoch Int
+  requestedMfaVerifiedAt DateTime
+  requestedMfaMode       String                                @db.VarChar(48)
+  requestedMfaValidUntil DateTime
+  requiredPermissionCode String                                @db.VarChar(160)
+  requestReason          String                                @db.Text
+  requestedAt           DateTime                               @default(now())
+  claimedAt             DateTime?
+  claimedByExecutor     String?                                @db.VarChar(120)
+  completedAt           DateTime?
+  failureCode           String?                                @db.VarChar(120)
+  failureDetail         String?                                @db.Text
+  createdAt             DateTime                               @default(now())
+  cohort                OpeningInventoryCohort                 @relation(fields: [cohortId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "OpeningInventoryExecutionCommand_cohort_exact_fkey")
+  cutover               OpeningInventoryCutover?               @relation(fields: [cutoverId], references: [id], onDelete: Restrict)
+  tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                                 @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "OpeningInventoryExecutionCommand_company_scope_fkey")
+
+  @@unique([cohortId, idempotencyKey], map: "OpeningInventoryExecutionCommand_cohort_idempotency_key")
+  @@index([tenantId, companyId, status, requestedAt], map: "OpeningInventoryExecutionCommand_scope_status_requested_idx")
 }
 
 model InventoryPilotEndpointMembership {
@@ -4129,6 +4446,7 @@ model StockCountAttempt {
   reviewedBy          User?             @relation("StockCountAttemptReviewer", fields: [reviewedByUserId], references: [id])
   lines               StockCountAttemptLine[]
   stockAdjustments    StockAdjustment[]
+  openingInventoryCutovers OpeningInventoryCutover[]
   currentForSession   StockCountSession? @relation("StockCountCurrentAttempt")
   reviewSubmissionIntents StockCountReviewSubmissionIntent[]
 
@@ -4169,6 +4487,7 @@ model StockCountAttemptLine {
   countedBy               User?             @relation("StockCountAttemptLineCounter", fields: [countedByUserId], references: [id])
   legacyStockCountLine    StockCountLine?   @relation("StockCountAttemptLineLegacySource", fields: [legacyStockCountLineId], references: [id])
   stockAdjustmentLines    StockAdjustmentLine[]
+  openingInventoryCutoverLines OpeningInventoryCutoverLine[]
 
   @@unique([stockCountAttemptId, itemId, lotKey])
   @@unique([stockCountAttemptId, lineNumber])
@@ -4437,6 +4756,7 @@ model InventoryMovement {
   postedStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLinePostedMovement")
   postedGoodsReceiptLine             GoodsReceiptLine?             @relation("GoodsReceiptLinePostedMovement")
   postedInventoryTransferReceiptLine InventoryTransferReceiptLine? @relation("InventoryTransferReceiptLinePostedMovement")
+  postedOpeningInventoryCutoverLine  OpeningInventoryCutoverLine?  @relation("OpeningInventoryCutoverLinePostedMovement")
 
   @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey], map: "InventoryMovement_tenantId_companyId_sourceDocumentType_sourceD")
   @@index([tenantId, companyId, inventoryLocationId, itemId, occurredAt], map: "InventoryMovement_tenantId_companyId_inventoryLocationId_itemId")

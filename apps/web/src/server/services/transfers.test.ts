@@ -479,6 +479,13 @@ describe("inventory transfer foundation rules", () => {
     expect(submit).toContain('status: "PENDING_APPROVAL"');
     expect(submit).toContain("inventoryTransferApprovalSubmissionIntent.create");
     expect(submit).toContain("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    expect(submit).toContain('lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED"');
+    expect(submit.indexOf("if (existingIntent)")).toBeLessThan(
+      submit.indexOf('lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED"')
+    );
+    expect(submit.indexOf('lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED"')).toBeLessThan(
+      submit.indexOf("assertTransferLocationsDistinct")
+    );
     expect(submit).toContain("TRANSFER_APPROVAL_SOURCE_CAS_CONFLICT");
     expect(submit).toContain('reasonCode: "REQUESTER"');
     expect(submit).toContain("groupOrder: 1");

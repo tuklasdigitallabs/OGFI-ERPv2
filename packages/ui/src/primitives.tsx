@@ -112,7 +112,7 @@ export function ButtonLink({
   return (
     <a
       className={cn(
-        "inline-flex min-h-9 items-center justify-center rounded-[var(--radius-control)] px-4 font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] px-4 font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         size === "sm" ? "min-h-8 px-3 text-xs" : size === "lg" ? "min-h-11 px-5 text-sm" : "",
         tone === "primary"
           ? "bg-[var(--color-action-primary)] text-white shadow-sm hover:bg-[var(--color-action-primary-hover)] active:translate-y-px"
@@ -292,7 +292,7 @@ export function PaginationBar({
   const canGoPrevious = safePage > 1;
   const canGoNext = safePage < pageCount;
   const buttonClass =
-    "inline-flex min-h-9 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-sm font-semibold transition-colors";
+    "inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-sm font-semibold transition-colors";
   const enabledClass =
     "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-muted)]";
   const disabledClass =

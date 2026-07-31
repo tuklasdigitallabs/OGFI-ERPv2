@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionContext } from "../src/server/services/context";
@@ -22,6 +22,7 @@ import {
   configureAuthenticatedRequest,
 } from "./authenticatedRequestHarness";
 import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
+import { requestInventoryPilotBootstrap } from "./helpers/inventoryPilotApprovalPgBootstrapClient";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 if (!process.env.DATABASE_URL) {
@@ -38,6 +39,7 @@ describe("procurement and inventory authorization boundaries", () => {
     foreignCompanyId: randomUUID(),
     locationId: randomUUID(),
     adjacentLocationId: randomUUID(),
+    unrelatedLocationId: randomUUID(),
     adjacentCompanyLocationId: randomUUID(),
     foreignLocationId: randomUUID(),
     inventoryLocationId: randomUUID(),
@@ -50,7 +52,9 @@ describe("procurement and inventory authorization boundaries", () => {
     roleId: randomUUID(),
     nextRecipientRoleId: randomUUID(),
     userScopeAssignmentId: randomUUID(),
+    unrelatedLocationScopeAssignmentId: randomUUID(),
     approvalRequesterScopeAssignmentId: randomUUID(),
+    approvalRequesterAdjacentScopeAssignmentId: randomUUID(),
     nextApproverScopeAssignmentId: randomUUID(),
     authSessionId: randomUUID(),
     approvalRuleId: randomUUID(),
@@ -89,6 +93,30 @@ describe("procurement and inventory authorization boundaries", () => {
     foreignFiscalYearId: randomUUID(),
     scopedBudgetId: randomUUID(),
     foreignBudgetId: randomUUID(),
+    openingInventoryRevisionId: randomUUID(),
+    openingInventoryMfaCohortId: randomUUID(),
+    openingInventoryMfaSessionId: randomUUID(),
+    openingInventoryMfaAttemptId: randomUUID(),
+    openingInventoryMfaAttemptLineId: randomUUID(),
+    openingInventoryMfaCutoverId: randomUUID(),
+    openingInventoryMfaEvidenceAttachmentId: randomUUID(),
+    openingInventoryMfaControlledEvidenceId: randomUUID(),
+    openingInventorySodCohortId: randomUUID(),
+    openingInventoryEmptyCohortId: randomUUID(),
+    openingInventorySubmitCohortId: randomUUID(),
+    openingInventoryScopedSessionId: randomUUID(),
+    openingInventoryScopedAttemptId: randomUUID(),
+    openingInventoryScopedAttemptLineId: randomUUID(),
+    openingInventoryScopedCutoverId: randomUUID(),
+    openingInventoryAdjacentSessionId: randomUUID(),
+    openingInventoryAdjacentAttemptId: randomUUID(),
+    openingInventoryAdjacentAttemptLineId: randomUUID(),
+    openingInventoryAdjacentCutoverId: randomUUID(),
+    openingInventorySubmitRuleId: randomUUID(),
+    openingInventoryApprovalCohortId: randomUUID(),
+    openingInventoryApprovalCutoverId: randomUUID(),
+    openingInventoryApprovalInstanceId: randomUUID(),
+    openingInventoryEvidenceAttachmentId: randomUUID(),
   };
 
   let prisma: PrismaClient;
@@ -215,6 +243,14 @@ describe("procurement and inventory authorization boundaries", () => {
           name: `Adjacent Authorization Inventory Location ${suffix}`,
         },
         {
+          id: ids.unrelatedLocationId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          locationType: "BRANCH",
+          code: `AZI-LOC-UNRELATED-${suffix}`,
+          name: `Unrelated Authorization Inventory Location ${suffix}`,
+        },
+        {
           id: ids.adjacentCompanyLocationId,
           tenantId: ids.tenantId,
           companyId: ids.adjacentCompanyId,
@@ -316,10 +352,22 @@ describe("procurement and inventory authorization boundaries", () => {
         scopeId: ids.locationId,
         accessLevel: "APPROVE",
       }, {
+        id: ids.unrelatedLocationScopeAssignmentId,
+        userId: ids.userId,
+        scopeType: "LOCATION",
+        scopeId: ids.unrelatedLocationId,
+        accessLevel: "APPROVE",
+      }, {
         id: ids.approvalRequesterScopeAssignmentId,
         userId: ids.approvalRequesterId,
         scopeType: "LOCATION",
         scopeId: ids.locationId,
+        accessLevel: "APPROVE",
+      }, {
+        id: ids.approvalRequesterAdjacentScopeAssignmentId,
+        userId: ids.approvalRequesterId,
+        scopeType: "LOCATION",
+        scopeId: ids.adjacentLocationId,
         accessLevel: "APPROVE",
       }, {
         id: ids.nextApproverScopeAssignmentId,
@@ -871,6 +919,512 @@ describe("procurement and inventory authorization boundaries", () => {
         },
       ],
     });
+    const openingInventoryRevision = await requestInventoryPilotBootstrap({
+      action: "OPENING_INITIALIZE",
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      actorUserId: ids.approvalRequesterId,
+      locations: [
+        { locationId: ids.locationId, inventoryLocationId: ids.inventoryLocationId },
+        { locationId: ids.adjacentLocationId, inventoryLocationId: ids.adjacentInventoryLocationId },
+      ],
+      itemIds: [ids.itemId],
+    });
+    if (!openingInventoryRevision) {
+      throw new Error("AUTHORIZATION_OPENING_INVENTORY_BOOTSTRAP_RESULT_MISSING");
+    }
+    ids.openingInventoryRevisionId = openingInventoryRevision.id;
+    const openingInventoryDigest = openingInventoryRevision.configurationDigest;
+    const openingInventoryRevisionNumber = openingInventoryRevision.revisionNumber;
+    const openingInventoryLineEvidence = (stockCountAttemptLineId: string) => {
+      const lineCanonicalJson = JSON.stringify({
+        expiryDate: null,
+        itemId: ids.itemId,
+        lineNumber: 1,
+        lotKey: "NOLOT|NOEXP",
+        lotNumber: null,
+        openingQuantityBaseUom: 0,
+        openingValue: 0,
+        sourceCountedQuantityBaseUom: 0,
+        sourceSystemQuantityBaseUom: 0,
+        sourceVarianceQuantityBaseUom: 0,
+        stockCountAttemptLineId,
+        unitCost: 0,
+        uomId: ids.uomId,
+      });
+      return {
+        lineCanonicalJson,
+        lineDigest: createHash("sha256").update(lineCanonicalJson).digest("hex"),
+      };
+    };
+    const mfaEvidenceObjectVersionId = `authz-opening-detail-${suffix}`;
+    const mfaEvidenceChecksum = createHash("sha256").update(mfaEvidenceObjectVersionId).digest("hex");
+    const mfaEvidenceManifestJson = JSON.stringify([{
+      controlledEvidenceAttachmentId: ids.openingInventoryMfaControlledEvidenceId,
+      attachmentId: ids.openingInventoryMfaEvidenceAttachmentId,
+      objectVersionId: mfaEvidenceObjectVersionId,
+      checksum: mfaEvidenceChecksum,
+    }]);
+    const mfaCutoverCanonicalJson = "{}";
+    const mfaCutoverDigest = createHash("sha256").update(mfaCutoverCanonicalJson).digest("hex");
+    const mfaCohortCanonicalJson = JSON.stringify({
+      cutovers: [{ id: ids.openingInventoryMfaCutoverId, cutoverDigest: mfaCutoverDigest }],
+    });
+    await prisma.openingInventoryCohort.createMany({
+      data: [
+        {
+          id: ids.openingInventoryMfaCohortId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          configurationRevisionId: ids.openingInventoryRevisionId,
+          configurationRevisionNumber: openingInventoryRevisionNumber,
+          configurationDigest: openingInventoryDigest,
+          publicReference: `AUTHZ-PI-OIC-MFA-${suffix}`,
+          effectiveAt: new Date("2026-07-01T00:00:01.000Z"),
+          status: "SEALED",
+          canonicalJson: mfaCohortCanonicalJson,
+          cohortDigest: createHash("sha256").update(mfaCohortCanonicalJson).digest("hex"),
+          createdByUserId: ids.approvalRequesterId,
+        },
+        {
+          id: ids.openingInventorySodCohortId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          configurationRevisionId: ids.openingInventoryRevisionId,
+          configurationRevisionNumber: openingInventoryRevisionNumber,
+          configurationDigest: openingInventoryDigest,
+          publicReference: `AUTHZ-PI-OIC-SOD-${suffix}`,
+          effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+          status: "SEALED",
+          canonicalJson: "{}",
+          cohortDigest: openingInventoryDigest,
+          createdByUserId: ids.userId,
+        },
+        {
+          id: ids.openingInventoryEmptyCohortId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          configurationRevisionId: ids.openingInventoryRevisionId,
+          configurationRevisionNumber: openingInventoryRevisionNumber,
+          configurationDigest: openingInventoryDigest,
+          publicReference: `AUTHZ-PI-OIC-ADJ-DRAFT-${suffix}`,
+          effectiveAt: new Date("2026-07-01T00:00:04.000Z"),
+          status: "DRAFT",
+          canonicalJson: "{}",
+          cohortDigest: openingInventoryDigest,
+          createdByUserId: ids.approvalRequesterId,
+        },
+      ],
+    });
+    await prisma.attachment.create({
+      data: {
+        id: ids.openingInventoryMfaEvidenceAttachmentId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        storageEnvironment: "LOCAL_DEVELOPMENT",
+        storageProvider: "disposable",
+        objectKey: `authorization/opening-inventory-detail/${suffix}`,
+        objectVersionId: mfaEvidenceObjectVersionId,
+        originalFilename: `opening-inventory-detail-${suffix}.txt`,
+        mimeType: "text/plain",
+        detectedMimeType: "text/plain",
+        sizeBytes: 1,
+        checksum: mfaEvidenceChecksum,
+        detectedChecksum: mfaEvidenceChecksum,
+        uploadState: "VERIFIED",
+        scanState: "CLEAN",
+        availabilityState: "AVAILABLE",
+        physicalState: "DURABLE",
+        scanVerifiedObjectVersionId: mfaEvidenceObjectVersionId,
+        uploadVerifiedAt: new Date("2026-07-01T00:00:00.000Z"),
+        scanCompletedAt: new Date("2026-07-01T00:00:00.000Z"),
+        availableAt: new Date("2026-07-01T00:00:00.000Z"),
+        uploadedByUserId: ids.approvalRequesterId,
+        status: "ACTIVE",
+      },
+    });
+    await prisma.controlledEvidenceAttachment.create({
+      data: {
+        id: ids.openingInventoryMfaControlledEvidenceId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        sourceType: "OPENING_INVENTORY_COHORT",
+        sourceRecordId: ids.openingInventoryMfaCohortId,
+        sourceKey: `opening-cohort-${ids.openingInventoryMfaCohortId}`,
+        attachmentId: ids.openingInventoryMfaEvidenceAttachmentId,
+        purpose: "EVIDENCE",
+        status: "ACTIVE",
+        createdByUserId: ids.approvalRequesterId,
+      },
+    });
+    await prisma.stockCountSession.createMany({
+      data: [
+        {
+          id: ids.openingInventoryMfaSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          publicReference: `AUTHZ-PI-OIC-SC-MFA-${suffix}`,
+          countType: "OPENING",
+          status: "REVIEWED",
+          freezeMovements: true,
+          cutoffAt: new Date("2026-06-30T00:00:00.000Z"),
+          startedAt: new Date("2026-06-30T00:00:00.000Z"),
+          submittedAt: new Date("2026-06-30T00:00:00.000Z"),
+          reviewedAt: new Date("2026-06-30T00:00:00.000Z"),
+          createdByUserId: ids.approvalRequesterId,
+          assignedToUserId: ids.approvalRequesterId,
+          reviewedByUserId: ids.approvalRequesterId,
+        },
+        {
+          id: ids.openingInventoryScopedSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          publicReference: `AUTHZ-PI-OIC-SC-SCOPED-${suffix}`,
+          countType: "OPENING",
+          status: "REVIEWED",
+          createdByUserId: ids.userId,
+        },
+        {
+          id: ids.openingInventoryAdjacentSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.adjacentInventoryLocationId,
+          publicReference: `AUTHZ-PI-OIC-SC-ADJ-${suffix}`,
+          countType: "OPENING",
+          status: "REVIEWED",
+          createdByUserId: ids.userId,
+        },
+      ],
+    });
+    await prisma.stockCountAttempt.createMany({
+      data: [
+        {
+          id: ids.openingInventoryMfaAttemptId,
+          stockCountSessionId: ids.openingInventoryMfaSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          attemptNumber: 1,
+          status: "REVIEWED",
+          freezeMovements: true,
+          cutoffAt: new Date("2026-06-30T00:00:00.000Z"),
+          startedAt: new Date("2026-06-30T00:00:00.000Z"),
+          submittedAt: new Date("2026-06-30T00:00:00.000Z"),
+          reviewedAt: new Date("2026-06-30T00:00:00.000Z"),
+          evidenceReference: "Authorization MFA opening count evidence",
+          createdByUserId: ids.approvalRequesterId,
+          assignedToUserId: ids.approvalRequesterId,
+          reviewedByUserId: ids.approvalRequesterId,
+        },
+        {
+          id: ids.openingInventoryScopedAttemptId,
+          stockCountSessionId: ids.openingInventoryScopedSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          attemptNumber: 99,
+          status: "REVIEWED",
+          createdByUserId: ids.userId,
+        },
+        {
+          id: ids.openingInventoryAdjacentAttemptId,
+          stockCountSessionId: ids.openingInventoryAdjacentSessionId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.adjacentInventoryLocationId,
+          attemptNumber: 99,
+          status: "REVIEWED",
+          createdByUserId: ids.userId,
+        },
+      ],
+    });
+    await prisma.stockCountSession.update({
+      where: { id: ids.openingInventoryMfaSessionId },
+      data: { currentAttemptId: ids.openingInventoryMfaAttemptId },
+    });
+    await prisma.stockCountSession.update({
+      where: { id: ids.openingInventoryScopedSessionId },
+      data: { currentAttemptId: ids.openingInventoryScopedAttemptId },
+    });
+    await prisma.stockCountSession.update({
+      where: { id: ids.openingInventoryAdjacentSessionId },
+      data: { currentAttemptId: ids.openingInventoryAdjacentAttemptId },
+    });
+    await prisma.stockCountAttemptLine.createMany({
+      data: [
+        {
+          id: ids.openingInventoryMfaAttemptLineId,
+          stockCountAttemptId: ids.openingInventoryMfaAttemptId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          lineNumber: 1,
+          systemQuantityBaseUom: 0,
+          countedQuantityBaseUom: 0,
+          varianceQuantityBaseUom: 0,
+          countedByUserId: ids.approvalRequesterId,
+          countedAt: new Date("2026-06-30T00:00:00.000Z"),
+        },
+        {
+          id: ids.openingInventoryScopedAttemptLineId,
+          stockCountAttemptId: ids.openingInventoryScopedAttemptId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          lineNumber: 1,
+          systemQuantityBaseUom: 0,
+          countedQuantityBaseUom: 0,
+          varianceQuantityBaseUom: 0,
+        },
+        {
+          id: ids.openingInventoryAdjacentAttemptLineId,
+          stockCountAttemptId: ids.openingInventoryAdjacentAttemptId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.adjacentInventoryLocationId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          lineNumber: 1,
+          systemQuantityBaseUom: 0,
+          countedQuantityBaseUom: 0,
+          varianceQuantityBaseUom: 0,
+        },
+      ],
+    });
+    await prisma.openingInventoryCutover.create({
+      data: {
+        id: ids.openingInventoryMfaCutoverId,
+        cohortId: ids.openingInventoryMfaCohortId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        inventoryLocationId: ids.inventoryLocationId,
+        locationId: ids.locationId,
+        stockCountSessionId: ids.openingInventoryMfaSessionId,
+        stockCountAttemptId: ids.openingInventoryMfaAttemptId,
+        idempotencyKey: `authz-opening-mfa-${suffix}`,
+        evidenceManifestJson: mfaEvidenceManifestJson,
+        evidenceDigest: createHash("sha256").update(mfaEvidenceManifestJson).digest("hex"),
+        valuationCanonicalJson: "[]",
+        valuationDigest: createHash("sha256").update("[]").digest("hex"),
+        cutoverCanonicalJson: mfaCutoverCanonicalJson,
+        cutoverDigest: mfaCutoverDigest,
+        requestedByUserId: ids.approvalRequesterId,
+      },
+    });
+    const mfaLineEvidence = openingInventoryLineEvidence(ids.openingInventoryMfaAttemptLineId);
+    await prisma.openingInventoryCutoverLine.create({
+      data: {
+        cutoverId: ids.openingInventoryMfaCutoverId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        inventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId,
+        uomId: ids.uomId,
+        stockCountAttemptId: ids.openingInventoryMfaAttemptId,
+        stockCountAttemptLineId: ids.openingInventoryMfaAttemptLineId,
+        lineNumber: 1,
+        lotKey: "NOLOT|NOEXP",
+        sourceSystemQuantityBaseUom: 0,
+        sourceCountedQuantityBaseUom: 0,
+        sourceVarianceQuantityBaseUom: 0,
+        openingQuantityBaseUom: 0,
+        unitCost: 0,
+        openingValue: 0,
+        ...mfaLineEvidence,
+      },
+    });
+    const scopedCutoverDigest = "b".repeat(64);
+    const adjacentCutoverDigest = "c".repeat(64);
+    const submitCohortCanonicalJson = JSON.stringify({
+      cutovers: [
+        { id: ids.openingInventoryScopedCutoverId, cutoverDigest: scopedCutoverDigest },
+        { id: ids.openingInventoryAdjacentCutoverId, cutoverDigest: adjacentCutoverDigest },
+      ],
+    });
+    await prisma.openingInventoryCohort.create({
+      data: {
+        id: ids.openingInventorySubmitCohortId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        configurationRevisionId: ids.openingInventoryRevisionId,
+        configurationRevisionNumber: openingInventoryRevisionNumber,
+        configurationDigest: openingInventoryDigest,
+        publicReference: `AUTHZ-PI-OIC-SUBMIT-${suffix}`,
+        effectiveAt: new Date("2026-07-01T00:00:02.000Z"),
+        status: "SEALED",
+        canonicalJson: submitCohortCanonicalJson,
+        cohortDigest: createHash("sha256").update(submitCohortCanonicalJson).digest("hex"),
+        createdByUserId: ids.approvalRequesterId,
+      },
+    });
+    await prisma.openingInventoryCutover.createMany({
+      data: [
+        {
+          id: ids.openingInventoryScopedCutoverId,
+          cohortId: ids.openingInventorySubmitCohortId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          locationId: ids.locationId,
+          stockCountSessionId: ids.openingInventoryScopedSessionId,
+          stockCountAttemptId: ids.openingInventoryScopedAttemptId,
+          idempotencyKey: `authz-opening-submit-scoped-${suffix}`,
+          evidenceManifestJson: "[]",
+          evidenceDigest: openingInventoryDigest,
+          valuationCanonicalJson: "[]",
+          valuationDigest: openingInventoryDigest,
+          cutoverCanonicalJson: "{}",
+          cutoverDigest: scopedCutoverDigest,
+          requestedByUserId: ids.userId,
+        },
+        {
+          id: ids.openingInventoryAdjacentCutoverId,
+          cohortId: ids.openingInventorySubmitCohortId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.adjacentInventoryLocationId,
+          locationId: ids.adjacentLocationId,
+          stockCountSessionId: ids.openingInventoryAdjacentSessionId,
+          stockCountAttemptId: ids.openingInventoryAdjacentAttemptId,
+          idempotencyKey: `authz-opening-submit-adjacent-${suffix}`,
+          evidenceManifestJson: "[]",
+          evidenceDigest: openingInventoryDigest,
+          valuationCanonicalJson: "[]",
+          valuationDigest: openingInventoryDigest,
+          cutoverCanonicalJson: "{}",
+          cutoverDigest: adjacentCutoverDigest,
+          requestedByUserId: ids.approvalRequesterId,
+        },
+      ],
+    });
+    const scopedLineEvidence = openingInventoryLineEvidence(ids.openingInventoryScopedAttemptLineId);
+    const adjacentLineEvidence = openingInventoryLineEvidence(ids.openingInventoryAdjacentAttemptLineId);
+    await prisma.openingInventoryCutoverLine.createMany({
+      data: [
+        {
+          cutoverId: ids.openingInventoryScopedCutoverId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.inventoryLocationId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          stockCountAttemptId: ids.openingInventoryScopedAttemptId,
+          stockCountAttemptLineId: ids.openingInventoryScopedAttemptLineId,
+          lineNumber: 1,
+          lotKey: "NOLOT|NOEXP",
+          sourceSystemQuantityBaseUom: 0,
+          sourceCountedQuantityBaseUom: 0,
+          sourceVarianceQuantityBaseUom: 0,
+          openingQuantityBaseUom: 0,
+          unitCost: 0,
+          openingValue: 0,
+          ...scopedLineEvidence,
+        },
+        {
+          cutoverId: ids.openingInventoryAdjacentCutoverId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          inventoryLocationId: ids.adjacentInventoryLocationId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          stockCountAttemptId: ids.openingInventoryAdjacentAttemptId,
+          stockCountAttemptLineId: ids.openingInventoryAdjacentAttemptLineId,
+          lineNumber: 1,
+          lotKey: "NOLOT|NOEXP",
+          sourceSystemQuantityBaseUom: 0,
+          sourceCountedQuantityBaseUom: 0,
+          sourceVarianceQuantityBaseUom: 0,
+          openingQuantityBaseUom: 0,
+          unitCost: 0,
+          openingValue: 0,
+          ...adjacentLineEvidence,
+        },
+      ],
+    });
+    const submitRule = await createSealedApprovalRuleFixture(prisma, {
+      data: {
+        id: ids.openingInventorySubmitRuleId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        transactionType: "OpeningInventoryCutover",
+        isActive: true,
+        steps: {
+          create: [
+            { stepOrder: 1, approverType: "USER", userId: ids.userId },
+            { stepOrder: 2, approverType: "USER", userId: ids.userId },
+          ],
+        },
+      },
+    });
+    await prisma.openingInventoryCohort.create({
+      data: {
+        id: ids.openingInventoryApprovalCohortId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        configurationRevisionId: ids.openingInventoryRevisionId,
+        configurationRevisionNumber: openingInventoryRevisionNumber,
+        configurationDigest: openingInventoryDigest,
+        publicReference: `AUTHZ-PI-OIC-APPROVAL-${suffix}`,
+        effectiveAt: new Date("2026-07-01T00:00:03.000Z"),
+        status: "SEALED",
+        canonicalJson: "{}",
+        cohortDigest: openingInventoryDigest,
+        createdByUserId: ids.approvalRequesterId,
+      },
+    });
+    await prisma.openingInventoryCutover.create({
+      data: {
+        id: ids.openingInventoryApprovalCutoverId,
+        cohortId: ids.openingInventoryApprovalCohortId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        inventoryLocationId: ids.inventoryLocationId,
+        locationId: ids.locationId,
+        stockCountSessionId: ids.openingInventoryScopedSessionId,
+        stockCountAttemptId: ids.openingInventoryScopedAttemptId,
+        idempotencyKey: `authz-opening-approval-${suffix}`,
+        evidenceManifestJson: "[]",
+        evidenceDigest: openingInventoryDigest,
+        valuationCanonicalJson: "[]",
+        valuationDigest: openingInventoryDigest,
+        cutoverCanonicalJson: "{}",
+        cutoverDigest: "d".repeat(64),
+        requestedByUserId: ids.approvalRequesterId,
+      },
+    });
+    await prisma.approvalInstance.create({
+      data: {
+        id: ids.openingInventoryApprovalInstanceId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        documentType: "OpeningInventoryCutover",
+        documentId: ids.openingInventoryApprovalCutoverId,
+        approvalRuleId: submitRule.id,
+        status: "PENDING",
+        currentStepOrder: 1,
+        steps: {
+          create: {
+            stepOrder: 1,
+            assignedUserId: ids.userId,
+            status: "PENDING",
+          },
+        },
+      },
+    });
+    await prisma.openingInventoryCutover.update({
+      where: { id: ids.openingInventoryApprovalCutoverId },
+      data: {
+        status: "PENDING_APPROVAL",
+        approvalInstanceId: ids.openingInventoryApprovalInstanceId,
+        version: 2,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -922,6 +1476,10 @@ describe("procurement and inventory authorization boundaries", () => {
       stockCounts,
       wastageReports,
       stockAdjustments,
+      openingInventoryCohorts,
+      openingInventoryCutovers,
+      openingInventoryCutoverLines,
+      openingInventoryCommands,
       approvalInstances,
       movements,
       balances,
@@ -935,6 +1493,10 @@ describe("procurement and inventory authorization boundaries", () => {
       prisma.stockCountSession.count({ where: { tenantId: ids.tenantId } }),
       prisma.wastageReport.count({ where: { tenantId: ids.tenantId } }),
       prisma.stockAdjustment.count({ where: { tenantId: ids.tenantId } }),
+      prisma.openingInventoryCohort.count({ where: { tenantId: ids.tenantId } }),
+      prisma.openingInventoryCutover.count({ where: { tenantId: ids.tenantId } }),
+      prisma.openingInventoryCutoverLine.count({ where: { tenantId: ids.tenantId } }),
+      prisma.openingInventoryExecutionCommand.count({ where: { tenantId: ids.tenantId } }),
       prisma.approvalInstance.count({ where: { tenantId: ids.tenantId } }),
       prisma.inventoryMovement.count({ where: { tenantId: ids.tenantId } }),
       prisma.inventoryBalance.count({ where: { tenantId: ids.tenantId } }),
@@ -949,6 +1511,10 @@ describe("procurement and inventory authorization boundaries", () => {
       stockCounts,
       wastageReports,
       stockAdjustments,
+      openingInventoryCohorts,
+      openingInventoryCutovers,
+      openingInventoryCutoverLines,
+      openingInventoryCommands,
       approvalInstances,
       movements,
       balances,
@@ -1052,7 +1618,8 @@ describe("procurement and inventory authorization boundaries", () => {
     const foreignUomId = randomUUID();
     const foreignCategoryId = randomUUID();
     const foreignItemId = randomUUID();
-    const balanceIds = Array.from({ length: 17 }, () => randomUUID());
+    let balanceIds: string[] = [];
+    let lotExpiryBalanceIds: string[] = [];
     const inactiveInventoryLocationId = randomUUID();
     await prisma.uom.create({
       data: {
@@ -1098,217 +1665,88 @@ describe("procurement and inventory authorization boundaries", () => {
       }
     });
 
+    const balanceFixtures = [
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId, lotNumber: `BOTH-${suffix}`,
+        expiryDate: new Date("2027-02-01T00:00:00.000Z"), quantity: 5,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId, quantity: 0,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId,
+        expiryDate: new Date("2027-01-01T00:00:00.000Z"), quantity: 2,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.adjacentInventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId, lotNumber: `ADJ-LOC-${suffix}`, quantity: 99,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.adjacentCompanyId, inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
+        itemId: ids.adjacentCompanyItemId, baseUomId: ids.adjacentCompanyUomId, lotNumber: `ADJ-COMP-${suffix}`, quantity: 99,
+      },
+      {
+        tenantId: ids.foreignTenantId, companyId: ids.foreignCompanyId, inventoryLocationId: ids.foreignInventoryLocationId,
+        itemId: foreignItemId, baseUomId: foreignUomId, lotNumber: `FOREIGN-${suffix}`, quantity: 99,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: inactiveInventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId, lotNumber: `INACTIVE-${suffix}`, quantity: 88,
+      },
+      {
+        tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId, baseUomId: ids.uomId, lotNumber: `ZERO-${suffix}`, quantity: 0,
+      },
+    ];
+    await prisma.inventoryMovement.createMany({
+      data: balanceFixtures.flatMap((fixture, index) => {
+        const movement = (movementType: "ADJUSTMENT_IN" | "ADJUSTMENT_OUT", quantityDeltaBaseUom: number, event: string) => ({
+          tenantId: fixture.tenantId,
+          companyId: fixture.companyId,
+          inventoryLocationId: fixture.inventoryLocationId,
+          itemId: fixture.itemId,
+          movementType,
+          occurredAt: new Date(),
+          enteredQuantity: Math.abs(quantityDeltaBaseUom),
+          enteredUomId: fixture.baseUomId,
+          quantityDeltaBaseUom,
+          baseUomId: fixture.baseUomId,
+          lotNumber: fixture.lotNumber,
+          expiryDate: fixture.expiryDate,
+          sourceDocumentType: "AUTHORIZATION_DASHBOARD_BALANCE_SEED",
+          sourceDocumentId: randomUUID(),
+          sourceEventKey: `authz-dashboard-balance-${suffix}-${index}-${event}`,
+          postedByUserId: ids.userId,
+        });
+        return fixture.quantity === 0
+          ? [movement("ADJUSTMENT_IN", 1, "in"), movement("ADJUSTMENT_OUT", -1, "out")]
+          : [movement("ADJUSTMENT_IN", fixture.quantity, "in")];
+      }),
+    });
+    const fixtureBalances = await prisma.inventoryBalance.findMany({
+      where: {
+        OR: balanceFixtures.map((fixture) => ({
+          inventoryLocationId: fixture.inventoryLocationId,
+          itemId: fixture.itemId,
+          lotNumber: fixture.lotNumber ?? null,
+          expiryDate: fixture.expiryDate ?? null,
+        })),
+      },
+      select: { id: true, inventoryLocationId: true, lotNumber: true, expiryDate: true },
+    });
+    expect(fixtureBalances).toHaveLength(balanceFixtures.length);
+    balanceIds = fixtureBalances.map(({ id }) => id);
+    lotExpiryBalanceIds = fixtureBalances
+      .filter((balance) => balance.inventoryLocationId === ids.inventoryLocationId && (balance.lotNumber || balance.expiryDate))
+      .map(({ id }) => id);
+    expect(lotExpiryBalanceIds).toHaveLength(3);
+
+    const revokeBalancePermission = await grantPermission("inventory.balance.view");
+
     try {
-      const recent = new Date();
-      const old = new Date(Date.now() - 8 * 86_400_000);
-      await prisma.inventoryBalance.createMany({
-        data: [
-          {
-            id: balanceIds[0]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-NOLOT-${suffix}`,
-            lotNumber: `BOTH-${suffix}`,
-            expiryDate: new Date("2027-02-01T00:00:00.000Z"),
-            baseUomId: ids.uomId,
-            qtyOnHand: 5,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[1]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-LOT-${suffix}`,
-            lotNumber: `LOT-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 0,
-            updatedAt: old
-          },
-          {
-            id: balanceIds[2]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-EXP-${suffix}`,
-            expiryDate: new Date("2027-01-01T00:00:00.000Z"),
-            baseUomId: ids.uomId,
-            qtyOnHand: 2,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[3]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.adjacentInventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-ADJ-LOC-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 99,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[4]!,
-            tenantId: ids.tenantId,
-            companyId: ids.adjacentCompanyId,
-            inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
-            itemId: ids.adjacentCompanyItemId,
-            lotKey: `DASH-ADJ-COMP-${suffix}`,
-            baseUomId: ids.adjacentCompanyUomId,
-            qtyOnHand: 99,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[5]!,
-            tenantId: ids.foreignTenantId,
-            companyId: ids.foreignCompanyId,
-            inventoryLocationId: ids.foreignInventoryLocationId,
-            itemId: foreignItemId,
-            lotKey: `DASH-FOREIGN-${suffix}`,
-            baseUomId: foreignUomId,
-            qtyOnHand: 99,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[6]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: inactiveInventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-INACTIVE-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 88,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[7]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: foreignItemId,
-            lotKey: `DASH-MISMATCH-${suffix}`,
-            baseUomId: foreignUomId,
-            qtyOnHand: 77,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[8]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-NEGATIVE-${suffix}`,
-            lotNumber: `NEG-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: -2,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[9]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-ZERO-SECOND-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 0,
-            updatedAt: old
-          },
-          {
-            id: balanceIds[10]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.adjacentInventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-ZERO-ADJ-LOC-${suffix}`,
-            lotNumber: `ADJ-LOC-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 0,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[11]!,
-            tenantId: ids.tenantId,
-            companyId: ids.adjacentCompanyId,
-            inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
-            itemId: ids.adjacentCompanyItemId,
-            lotKey: `DASH-ZERO-ADJ-COMP-${suffix}`,
-            lotNumber: `ADJ-COMP-${suffix}`,
-            baseUomId: ids.adjacentCompanyUomId,
-            qtyOnHand: 0,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[12]!,
-            tenantId: ids.foreignTenantId,
-            companyId: ids.foreignCompanyId,
-            inventoryLocationId: ids.foreignInventoryLocationId,
-            itemId: foreignItemId,
-            lotKey: `DASH-ZERO-FOREIGN-${suffix}`,
-            lotNumber: `FOREIGN-${suffix}`,
-            baseUomId: foreignUomId,
-            qtyOnHand: 0,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[13]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: inactiveInventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-ZERO-INACTIVE-${suffix}`,
-            lotNumber: `INACTIVE-${suffix}`,
-            baseUomId: ids.uomId,
-            qtyOnHand: 0,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[14]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: foreignItemId,
-            lotKey: `DASH-ZERO-MISMATCH-${suffix}`,
-            lotNumber: `MISMATCH-${suffix}`,
-            baseUomId: foreignUomId,
-            qtyOnHand: 0,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[15]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-BLANK-LOT-${suffix}`,
-            lotNumber: "   ",
-            baseUomId: ids.uomId,
-            qtyOnHand: -1,
-            updatedAt: recent
-          },
-          {
-            id: balanceIds[16]!,
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: ids.inventoryLocationId,
-            itemId: ids.itemId,
-            lotKey: `DASH-BLANK-LOT-EXPIRY-${suffix}`,
-            lotNumber: "   ",
-            expiryDate: new Date("2027-03-01T00:00:00.000Z"),
-            baseUomId: ids.uomId,
-            qtyOnHand: -1,
-            updatedAt: recent
-          }
-        ]
-      });
-
-      const revokeBalancePermission = await grantPermission("inventory.balance.view");
-
-      try {
         const beforeReadSnapshot = await Promise.all([
           prisma.inventoryBalance.findMany({
             where: { id: { in: balanceIds } },
@@ -1323,10 +1761,10 @@ describe("procurement and inventory authorization boundaries", () => {
           permissionCodes: ["inventory.balance.view"]
         };
         await expect(getInventoryBalanceDashboardRead(authorizedSession)).resolves.toEqual({
-          totalRows: 7,
+          totalRows: 4,
           positiveRows: 2,
           zeroRows: 2,
-          lotExpiryTrackedRows: 5
+          lotExpiryTrackedRows: 3
         });
 
         const profilePage = await listInventoryBalancePage(
@@ -1369,9 +1807,9 @@ describe("procurement and inventory authorization boundaries", () => {
           {},
           { dashboardProfile: "lot-expiry-data-v1", page: 1, pageSize: 10 }
         );
-        expect(lotExpiryProfilePage).toMatchObject({ totalItems: 5, page: 1, totalPages: 1 });
+        expect(lotExpiryProfilePage).toMatchObject({ totalItems: 3, page: 1, totalPages: 1 });
         expect(lotExpiryProfilePage.items.map((row) => row.id).sort()).toEqual(
-          [balanceIds[0]!, balanceIds[1]!, balanceIds[2]!, balanceIds[8]!, balanceIds[16]!].sort()
+          lotExpiryBalanceIds.sort()
         );
 
         const lotExpiryProfileExport = await listInventoryBalanceDashboardProfileExportRows(
@@ -1404,7 +1842,7 @@ describe("procurement and inventory authorization boundaries", () => {
           expect.arrayContaining([
             expect.objectContaining({
               id: "lot-expiry-data",
-              displayValue: "5",
+              displayValue: "3",
               href: "/inventory?dashboard=lot-expiry-data-v1"
             }),
             expect.objectContaining({
@@ -1423,24 +1861,11 @@ describe("procurement and inventory authorization boundaries", () => {
           prisma.inventoryMovement.count({ where: { tenantId: ids.tenantId } }),
           prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })
         ])).resolves.toEqual(beforeReadSnapshot);
-      } finally {
-        await revokeBalancePermission();
-      }
     } finally {
-      await prisma.inventoryBalance.deleteMany({
-        where: { id: { in: balanceIds } }
-      });
-      // InventoryMovement is append-only; location deletion can invoke
-      // referential updates on historical rows. Preserve the fixture record
-      // rather than attempting destructive cleanup that violates the guard.
-      await prisma.inventoryLocation.update({
-        where: { id: inactiveInventoryLocationId },
-        data: { status: "INACTIVE" }
-      });
-      await prisma.item.delete({ where: { id: foreignItemId } });
-      await prisma.itemCategory.delete({ where: { id: foreignCategoryId } });
-      await prisma.uom.delete({ where: { id: foreignUomId } });
+      await revokeBalancePermission();
     }
+    // Inventory movements and their derived balances are immutable. The
+    // authorization database is disposable, so fixture history is retained.
   });
 
   it("AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION", async () => {
@@ -1553,6 +1978,345 @@ describe("procurement and inventory authorization boundaries", () => {
       totalCount: 0,
       unavailableSources: [],
     });
+    expect(await workflowMutationSnapshot()).toEqual(before);
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-READ-SCOPE-NO-DISCLOSURE", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const revoke = await grantPermission("inventory.opening_inventory.view");
+    try {
+      const before = await workflowMutationSnapshot();
+      await expect(
+        openingInventory.listOpeningInventoryCutoverPage(session, {
+          locationId: ids.adjacentLocationId,
+        }),
+      ).rejects.toThrow("OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED");
+      await expect(
+        openingInventory.getOpeningInventoryCutoverDetail(session, randomUUID()),
+      ).rejects.toThrow("OPENING_INVENTORY_CUTOVER_NOT_FOUND");
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-DETAIL-COMPLETE-REVISION-ENDPOINT-SCOPE", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const revoke = await grantPermission("inventory.opening_inventory.view");
+    const fullyScopedSession: SessionContext = {
+      ...session,
+      user: {
+        id: ids.approvalRequesterId,
+        email: `authz-approval-requester-${suffix}@example.test`,
+        displayName: `Authorization Approval Requester ${suffix}`,
+        role: "Inventory Operator",
+      },
+      authorizedLocations: [
+        {
+          ...session.authorizedLocations[0]!,
+          scopeAssignmentId: ids.approvalRequesterScopeAssignmentId,
+        },
+        {
+          ...session.authorizedLocations[0]!,
+          locationId: ids.adjacentLocationId,
+          locationName: `Adjacent Authorization Inventory Location ${suffix}`,
+          scopeAssignmentId: ids.approvalRequesterAdjacentScopeAssignmentId,
+        },
+      ],
+    };
+    try {
+      const before = await workflowMutationSnapshot();
+      const [partialEvidence, partialActivity, fullEvidence, fullActivity] = await Promise.all([
+        openingInventory.getOpeningInventoryCutoverDetail(session, ids.openingInventoryMfaCutoverId, { tab: "evidence", page: 1, pageSize: 10 }),
+        openingInventory.getOpeningInventoryCutoverDetail(session, ids.openingInventoryMfaCutoverId, { tab: "activity", page: 1, pageSize: 10 }),
+        openingInventory.getOpeningInventoryCutoverDetail(fullyScopedSession, ids.openingInventoryMfaCutoverId, { tab: "evidence", page: 1, pageSize: 10 }),
+        openingInventory.getOpeningInventoryCutoverDetail(fullyScopedSession, ids.openingInventoryMfaCutoverId, { tab: "activity", page: 1, pageSize: 10 }),
+      ]);
+
+      expect(partialEvidence.cohortSharedVisible).toBe(false);
+      expect(partialEvidence.evidencePage).toMatchObject({ items: [], totalItems: 0 });
+      expect(partialActivity.cohortSharedVisible).toBe(false);
+      expect(partialActivity.activityPage.items.map((event) => event.detail)).not.toContain("Cohort authority event");
+
+      expect(fullEvidence.cohortSharedVisible).toBe(true);
+      expect(fullEvidence.evidencePage).toMatchObject({
+        totalItems: 1,
+        items: [expect.objectContaining({
+          controlledEvidenceAttachmentId: ids.openingInventoryMfaControlledEvidenceId,
+          attachmentId: ids.openingInventoryMfaEvidenceAttachmentId,
+          originalFilename: `opening-inventory-detail-${suffix}.txt`,
+        })],
+      });
+      expect(fullActivity.cohortSharedVisible).toBe(true);
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-FORM-OPTIONS-OUT-OF-REVISION-DRAFT-NO-DISCLOSURE", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const revoke = await grantPermission("inventory.opening_inventory.prepare");
+    const unrelatedLocationSession: SessionContext = {
+      ...session,
+      context: {
+        ...session.context,
+        locationId: ids.unrelatedLocationId,
+        locationName: `Unrelated Authorization Inventory Location ${suffix}`,
+      },
+      authorizedLocations: [{
+        ...session.authorizedLocations[0]!,
+        locationId: ids.unrelatedLocationId,
+        locationName: `Unrelated Authorization Inventory Location ${suffix}`,
+        scopeAssignmentId: ids.unrelatedLocationScopeAssignmentId,
+      }],
+    };
+    try {
+      const before = await workflowMutationSnapshot();
+      const options = await openingInventory.getOpeningInventoryFormOptions(unrelatedLocationSession);
+
+      expect(options.revisions.map((revision) => revision.id)).not.toContain(
+        ids.openingInventoryRevisionId,
+      );
+      expect(options.draftCohorts.map((cohort) => cohort.id)).not.toContain(
+        ids.openingInventoryEmptyCohortId,
+      );
+      expect(JSON.stringify(options)).not.toContain(`AUTHZ-PI-OIC-ADJ-DRAFT-${suffix}`);
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-EVIDENCE-COHORT-IDOR-NO-DISCLOSURE", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const attachments = await import("../src/server/services/attachments");
+    const revoke = await grantPermission("inventory.opening_inventory.prepare");
+    const objectVersionId = `authz-opening-evidence-${suffix}`;
+    const checksum = createHash("sha256").update(objectVersionId).digest("hex");
+    const fullyScopedSession: SessionContext = {
+      ...session,
+      user: {
+        id: ids.approvalRequesterId,
+        email: `authz-approval-requester-${suffix}@example.test`,
+        displayName: `Authorization Approval Requester ${suffix}`,
+        role: "Inventory Operator",
+      },
+      authorizedLocations: [
+        {
+          ...session.authorizedLocations[0]!,
+          scopeAssignmentId: ids.approvalRequesterScopeAssignmentId,
+        },
+        {
+          ...session.authorizedLocations[0]!,
+          locationId: ids.adjacentLocationId,
+          locationName: `Adjacent Authorization Inventory Location ${suffix}`,
+          scopeAssignmentId: ids.approvalRequesterAdjacentScopeAssignmentId,
+        },
+      ],
+    };
+    try {
+      await prisma.attachment.create({
+        data: {
+          id: ids.openingInventoryEvidenceAttachmentId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          storageEnvironment: "LOCAL_DEVELOPMENT",
+          storageProvider: "disposable",
+          objectKey: `authorization/opening-inventory/${suffix}`,
+          objectVersionId,
+          originalFilename: `opening-inventory-${suffix}.txt`,
+          mimeType: "text/plain",
+          detectedMimeType: "text/plain",
+          sizeBytes: 1,
+          checksum,
+          detectedChecksum: checksum,
+          uploadState: "VERIFIED",
+          scanState: "CLEAN",
+          availabilityState: "AVAILABLE",
+          physicalState: "DURABLE",
+          scanVerifiedObjectVersionId: objectVersionId,
+          uploadVerifiedAt: new Date("2026-07-01T00:00:00.000Z"),
+          scanCompletedAt: new Date("2026-07-01T00:00:00.000Z"),
+          availableAt: new Date("2026-07-01T00:00:00.000Z"),
+          uploadedByUserId: ids.userId,
+          status: "ACTIVE",
+        },
+      });
+      const linked = await attachments.linkControlledEvidenceAttachment({
+        sourceType: "OPENING_INVENTORY_COHORT",
+        sourceRecordId: ids.openingInventoryEmptyCohortId,
+        attachmentId: ids.openingInventoryEvidenceAttachmentId,
+        purpose: "EVIDENCE",
+        requiredPermissionCode: "inventory.opening_inventory.prepare",
+      });
+      const before = await workflowMutationSnapshot();
+
+      const hostile = await openingInventory.getOpeningInventoryFormOptions(session, {
+        cohortId: ids.openingInventoryEmptyCohortId,
+      });
+      expect(hostile.eligibleEvidenceAttachments).toEqual([]);
+      expect(hostile.eligibleEvidencePage.totalItems).toBe(0);
+
+      for (const foreignScopeUuid of [ids.foreignTenantId, ids.foreignCompanyId]) {
+        const foreign = await openingInventory.getOpeningInventoryFormOptions(session, {
+          cohortId: foreignScopeUuid,
+        });
+        expect(foreign.eligibleEvidenceAttachments).toEqual([]);
+        expect(foreign.eligibleEvidencePage.totalItems).toBe(0);
+      }
+
+      const authorized = await openingInventory.getOpeningInventoryFormOptions(
+        fullyScopedSession,
+        { cohortId: ids.openingInventoryEmptyCohortId },
+      );
+      expect(authorized.eligibleEvidenceAttachments).toEqual([
+        expect.objectContaining({
+          id: linked.id,
+          attachmentId: ids.openingInventoryEvidenceAttachmentId,
+          status: "ACTIVE",
+          attachment: expect.objectContaining({
+            originalFilename: `opening-inventory-${suffix}.txt`,
+            scanState: "CLEAN",
+            availabilityState: "AVAILABLE",
+          }),
+        }),
+      ]);
+      expect(authorized.eligibleEvidencePage.totalItems).toBe(1);
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-ACTIVITY-SERVER-PAGING-ORDER", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const revoke = await grantPermission("inventory.opening_inventory.view");
+    const eventTypes = Array.from(
+      { length: 11 },
+      (_, index) => `opening_inventory.pagination_probe_${String(index + 1).padStart(2, "0")}`,
+    );
+    try {
+      await prisma.auditEvent.createMany({
+        data: eventTypes.map((eventType, index) => ({
+          id: randomUUID(),
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          actorUserId: ids.userId,
+          eventType,
+          entityType: "OpeningInventoryCutover",
+          entityId: ids.openingInventoryMfaCutoverId,
+          occurredAt: new Date(Date.UTC(2026, 6, 1, 0, 0, index + 1)),
+        })),
+      });
+      const [first, second, third] = await Promise.all([
+        openingInventory.getOpeningInventoryCutoverDetail(session, ids.openingInventoryMfaCutoverId, { tab: "activity", page: 1, pageSize: 5 }),
+        openingInventory.getOpeningInventoryCutoverDetail(session, ids.openingInventoryMfaCutoverId, { tab: "activity", page: 2, pageSize: 5 }),
+        openingInventory.getOpeningInventoryCutoverDetail(session, ids.openingInventoryMfaCutoverId, { tab: "activity", page: 3, pageSize: 5 }),
+      ]);
+      const pagedEventTypes = [
+        ...first.activityPage.items,
+        ...second.activityPage.items,
+        ...third.activityPage.items,
+      ].map((event) => event.eventType);
+
+      expect(first.activityPage).toMatchObject({ totalItems: 11, page: 1, pageSize: 5 });
+      expect(second.activityPage.items).toHaveLength(5);
+      expect(third.activityPage.items).toHaveLength(1);
+      expect(pagedEventTypes).toEqual([...eventTypes].reverse());
+      expect(new Set(pagedEventTypes)).toHaveLength(11);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const before = await workflowMutationSnapshot();
+    const validPreparation = {
+      cohortId: randomUUID(),
+      stockCountAttemptId: randomUUID(),
+      idempotencyKey: `authz-opening-prepare-${randomUUID()}`,
+      controlledEvidenceAttachmentIds: [randomUUID()],
+      valuationLines: [{ itemId: ids.itemId, lotKey: "NOLOT|NOEXP", unitCost: 1 }],
+    };
+    await expect(
+      openingInventory.createOpeningInventoryCohort({
+        configurationRevisionId: randomUUID(),
+        effectiveAt: new Date("2026-08-01T00:00:00.000Z"),
+      }, session),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(openingInventory.prepareOpeningInventoryCutover(validPreparation, session)).rejects.toThrow("PERMISSION_DENIED");
+    await expect(openingInventory.sealOpeningInventoryCohort({ id: randomUUID(), expectedVersion: 1 }, session)).rejects.toThrow("PERMISSION_DENIED");
+    await expect(openingInventory.getOpeningInventoryFormOptions(session)).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      openingInventory.getOpeningInventoryPreparationFormOptions(session, {
+        cohortId: validPreparation.cohortId,
+        stockCountAttemptId: validPreparation.stockCountAttemptId,
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(await workflowMutationSnapshot()).toEqual(before);
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-SUBMIT-SCOPE-SOD-NO-MUTATION", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const before = await workflowMutationSnapshot();
+    await expect(
+      openingInventory.submitOpeningInventoryCutoverForApproval({ id: ids.openingInventoryScopedCutoverId, expectedVersion: 1 }, session),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    const revoke = await grantPermission("inventory.opening_inventory.submit");
+    try {
+      await expect(
+        openingInventory.submitOpeningInventoryCutoverForApproval({ id: ids.openingInventoryAdjacentCutoverId, expectedVersion: 1 }, session),
+      ).rejects.toThrow("OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED");
+      await expect(
+        openingInventory.submitOpeningInventoryCutoverForApproval({ id: ids.openingInventoryScopedCutoverId, expectedVersion: 1 }, session),
+      ).rejects.toThrow("APPROVAL_STEP_ELIGIBLE_ACTOR_NOT_AVAILABLE");
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-EXECUTION-AUTH-MFA-SOD-NO-MUTATION", async () => {
+    const openingInventory = await import("../src/server/services/openingInventoryCutovers");
+    const command = (cohortId: string) => openingInventory.requestOpeningInventoryExecutionCommand({
+      cohortId,
+      expectedCohortVersion: 1,
+      idempotencyKey: `authz-opening-command-${randomUUID()}`,
+      reason: "Authorization boundary verification",
+    }, "FREEZE_COHORT", session);
+    const scopedLocationCommand = () => openingInventory.requestOpeningInventoryExecutionCommand({
+      cohortId: ids.openingInventorySubmitCohortId,
+      cutoverId: ids.openingInventoryScopedCutoverId,
+      expectedCohortVersion: 1,
+      expectedCutoverVersion: 1,
+      idempotencyKey: `authz-opening-location-command-${randomUUID()}`,
+      reason: "Authorization segregation-of-duties verification",
+    }, "STAGE_LOCATION", session);
+    const before = await workflowMutationSnapshot();
+    await expect(command(ids.openingInventoryMfaCohortId)).rejects.toThrow("PERMISSION_DENIED");
+    const revoke = await grantPermission("inventory.opening_inventory.request_execute");
+    try {
+      await expect(command(ids.openingInventoryMfaCohortId)).rejects.toThrow("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+      await expect(scopedLocationCommand()).rejects.toThrow("OPENING_INVENTORY_COMMAND_REQUESTER_CONFLICT");
+      await expect(command(ids.openingInventorySodCohortId)).rejects.toThrow("OPENING_INVENTORY_COMMAND_NOT_REQUESTABLE");
+      await expect(command(ids.openingInventoryEmptyCohortId)).rejects.toThrow("OPENING_INVENTORY_COMMAND_NOT_REQUESTABLE");
+      await expect(command(ids.openingInventorySubmitCohortId)).rejects.toThrow("OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED");
+      expect(await workflowMutationSnapshot()).toEqual(before);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-OPENING-INVENTORY-APPROVAL-PERMISSION-MFA-SOD-NO-MUTATION", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const before = await workflowMutationSnapshot();
+    await expect(
+      approvals.approveOpeningInventoryCutover(
+        form({ approvalInstanceId: ids.openingInventoryApprovalInstanceId }),
+      ),
+    ).rejects.toThrow("PERMISSION_DENIED");
     expect(await workflowMutationSnapshot()).toEqual(before);
   });
 
@@ -2827,13 +3591,36 @@ describe("procurement and inventory authorization boundaries", () => {
   it("AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE", async () => {
     const input = movementInput(ids.inventoryLocationId);
     const before = await mutationSnapshot();
+    const balanceKey = {
+      inventoryLocationId: ids.inventoryLocationId,
+      itemId: ids.itemId,
+      lotKey: "NOLOT|NOEXP",
+    };
+    const balanceBefore = await prisma.inventoryBalance.findUniqueOrThrow({
+      where: { inventoryLocationId_itemId_lotKey: balanceKey },
+      select: { id: true, qtyOnHand: true, version: true },
+    });
     const first = await postInventoryMovement(session, input);
+    const balanceAfterFirst = await prisma.inventoryBalance.findUniqueOrThrow({
+      where: { inventoryLocationId_itemId_lotKey: balanceKey },
+      select: { id: true, qtyOnHand: true, version: true },
+    });
     const second = await postInventoryMovement(session, input);
+    const balanceAfterReplay = await prisma.inventoryBalance.findUniqueOrThrow({
+      where: { inventoryLocationId_itemId_lotKey: balanceKey },
+      select: { id: true, qtyOnHand: true, version: true },
+    });
     expect(first.duplicate).toBe(false);
     expect(second.duplicate).toBe(true);
     expect(second.movement.id).toBe(first.movement.id);
+    expect(balanceAfterFirst.id).toBe(balanceBefore.id);
+    expect(Number(balanceAfterFirst.qtyOnHand)).toBe(Number(balanceBefore.qtyOnHand) + 1);
+    expect(balanceAfterFirst.version).toBe(balanceBefore.version + 1);
+    expect(balanceAfterReplay.id).toBe(balanceAfterFirst.id);
+    expect(Number(balanceAfterReplay.qtyOnHand)).toBe(Number(balanceAfterFirst.qtyOnHand));
+    expect(balanceAfterReplay.version).toBe(balanceAfterFirst.version);
     const after = await mutationSnapshot();
     expect(after.movements).toBe(before.movements + 1);
-    expect(after.balances).toBe(before.balances + 1);
+    expect(after.balances).toBe(before.balances);
   });
 });

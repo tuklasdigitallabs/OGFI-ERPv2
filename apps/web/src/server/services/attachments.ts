@@ -53,6 +53,7 @@ export const evidenceAttachmentSourceTypes = [
   "WORKFORCE_SCHEDULE",
   "WORKFORCE_ATTENDANCE_IMPORT",
   "PROJECT_REQUIREMENT",
+  "OPENING_INVENTORY_COHORT",
 ] as const;
 
 const evidenceAttachmentPurposes = [
@@ -571,6 +572,8 @@ function requiredViewPermissionsForSourceType(
       return workforceEvidenceViewPermissions(sourceType);
     case "PROJECT_REQUIREMENT":
       return [permissions.projectView];
+    case "OPENING_INVENTORY_COHORT":
+      return [permissions.openingInventoryView, permissions.openingInventoryPrepare];
     default:
       return [];
   }
@@ -636,6 +639,8 @@ function requiredWritePermissionsForSourceType(
       ];
     case "PROJECT_REQUIREMENT":
       return [permissions.projectManage];
+    case "OPENING_INVENTORY_COHORT":
+      return [permissions.openingInventoryPrepare];
     default:
       return [];
   }
@@ -747,6 +752,8 @@ function evidenceSourceScopeQuery(sourceType: EvidenceAttachmentSourceType) {
       return `SELECT "tenantId", "companyId", "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "AttendanceImportBatch" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "PROJECT_REQUIREMENT":
       return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", NULL::uuid AS "locationId", NULL::uuid AS "departmentId", "projectId" FROM "ProjectRequirement" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "OPENING_INVENTORY_COHORT":
+      return `SELECT cohort."tenantId", cohort."companyId", NULL::uuid AS "brandId", NULL::uuid AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "OpeningInventoryCohort" cohort WHERE cohort.id = $1 AND cohort."tenantId" = $2 AND cohort."companyId" = $3 AND cohort.status = 'DRAFT'::"OpeningInventoryCohortStatus"`;
   }
 }
 

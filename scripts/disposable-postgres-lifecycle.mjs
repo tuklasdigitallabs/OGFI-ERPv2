@@ -5,6 +5,11 @@ const forbiddenDatabaseToken =
   /(?:^|[_-])(prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:[_-]|$)/i;
 const disposableDatabasePattern = /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/;
 const dockerContainerNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+const inventoryPilotBootstrapSuites = new Set([
+  "inventory-approval",
+  "opening-inventory-cutover",
+  "authorization-procurement-inventory",
+]);
 
 export function assertSafePsqlDockerContainer(value) {
   if (!dockerContainerNamePattern.test(value ?? "")) {
@@ -29,9 +34,12 @@ export function createDisposablePostgresIdentity(runId, nonce = randomBytes(32).
     throw new Error("DISPOSABLE_DATABASE_RUN_ID_UNSAFE");
   }
   const databaseName = `ogfi_test_${runToken}_${nonce.slice(0, 16)}`;
-  const rolePrefix = `ogfi_test_${runToken.slice(0, 10)}_${nonce.slice(0, 32)}`;
+  // PostgreSQL identifiers are limited to 63 bytes. The full 128-bit nonce is
+  // the run binding for controlled roles; omitting the readable run token keeps
+  // the longest derived suffix (`_opening_stock_executor`) below that limit.
+  const rolePrefix = `ogfi_${nonce.slice(0, 32)}`;
   const identity = {
-    adversarialRole: `ogfi_adv_${runToken.slice(0, 8)}_${nonce.slice(0, 32)}`,
+    adversarialRole: `ogfi_adv_${nonce.slice(0, 32)}`,
     databaseName,
     migratorRole: `${rolePrefix}_migrator`,
     nonce,
@@ -55,10 +63,10 @@ export function assertAdversarialRoleBinding({
   const databaseIdentity = /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/.exec(
     databaseName ?? "",
   );
-  const controlledIdentity = /^ogfi_test_([a-z0-9_]{1,10})_([a-f0-9]{32})_owner$/.exec(
+  const controlledIdentity = /^ogfi_([a-f0-9]{32})_owner$/.exec(
     ownerRole ?? "",
   );
-  const adversarialIdentity = /^ogfi_adv_([a-z0-9_]{1,8})_([a-f0-9]{32})$/.exec(
+  const adversarialIdentity = /^ogfi_adv_([a-f0-9]{32})$/.exec(
     adversarialRole ?? "",
   );
   if (
@@ -67,10 +75,8 @@ export function assertAdversarialRoleBinding({
     !adversarialIdentity ||
     migratorRole !== ownerRole.replace(/_owner$/, "_migrator") ||
     runtimeRole !== ownerRole.replace(/_owner$/, "_runtime") ||
-    controlledIdentity[1] !== databaseIdentity[1].slice(0, 10) ||
-    adversarialIdentity[1] !== databaseIdentity[1].slice(0, 8) ||
-    controlledIdentity[2].slice(0, 16) !== databaseIdentity[2] ||
-    adversarialIdentity[2] !== controlledIdentity[2]
+    controlledIdentity[1].slice(0, 16) !== databaseIdentity[2] ||
+    adversarialIdentity[1] !== controlledIdentity[1]
   ) {
     throw new Error("DISPOSABLE_ADVERSARIAL_ROLE_CROSS_RUN");
   }
@@ -164,6 +170,57 @@ export function buildRuntimeEnvironment(sourceEnv, runtimeUrl, identity, adminUr
   };
 }
 
+/**
+ * The sealed opening-stock routine is deliberately exercised through a
+ * separate login role.  This helper returns an *additive* child-process
+ * environment only for its dedicated suite; the generic runtime environment
+ * must never carry that credential.
+ */
+export function buildOpeningStockExecutorTestEnvironment(suiteName, executorUrl) {
+  if (suiteName !== "opening-inventory-cutover") {
+    if (executorUrl !== undefined) {
+      throw new Error("OPENING_STOCK_EXECUTOR_ENVIRONMENT_SUITE_FORBIDDEN");
+    }
+    return {};
+  }
+  if (!executorUrl) {
+    throw new Error("OPENING_STOCK_EXECUTOR_DATABASE_URL_REQUIRED");
+  }
+  return { OPENING_STOCK_EXECUTOR_DATABASE_URL: executorUrl };
+}
+
+export function shouldStartInventoryPilotBootstrapBroker(suiteName) {
+  return inventoryPilotBootstrapSuites.has(suiteName);
+}
+
+/**
+ * Exposes only the test broker's opaque socket and token to explicitly
+ * approved suites. Database setup credentials remain confined to the broker.
+ */
+export function buildInventoryPilotBootstrapTestEnvironment(
+  suiteName,
+  brokerEnvironment,
+) {
+  if (!shouldStartInventoryPilotBootstrapBroker(suiteName)) {
+    if (brokerEnvironment !== undefined) {
+      throw new Error("INVENTORY_PILOT_BOOTSTRAP_ENVIRONMENT_SUITE_FORBIDDEN");
+    }
+    return {};
+  }
+  const socket = brokerEnvironment?.OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET;
+  const token = brokerEnvironment?.OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN;
+  if (typeof socket !== "string" || socket.length === 0) {
+    throw new Error("INVENTORY_PILOT_BOOTSTRAP_SOCKET_REQUIRED");
+  }
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("INVENTORY_PILOT_BOOTSTRAP_TOKEN_REQUIRED");
+  }
+  return {
+    OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: socket,
+    OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: token,
+  };
+}
+
 export function buildSeedRepeatabilityEnvironment(
   sourceEnv,
   runtimeUrl,
@@ -180,7 +237,7 @@ export function buildSeedRepeatabilityEnvironment(
 }
 
 export function shouldRunSeedRepeatability(suiteName) {
-  return suiteName === "authorization-all";
+  return suiteName === "authorization-all" || suiteName === "opening-inventory-cutover";
 }
 
 export function shouldRunAdversarialRoleContract(suiteName) {
@@ -196,6 +253,9 @@ export function scrubDatabaseCredentialEnvironment(sourceEnv) {
         "DATABASE_URL_FILE",
         "DIRECT_DATABASE_URL",
         "DIRECT_DATABASE_URL_FILE",
+        "OPENING_STOCK_EXECUTOR_DATABASE_URL",
+        "OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET",
+        "OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN",
         "DISPOSABLE_DATABASE_ADMIN_URL",
         "OGFI_DISPOSABLE_DATABASE_CONFIRMATION",
         "OGFI_DISPOSABLE_DATABASE_NONCE",

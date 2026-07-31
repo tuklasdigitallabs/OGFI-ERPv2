@@ -44,22 +44,31 @@ export function runControlledMigration(plan, {
 
 export function assertPredeployRoleGraph(psql, contract, execute = runPsql) {
   const { owner, migrator, runtime } = contract.roles;
+  const openingStockOwner = owner.replace(/_owner$/, "_opening_stock_owner");
+  const openingStockExecutor = owner.replace(/_owner$/, "_opening_stock_executor");
   const sql = `SET search_path = pg_catalog;
   WITH controlled AS (
     SELECT
       (SELECT oid FROM pg_roles WHERE rolname = '${owner}') AS owner_oid,
       (SELECT oid FROM pg_roles WHERE rolname = '${migrator}') AS migrator_oid,
-      (SELECT oid FROM pg_roles WHERE rolname = '${runtime}') AS runtime_oid
+      (SELECT oid FROM pg_roles WHERE rolname = '${runtime}') AS runtime_oid,
+      (SELECT oid FROM pg_roles WHERE rolname = '${openingStockOwner}') AS opening_stock_owner_oid,
+      (SELECT oid FROM pg_roles WHERE rolname = '${openingStockExecutor}') AS opening_stock_executor_oid
   )
   SELECT CASE WHEN
     EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${owner}' AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${migrator}' AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls)
     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${runtime}' AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls)
+    AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${openingStockOwner}' AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
+    AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${openingStockExecutor}' AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls)
     AND (SELECT count(*) FROM pg_auth_members m, controlled c
-         WHERE m.roleid IN (c.owner_oid, c.migrator_oid, c.runtime_oid)
-            OR m.member IN (c.owner_oid, c.migrator_oid, c.runtime_oid)) = 1
+         WHERE m.roleid IN (c.owner_oid, c.migrator_oid, c.runtime_oid, c.opening_stock_owner_oid, c.opening_stock_executor_oid)
+            OR m.member IN (c.owner_oid, c.migrator_oid, c.runtime_oid, c.opening_stock_owner_oid, c.opening_stock_executor_oid)) = 2
     AND EXISTS (SELECT 1 FROM pg_auth_members m, controlled c
                 WHERE m.roleid = c.owner_oid AND m.member = c.migrator_oid
+                  AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option)
+    AND EXISTS (SELECT 1 FROM pg_auth_members m, controlled c
+                WHERE m.roleid = c.opening_stock_owner_oid AND m.member = c.migrator_oid
                   AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option)
     AND pg_has_role('${migrator}', '${owner}', 'MEMBER')
     AND pg_has_role('${migrator}', '${owner}', 'SET')
@@ -69,6 +78,12 @@ export function assertPredeployRoleGraph(psql, contract, execute = runPsql) {
     AND NOT pg_has_role('${runtime}', '${owner}', 'MEMBER')
     AND NOT pg_has_role('${runtime}', '${migrator}', 'MEMBER')
     AND NOT pg_has_role('${migrator}', '${runtime}', 'MEMBER')
+    AND pg_has_role('${migrator}', '${openingStockOwner}', 'MEMBER')
+    AND pg_has_role('${migrator}', '${openingStockOwner}', 'SET')
+    AND NOT pg_has_role('${migrator}', '${openingStockOwner}', 'USAGE')
+    AND NOT pg_has_role('${openingStockExecutor}', '${openingStockOwner}', 'MEMBER')
+    AND NOT pg_has_role('${openingStockExecutor}', '${owner}', 'MEMBER')
+    AND NOT pg_has_role('${openingStockExecutor}', '${runtime}', 'MEMBER')
     THEN 'RESULT | PASS' ELSE 'RESULT | FAIL' END`;
   const result = execute(psql, contract.migration, [`--command=${sql}`]);
   if (result.status !== 0 || !result.stdout.includes("RESULT | PASS")) {

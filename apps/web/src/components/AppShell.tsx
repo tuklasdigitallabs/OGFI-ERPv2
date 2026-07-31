@@ -102,6 +102,9 @@ export function AppShell({
   const canAccessStockAdjustments = canUseStockAdjustments(
     session.permissionCodes,
   );
+  const canAccessOpeningInventory = session.permissionCodes.includes(
+    permissions.openingInventoryView,
+  );
   const canAccessProjects = canUseProjects(session.permissionCodes);
   const canAccessProjectTemplates = canConfigureProjectTemplates(
     session.permissionCodes,
@@ -146,6 +149,7 @@ export function AppShell({
       canUseFinance={canAccessFinance}
       canUseWorkforce={canAccessWorkforce}
       inventoryControlPilot={inventoryControlPilot}
+      canUseOpeningInventory={canAccessOpeningInventory}
       session={session}
     >
       <header className="shell-top-header bg-white/90 backdrop-blur-xl md:sticky md:top-0 md:z-10">

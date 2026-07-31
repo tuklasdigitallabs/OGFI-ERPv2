@@ -1819,8 +1819,8 @@ export async function submitInventoryTransfer(formData: FormData) {
       }
       return;
     }
-    if (lockedTransfer.status === "PENDING_APPROVAL") {
-      throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    if (lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED") {
+      throw new Error("TRANSFER_NOT_DRAFT_FOR_SUBMIT");
     }
 
     assertTransferLocationsDistinct(

@@ -79,6 +79,12 @@ export const approvalRuleCatalog = [
     requiredPermissionCode: permissions.stockAdjustmentApprove,
     routeKeys: defaultRoute,
   },
+  {
+    transactionType: "OpeningInventoryCutover",
+    label: "Opening Inventory Cutover",
+    requiredPermissionCode: permissions.openingInventoryOperationsReview,
+    routeKeys: defaultRoute,
+  },
 ] as const satisfies readonly ApprovalRuleCatalogEntry[];
 
 export function getApprovalRuleCatalogEntry(transactionType: string) {

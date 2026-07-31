@@ -9,6 +9,8 @@ import {
   assertSafeAdminUrl,
   assertSafeDisposableTarget,
   buildPsqlEnvironment,
+  buildInventoryPilotBootstrapTestEnvironment,
+  buildOpeningStockExecutorTestEnvironment,
   buildRuntimeEnvironment,
   buildSeedRepeatabilityEnvironment,
   createDisposablePostgresIdentity,
@@ -17,6 +19,7 @@ import {
   scrubDatabaseCredentialEnvironment,
   shouldRunAdversarialRoleContract,
   shouldRunSeedRepeatability,
+  shouldStartInventoryPilotBootstrapBroker,
   targetDatabaseUrl,
 } from "./disposable-postgres-lifecycle.mjs";
 import { assertPredeployRoleGraph } from "./db-migrate-controlled.mjs";
@@ -28,16 +31,21 @@ import {
 const adversarialCases = [
   ["security_definer", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
   ["column_acl", "PUBLIC or runtime retains a column ACL on AuditEvent", "reconcile"],
-  ["owner_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["migrator_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["runtime_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["owner_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["migrator_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["runtime_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["migrator_admin_option", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["migrator_inherit_option", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
-  ["migrator_set_option", "Controlled migrator/owner session identity mismatch", "bootstrap-refuses"],
-  ["nested_runtime_owner_path", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["owner_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["runtime_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["owner_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["runtime_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_admin_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_inherit_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_set_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["nested_runtime_owner_path", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["executor_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["executor_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["executor_direct_command_table", "Opening-stock executor has direct command-table authority", "reconcile"],
+  ["executor_routine_acl", "Opening-stock executor routine ACL boundary is unsafe", "reconcile"],
+  ["executor_seal_trigger_acl", "Opening-stock sealed-event trigger is callable outside its table trigger", "reconcile"],
   ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
   ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
   ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
@@ -127,12 +135,29 @@ const runtimeUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
   username: identity.runtimeRole,
   password: runtimePassword,
 });
+const openingStockExecutorPassword = suiteName === "opening-inventory-cutover"
+  ? randomBytes(32).toString("base64url")
+  : undefined;
+const openingStockExecutorUrl = openingStockExecutorPassword
+  ? targetDatabaseUrl(adminUrl, identity.databaseName, {
+      username: identity.ownerRole.replace(/_owner$/, "_opening_stock_executor"),
+      password: openingStockExecutorPassword,
+    })
+  : undefined;
 assertSafeDisposableTarget({
   adminUrl,
   databaseName: identity.databaseName,
   runtimeUrl,
   runtimeRole: identity.runtimeRole,
 });
+if (openingStockExecutorUrl) {
+  assertSafeDisposableTarget({
+    adminUrl,
+    databaseName: identity.databaseName,
+    runtimeUrl: openingStockExecutorUrl,
+    runtimeRole: identity.ownerRole.replace(/_owner$/, "_opening_stock_executor"),
+  });
+}
 
 let databaseCreated = false;
 let markerCreated = false;
@@ -145,7 +170,13 @@ try {
   verifyCleanAbsentMigrationLedger(setupUrl, identity, decodeURIComponent(parsedAdmin.username));
   installMarker(setupUrl, identity);
   markerCreated = true;
-  installSetupRoles(setupUrl, identity, migratorPassword, runtimePassword);
+  installSetupRoles(
+    setupUrl,
+    identity,
+    migratorPassword,
+    runtimePassword,
+    openingStockExecutorPassword,
+  );
   assertPredeployRoleGraph(
     "disposable-transport",
     disposableRoleContract(migratorUrl, runtimeUrl, identity),
@@ -190,6 +221,7 @@ try {
     },
   );
   reconcileRoleContract(migratorUrl, identity);
+  handoffOpeningStockOwner(setupUrl, identity);
   verifyRoleContract(migratorUrl, identity, "owner");
   verifyRoleContract(runtimeUrl, identity, "runtime");
   verifyControlledEvidenceRuntimeBoundary(runtimeUrl, suiteName);
@@ -225,6 +257,8 @@ try {
     installInventoryPilotRollbackHarness(setupUrl, identity);
     verifyInventoryPilotRollbackHarness(setupUrl, runtimeUrl, identity);
     verifyInventoryPilotRuntimeControlPlaneDenied(runtimeUrl);
+  }
+  if (shouldStartInventoryPilotBootstrapBroker(suiteName)) {
     inventoryPilotBootstrap = startInventoryPilotBootstrapBroker(
       migratorUrl,
       identity,
@@ -241,7 +275,11 @@ try {
           identity,
           adminUrl,
         ),
-        inventoryPilotBootstrap?.runtimeEnvironment,
+        buildInventoryPilotBootstrapTestEnvironment(
+          suiteName,
+          inventoryPilotBootstrap?.runtimeEnvironment,
+        ),
+        buildOpeningStockExecutorTestEnvironment(suiteName, openingStockExecutorUrl),
       );
   if (exitCode === 0 && suiteName === "inventory-approval") {
     verifyInventoryPilotStockCountGuardBypassDenied(setupUrl, runtimeUrl);
@@ -486,14 +524,14 @@ function verifyInventoryPilotStockCountGuardBypassDenied(
 }
 process.exitCode = exitCode;
 
-function runChildCommand(childCommand, env, additionalEnvironment = undefined) {
+function runChildCommand(childCommand, env, ...additionalEnvironments) {
   const childInvocation =
     childCommand[0] === "pnpm"
       ? pnpmInvocation(childCommand.slice(1))
       : { executable: childCommand[0], args: childCommand.slice(1) };
   const child = spawnSync(childInvocation.executable, childInvocation.args, {
     cwd: workspaceRoot,
-    env: { ...env, ...additionalEnvironment },
+    env: Object.assign({}, env, ...additionalEnvironments),
     stdio: "inherit",
   });
   if (child.error) throw child.error;
@@ -1197,7 +1235,13 @@ function installMarker(databaseUrl, marker) {
   );
 }
 
-function installSetupRoles(targetUrl, marker, migratorPassword, runtimePassword) {
+function installSetupRoles(
+  targetUrl,
+  marker,
+  migratorPassword,
+  runtimePassword,
+  openingStockExecutorPassword = undefined,
+) {
   runPsqlFile(targetUrl, path.join(roleSqlDir, "bootstrap-roles.sql"), {
     contract_scope: "disposable",
     app_environment: "test",
@@ -1211,6 +1255,9 @@ function installSetupRoles(targetUrl, marker, migratorPassword, runtimePassword)
     `
       ALTER ROLE ${quoteIdentifier(marker.migratorRole)} PASSWORD ${quoteLiteral(migratorPassword)};
       ALTER ROLE ${quoteIdentifier(marker.runtimeRole)} PASSWORD ${quoteLiteral(runtimePassword)};
+      ${openingStockExecutorPassword
+        ? `ALTER ROLE ${quoteIdentifier(marker.ownerRole.replace(/_owner$/, "_opening_stock_executor"))} PASSWORD ${quoteLiteral(openingStockExecutorPassword)};`
+        : ""}
       CREATE OR REPLACE FUNCTION ogfi_disposable_control.verify_database_identity()
       RETURNS TABLE (database_name text, run_id text, nonce_sha256 text)
       LANGUAGE sql
@@ -1247,6 +1294,14 @@ function reconcileRoleContract(migratorDatabaseUrl, marker) {
   runPsqlFile(
     migratorDatabaseUrl,
     path.join(roleSqlDir, "reconcile-ownership-and-grants.sql"),
+    roleVariables(marker),
+  );
+}
+
+function handoffOpeningStockOwner(administratorDatabaseUrl, marker) {
+  runPsqlFile(
+    administratorDatabaseUrl,
+    path.join(roleSqlDir, "handoff-opening-stock-owner.sql"),
     roleVariables(marker),
   );
 }
@@ -1548,6 +1603,7 @@ function runAdversarialRoleContract(
           runtimePassword,
         );
         reconcileRoleContract(migratorDatabaseUrl, marker);
+        handoffOpeningStockOwner(adminTargetUrl, marker);
       } else if (repairPath === "bootstrap-refuses") {
         expectRoleBootstrapFailure(adminTargetUrl, marker, driftCase);
         applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
@@ -1558,8 +1614,10 @@ function runAdversarialRoleContract(
           runtimePassword,
         );
         reconcileRoleContract(migratorDatabaseUrl, marker);
+        handoffOpeningStockOwner(adminTargetUrl, marker);
       } else if (repairPath === "reconcile") {
         reconcileRoleContract(migratorDatabaseUrl, marker);
+        handoffOpeningStockOwner(adminTargetUrl, marker);
       } else {
         applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
       }
@@ -1650,7 +1708,7 @@ function expectRoleVerifierFailure(
 function dropRoles(adminDatabaseUrl, marker) {
   runPsql(
     adminDatabaseUrl,
-    `DROP ROLE IF EXISTS ${quoteIdentifier(marker.runtimeRole)}, ${quoteIdentifier(marker.migratorRole)}, ${quoteIdentifier(marker.ownerRole)}, ${quoteIdentifier(marker.adversarialRole)}`,
+    `DROP ROLE IF EXISTS ${quoteIdentifier(marker.ownerRole.replace(/_owner$/, "_opening_stock_executor"))}, ${quoteIdentifier(marker.ownerRole.replace(/_owner$/, "_opening_stock_owner"))}, ${quoteIdentifier(marker.runtimeRole)}, ${quoteIdentifier(marker.migratorRole)}, ${quoteIdentifier(marker.ownerRole)}, ${quoteIdentifier(marker.adversarialRole)}`,
   );
 }
 

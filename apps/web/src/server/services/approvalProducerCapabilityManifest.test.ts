@@ -540,19 +540,20 @@ function moduleReferences(file: string, source: string, target: string) {
 }
 
 describe("DEC-0247 C1-S dormant observer structural contract", () => {
-  test("pins a deeply frozen, private exact 20-family manifest", () => {
+  test("pins a deeply frozen, private exact 21-family manifest", () => {
     expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0261.inventory-pilot-families.1");
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(
-      "dffabc01e8b41e9f253c6afac5705c91dd2fb2bbb52e954529ecc07dac6803e0",
+      "86c4630c304e36586e08624f1c206037f1142c950f6ee1616824789f8e5933b6",
     );
     expect(Object.isFrozen(approvalProducerCapabilityManifest)).toBe(true);
-    expect(approvalProducerCapabilityContracts).toHaveLength(20);
+    expect(approvalProducerCapabilityContracts).toHaveLength(21);
     expect(Object.keys(approvalProducerCapabilityManifest).sort()).toEqual([...supportedApprovalDocumentTypes].sort());
-    expect(new Set(approvalProducerCapabilityContracts.map((item) => item.producerId)).size).toBe(20);
+    expect(new Set(approvalProducerCapabilityContracts.map((item) => item.producerId)).size).toBe(21);
     expect(canonicalApprovalDocumentTypes).toEqual([
       "PurchaseRequest", "QuotationRecommendation", "PurchaseOrder",
       "PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "InventoryTransfer",
       "StockCountAttemptReview", "WastageReport", "StockAdjustment",
+      "OpeningInventoryCutover",
     ]);
     expect(specializedApprovalDocumentTypes).toEqual([
       "BudgetRevision", "ExpenseRequest", "CashAdvanceRequest", "PettyCashRequest",
@@ -575,6 +576,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
       StockCountAttemptReview: "approval_shadow.observe_stock_count_attempt_review_v1",
       WastageReport: "approval_shadow.observe_wastage_report_v1",
       StockAdjustment: "approval_shadow.observe_stock_adjustment_v1",
+      OpeningInventoryCutover: "approval_shadow.observe_opening_inventory_cutover_v1",
       FinanceCloseRun: "approval_shadow.observe_finance_close_run_v1",
       BudgetRevision: "approval_shadow.observe_budget_revision_v1",
       ExpenseRequest: "approval_shadow.observe_expense_request_v1",
@@ -589,7 +591,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     } as const;
     expect(new Set(approvalProducerCapabilityContracts.map(
       (contract) => contract.observerDesign.proposedName,
-    )).size).toBe(20);
+    )).size).toBe(21);
 
     for (const contract of approvalProducerCapabilityContracts) {
       expect(contract.contractKind).toBe("DORMANT_DISCOVERY_CONTRACT");
@@ -652,7 +654,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     expect(approvalProducerCapabilityManifest.PurchaseOrderAmendment.currentCompatibility.transactionControl.lock).toBe("IMPLEMENTED");
     expect(new Set(approvalProducerCapabilityContracts.map(
       (contract) => `${contract.currentCompatibility.producer.serviceFile}:${contract.currentCompatibility.producer.functionName}`,
-    )).size).toBe(20);
+    )).size).toBe(21);
     for (const family of ["PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "PaymentRelease"] as const) {
       expect(approvalProducerCapabilityManifest[family].identityLifecycle?.unresolvedRequiredDesign).toContain("Define");
       expect(approvalProducerCapabilityManifest[family].observerDesign.derivation.lifecycle).toBe("POST_CHILD_ONLY");
@@ -675,6 +677,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
       .filter(({ observerDesign }) => observerDesign.predicateMatrix.source.approvalInstanceBacklink !== null)
       .map(({ documentType }) => documentType);
     expect(backlinks).toEqual([
+      "OpeningInventoryCutover",
       "ExpenseRequest",
       "CashAdvanceRequest",
       "PettyCashRequest",
@@ -696,6 +699,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
       StockCountAttemptReview: [["StockCountSession", "InventoryLocation", "Location"], [], ["StockCountAttemptLine", "Item"]],
       WastageReport: [["InventoryLocation", "Location"], [], []],
       StockAdjustment: [["InventoryLocation", "Location"], [], []],
+      OpeningInventoryCutover: [["OpeningInventoryCohort", "InventoryLocation", "StockCountAttempt"], [], ["OpeningInventoryCutoverLine"]],
       FinanceCloseRun: [["Company"], [], []],
       BudgetRevision: [["Budget"], ["Location"], ["BudgetLine", "Location"]],
       ExpenseRequest: [["Location"], [], ["ExpenseRequestLine", "ExpenseRequestSourceLink"]],
@@ -806,13 +810,13 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
 });
 
 describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
-  test("pins the exact 20-family producer bijection and closed authority posture", () => {
-    expect(approvalProducerClosedCapabilityContracts).toHaveLength(20);
+  test("pins the exact 21-family producer bijection and closed authority posture", () => {
+    expect(approvalProducerClosedCapabilityContracts).toHaveLength(21);
     expect(Object.keys(approvalProducerClosedCapabilityContract).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
-    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.producerId)).size).toBe(20);
-    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.proposedCapability.name)).size).toBe(20);
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.producerId)).size).toBe(21);
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.proposedCapability.name)).size).toBe(21);
     for (const entry of approvalProducerClosedCapabilityContracts) {
       expect(entry).toMatchObject({
         contractKind: "DORMANT_WRITER_DISCOVERY",
@@ -860,7 +864,7 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
       "dec-0247-c2.dormant-closed-writer-contract.2",
     );
     expect(approvalProducerClosedCapabilityInventoryDigest).toBe(
-      "df5aa823ca13cbac990a0875ae2f705fcf750fbfc320de1b5e2cfca2a67baee6",
+      "11ca398d27841266e10334910d0ef9735f7d3610167535417634c3e83e526cd5",
     );
     expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe(
       "dec-0261.inventory-pilot-families.1",
@@ -872,7 +876,7 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
 
   test("keeps the C2 contract test-only and cannot mutate the C1 contract", () => {
     const before = APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST;
-    expect(approvalProducerCapabilityContracts).toHaveLength(20);
+    expect(approvalProducerCapabilityContracts).toHaveLength(21);
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(before);
     expect(() => {
       (approvalProducerClosedCapabilityContract.PurchaseRequest as { status: string }).status = "EXECUTABLE";
@@ -917,7 +921,7 @@ describe("DEC-0247 C3 dormant typed-adapter shape", () => {
       "dec-0247-c3.dormant-typed-adapter-shape.2",
     );
     expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_DIGEST).toBe(
-      "488708a5362b437ab713f5cec1cf30c545a3074b1f637211681f45eb8dd64571",
+      "cc4647f602596f1d8780ced4d8e9595bf945fab626028e25b56233b2d4e90281",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerTypedAdapterContract"),
@@ -958,7 +962,7 @@ describe("DEC-0247 C4 dormant typed terminal shape", () => {
       "dec-0247-c4-terminal-shape.1",
     );
     expect(APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST).toBe(
-      "9eea764eb1bb5bfe25f5bb4d7cc7c4a0bf04d0467656139dc21349f2d492becd",
+      "e8a54cd8200c0816d4a4ab67d0d18d2353211fae80b6d480fc5033415c90413e",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalTerminalTypedCapabilityContract"),

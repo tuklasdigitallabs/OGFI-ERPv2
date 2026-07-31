@@ -17,6 +17,8 @@ DECLARE
   owner_role text := current_setting('ogfi.adversarial.owner');
   migrator_role text := current_setting('ogfi.adversarial.migrator');
   runtime_role text := current_setting('ogfi.adversarial.runtime');
+  opening_stock_owner_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_owner');
+  opening_stock_executor_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_executor');
   adversarial_role text := current_setting('ogfi.adversarial.role');
   member_role text;
   database_identity text[];
@@ -34,16 +36,16 @@ BEGIN
     RAISE EXCEPTION 'Adversarial role fixture requires PostgreSQL 17';
   END IF;
   database_identity := regexp_match(database_name, '^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$');
-  controlled_identity := regexp_match(owner_role, '^ogfi_test_([a-z0-9_]{1,10})_([a-f0-9]{32})_owner$');
-  adversarial_identity := regexp_match(adversarial_role, '^ogfi_adv_([a-z0-9_]{1,8})_([a-f0-9]{32})$');
+  controlled_identity := regexp_match(owner_role, '^ogfi_([a-f0-9]{32})_owner$');
+  adversarial_identity := regexp_match(adversarial_role, '^ogfi_adv_([a-f0-9]{32})$');
   IF database_identity IS NULL OR controlled_identity IS NULL OR adversarial_identity IS NULL
      OR length(adversarial_role) > 63
      OR migrator_role <> regexp_replace(owner_role, '_owner$', '_migrator')
      OR runtime_role <> regexp_replace(owner_role, '_owner$', '_runtime')
-     OR controlled_identity[1] <> left(database_identity[1], 10)
-     OR adversarial_identity[1] <> left(database_identity[1], 8)
-     OR left(controlled_identity[2], 16) <> database_identity[2]
-     OR adversarial_identity[2] <> controlled_identity[2] THEN
+     OR opening_stock_owner_role <> regexp_replace(owner_role, '_owner$', '_opening_stock_owner')
+     OR opening_stock_executor_role <> regexp_replace(owner_role, '_owner$', '_opening_stock_executor')
+     OR left(controlled_identity[1], 16) <> database_identity[2]
+     OR adversarial_identity[1] <> controlled_identity[1] THEN
     RAISE EXCEPTION 'Controlled and adversarial roles are not bound to the same disposable run';
   END IF;
   IF fixture_action NOT IN ('install', 'cleanup') THEN
@@ -54,7 +56,9 @@ BEGIN
     'runtime_membership', 'owner_outgoing_membership', 'migrator_outgoing_membership',
     'runtime_outgoing_membership', 'migrator_admin_option', 'migrator_inherit_option',
     'migrator_set_option', 'nested_runtime_owner_path', 'wrong_ownership',
-    'default_privilege', 'unexpected_schema'
+    'default_privilege', 'unexpected_schema', 'executor_membership',
+    'executor_outgoing_membership', 'executor_direct_command_table', 'executor_routine_acl',
+    'executor_seal_trigger_acl'
   ) THEN
     RAISE EXCEPTION 'Unsupported adversarial drift case';
   END IF;
@@ -94,6 +98,16 @@ BEGIN
         EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', migrator_role, adversarial_role);
       WHEN 'runtime_outgoing_membership' THEN
         EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', runtime_role, adversarial_role);
+      WHEN 'executor_membership' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', adversarial_role, opening_stock_executor_role);
+      WHEN 'executor_outgoing_membership' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', opening_stock_executor_role, adversarial_role);
+      WHEN 'executor_direct_command_table' THEN
+        EXECUTE format('GRANT SELECT ON TABLE public."OpeningInventoryExecutionCommand" TO %I', opening_stock_executor_role);
+      WHEN 'executor_routine_acl' THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION public.execute_opening_inventory_command(uuid) TO %I', runtime_role);
+      WHEN 'executor_seal_trigger_acl' THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION public.append_opening_inventory_cohort_seal_event() TO %I', opening_stock_executor_role);
       WHEN 'migrator_admin_option' THEN
         EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
         EXECUTE format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET TRUE', owner_role, migrator_role);
@@ -121,6 +135,15 @@ BEGIN
       EXECUTE format('REVOKE ALL ("occurredAt") ON TABLE public."AuditEvent" FROM %I', runtime_role);
       EXECUTE format('ALTER TABLE public."AuditEvent" OWNER TO %I', owner_role);
     END IF;
+    IF to_regclass('public."OpeningInventoryExecutionCommand"') IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON TABLE public."OpeningInventoryExecutionCommand" FROM %I', opening_stock_executor_role);
+    END IF;
+    IF to_regprocedure('public.execute_opening_inventory_command(uuid)') IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON FUNCTION public.execute_opening_inventory_command(uuid) FROM %I', runtime_role);
+    END IF;
+    IF to_regprocedure('public.append_opening_inventory_cohort_seal_event()') IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON FUNCTION public.append_opening_inventory_cohort_seal_event() FROM %I', opening_stock_executor_role);
+    END IF;
     EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE TRIGGER ON TABLES FROM %I', owner_role, runtime_role);
     DROP SCHEMA IF EXISTS ogfi_contract_adversarial CASCADE;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = adversarial_role) THEN
@@ -130,7 +153,7 @@ BEGIN
         JOIN pg_roles granted ON granted.oid = membership.roleid
         JOIN pg_roles member ON member.oid = membership.member
         WHERE granted.rolname = adversarial_role
-          AND member.rolname IN (owner_role, migrator_role, runtime_role)
+          AND member.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role)
       LOOP
         EXECUTE format('REVOKE %I FROM %I', adversarial_role, member_role);
       END LOOP;
@@ -140,7 +163,7 @@ BEGIN
         JOIN pg_roles granted ON granted.oid = membership.roleid
         JOIN pg_roles member ON member.oid = membership.member
         WHERE member.rolname = adversarial_role
-          AND granted.rolname IN (owner_role, migrator_role, runtime_role)
+          AND granted.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role)
       LOOP
         EXECUTE format('REVOKE %I FROM %I', member_role, adversarial_role);
       END LOOP;
@@ -148,6 +171,8 @@ BEGIN
     END IF;
     EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
     EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', owner_role, migrator_role);
+    EXECUTE format('REVOKE %I FROM %I', opening_stock_owner_role, migrator_role);
+    EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', opening_stock_owner_role, migrator_role);
   END IF;
 END
 $fixture$;

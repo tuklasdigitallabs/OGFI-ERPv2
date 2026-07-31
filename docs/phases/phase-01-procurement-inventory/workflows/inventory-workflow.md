@@ -103,7 +103,7 @@ A counter should not be the only final approver of a material adjustment resulti
 | Count Variance | In / Out | Approved count result |
 | Return to Supplier | Out | Authorized supplier return |
 | Return from Branch | In | Approved return transfer |
-| Opening Balance | In / Out | Approved go-live / migration balance |
+| Opening Balance | In / Out | Dedicated `DEC-0263` cohort activation only; never an ordinary Stock Adjustment |
 | Reversal | Opposite | Correction of original movement |
 
 A posted movement is immutable. Corrections use reversal and a new valid movement.
@@ -112,7 +112,9 @@ A posted movement is immutable. Corrections use reversal and a new valid movemen
 
 ## 6. Core Controls
 
-1. Movement ledger is the authoritative record; balances reconcile to it.
+1. Movement ledger is the authoritative record. A database-owned movement
+   trigger is the sole writer of the derived balance cache; balances reconcile
+   exactly to it and cannot be directly edited by runtime users.
 2. Only accepted receipt quantity becomes stock.
 3. Transfer source stock reduces at dispatch; destination stock increases only at destination receipt.
 4. Wastage, adjustment, and count variance post only after configured approval.
@@ -122,6 +124,62 @@ A posted movement is immutable. Corrections use reversal and a new valid movemen
 8. Every movement needs source-document lineage and actor / timestamp.
 9. Users cannot alter posted quantities or backdate without explicit controls.
 10. Count results preserve original evidence; immutable recounts remain a gated future recovery workflow.
+
+### 6.1 Opening inventory cutover
+
+Opening inventory is a dedicated immutable cohort, not an ordinary Stock
+Adjustment. Each selected location has a reviewed child cutover with complete
+item coverage, including recorded zero quantities, controlled evidence, valuation snapshot,
+and separate Operations and Accounting approval. `STAGE` validates and
+reconciles a child only; it creates no inventory movement or balance. `ACTIVATE`
+locks the complete selected set of inventory locations in stable identifier
+order and atomically posts all eligible child batches. The same stable lock
+order is used by ordinary movement writers, and the database movement fence
+also locks before deciding, so a raw competing movement cannot bypass the
+transition boundary.
+
+The immutable zero-quantity line proves coverage but is absent from the posted
+movement and balance cache. While a command is unresolved, exactly one semantic
+action may exist for its target: freeze/activate for the cohort, or stage/reverse
+for the exact location cutover. Database guards fail closed for malformed target
+shapes and cutover/cohort/tenant/company lineage. The focused queue and detail
+workspace use bounded server-side pages; activity is read through a bounded
+database query rather than an all-row application-side slice. A reader who lacks
+live scope for any cohort location may view the authorized local batch but not
+cohort-shared evidence, authority events, or commands. Draft-cohort selection is
+also exact-location scoped through the configuration revision's endpoint
+membership, so an adjacent location cannot enumerate a draft cohort reference,
+revision, or digest.
+
+Submitting a location cutover for approval revalidates live permission at that
+exact location before acquiring the tenant/company shared approval-producer
+barrier. The forward migration
+`20260731130000_opening_inventory_approval_producer_barrier` registers only the
+exact `OpeningInventoryCutover` family and retains the closed producer allowlist.
+For the related transfer approval boundary, exact replay is resolved first; the
+locked transfer's terminal lifecycle is then checked before line validation or
+pilot classification.
+
+Opening command request handling establishes live scope for the exact target
+and, for a cohort command, every affected cohort location before it takes target
+or advisory locks. It rechecks scope inside the locked transaction before a
+command can mutate. Approval decisions establish the cutover location scope
+before their shared producer barrier and retain their transaction authority
+checks. These controls are non-enumerating and do not replace the later release
+and recovery gates.
+
+Before cohort authority release, correction is an auditable logical
+supersession with zero ledger effect. After release, correction uses a separately
+approved delta adjustment. Direct balance mutation, partial cohort activation,
+and ordinary `OPENING_BALANCE` adjustment posting are prohibited. Production
+activation remains gated on exact ledger/cache preflight reconciliation,
+coordinated application/schema deployment, recovery rehearsal, browser UAT,
+typed source-specific ordinary-movement authority, and Release Board approval.
+Local database and focused service evidence has passed, but full lint,
+production build, and browser-authenticated responsive UAT have not yet passed
+their release gates. Final regression and independent re-review of the current
+location-disclosure, server-pagination, lock-order, and visible-surface
+remediations remain pending before local Phase 3 completion can be recorded.
 
 ---
 
@@ -266,7 +324,9 @@ Required, exportable reports:
 
 1. Every item has base UOM and valid conversions before movement use.
 2. Receipts, transfers, wastage, adjustments, and count variances create correctly signed ledger entries.
-3. Item-location balance reconciles to sum of posted ledger movements.
+3. Item-location balance reconciles exactly to the sum of posted ledger
+   movements, and no runtime or opening-cutover role can directly mutate the
+   balance cache.
 4. User cannot post outside location scope.
 5. Lot / expiry items require those fields across relevant movements.
 6. A count can be created, completed, reviewed, approved, and posted without losing original evidence.

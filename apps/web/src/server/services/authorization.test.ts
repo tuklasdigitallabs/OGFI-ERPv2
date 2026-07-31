@@ -51,6 +51,8 @@ describe("module access permission helpers", () => {
       permissions.purchaseOrderApprove,
       permissions.wastageApprove,
       permissions.stockAdjustmentApprove,
+      permissions.openingInventoryOperationsReview,
+      permissions.openingInventoryAccountingReview,
       permissions.financeBudgetApprove,
       permissions.financeExpenseRequestApprove,
       permissions.financeCashAdvanceApprove,

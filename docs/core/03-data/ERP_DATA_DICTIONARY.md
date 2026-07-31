@@ -203,7 +203,7 @@ Current implementation adds `BreakGlassAccessGrant` as the auditable register fo
 
 Current implementation adds `CompanyPolicySetting` as the company-scoped configuration registry for DEC-0036 pilot defaults and later controlled overrides. This table stores typed JSON values for configurable policy, not workflow transaction records. Workflow services must still enforce permissions, approval state, scope, audit, and inventory-ledger controls when they consume these settings.
 
-Implemented DEC-0036 default keys include purchasing approval/quotation/emergency controls, supplier PO eligibility, stock-count cadence, lot/expiry category requirements, opening-balance evidence, payment-release evidence and settlement requirements, budget source-hook rollout policy, cash-advance recovery policy, expense-request handoff policy, period-close reopen window, reporting trust gates, project visibility/blocker rules, release readiness flags, and security/continuity defaults. Finance defaults include `finance.budget.source_hook_policy`, which keeps PR/PO/AP/expense budget source hooks in warning-only commitment-projection mode until source-line backfill and UAT signoff approve any hard-block rollout, `finance.cash_advance.recovery_policy`, which defines due-soon, overdue escalation, evidence, and UAT gates for employee/custodian advance follow-up without enabling production collection actions before UAT, `finance.expense_request.handoff_policy`, which requires Expense Request → AP Draft → Payment Request lineage while blocking direct payment and settlement mutation before UAT, and `finance.payment_release.settlement_policy`, which allows manual evidence-backed release control and reconciliation matching while blocking AP settlement, bank API mutation, and journal posting before UAT. Security defaults include `security.privileged_mfa.enforcement_mode` for evidence-backed sensitive-action guard behavior, `security.evidence_storage.default_policy` for environment-isolated controlled evidence, MIME allowlisting, required malware scanning before hosted availability, preservation pending an approved retention policy, paired database/evidence recovery, and download auditing, `security.retention.matrix` for retention and PII/export redaction policy, and `security.backup_restore.default_policy` for daily encrypted backup, offsite copy, checksum, quarterly restore rehearsal, and pre-release backup/restore evidence requirements. Local development may use only the explicit test-clean adapter; there is no hosted scan waiver. Demo and pilot seed data creates missing company-scoped defaults so admins can inspect the active baseline immediately; reseeding refreshes labels/default metadata without overwriting existing company-specific override values.
+Implemented DEC-0036 default keys include purchasing approval/quotation/emergency controls, supplier PO eligibility, stock-count cadence, lot/expiry category requirements, opening-cutover evidence, payment-release evidence and settlement requirements, budget source-hook rollout policy, cash-advance recovery policy, expense-request handoff policy, period-close reopen window, reporting trust gates, project visibility/blocker rules, release readiness flags, and security/continuity defaults. The opening-cutover policy key is evidence configuration only: `DEC-0263` requires the separate immutable cohort, valuation snapshot, approvals, fence, executor, release, and reconciliation controls before it can support a pilot. Finance defaults include `finance.budget.source_hook_policy`, which keeps PR/PO/AP/expense budget source hooks in warning-only commitment-projection mode until source-line backfill and UAT signoff approve any hard-block rollout, `finance.cash_advance.recovery_policy`, which defines due-soon, overdue escalation, evidence, and UAT gates for employee/custodian advance follow-up without enabling production collection actions before UAT, `finance.expense_request.handoff_policy`, which requires Expense Request → AP Draft → Payment Request lineage while blocking direct payment and settlement mutation before UAT, and `finance.payment_release.settlement_policy`, which allows manual evidence-backed release control and reconciliation matching while blocking AP settlement, bank API mutation, and journal posting before UAT. Security defaults include `security.privileged_mfa.enforcement_mode` for evidence-backed sensitive-action guard behavior, `security.evidence_storage.default_policy` for environment-isolated controlled evidence, MIME allowlisting, required malware scanning before hosted availability, preservation pending an approved retention policy, paired database/evidence recovery, and download auditing, `security.retention.matrix` for retention and PII/export redaction policy, and `security.backup_restore.default_policy` for daily encrypted backup, offsite copy, checksum, quarterly restore rehearsal, and pre-release backup/restore evidence requirements. Local development may use only the explicit test-clean adapter; there is no hosted scan waiver. Demo and pilot seed data creates missing company-scoped defaults so admins can inspect the active baseline immediately; reseeding refreshes labels/default metadata without overwriting existing company-specific override values.
 
 | Field                                                      | Required | Notes                                                                                        |
 | ---------------------------------------------------------- | -------: | -------------------------------------------------------------------------------------------- |
@@ -449,8 +449,12 @@ Rollback cannot destructively remove committed evidence or convert routing v1 ba
 | Approval Routing Producer Barrier Generation | `tenant_id`, `company_id`, positive `generation_number`, `state`, routing schema/mapping version and hash, capability version and hash, `release_identity`, database creation time | The current additive foundation permits only `DORMANT`. Tenant/company lineage and generation number are unique; `INSERT`, update, delete, and truncate are rejected by schema-level `ENABLE ALWAYS` guards, including for owner/replication-role sessions. Migration creates the empty relation and inserts no generation. There is no active, ready, certified, or failed state and no readiness/result/activation relation or routine in this checkpoint. |
 | Approval Routing Producer Provenance | `tenant_id`, `company_id`, `generation_id`, `approval_instance_id`, registered `document_type`, `document_id`, routing schema/mapping version and hash, capability version and hash, `release_identity`, database transaction ID, database creation time | Dormant evidence shape with exact tenant/company generation and Approval Instance lineage, one provenance row per scoped Approval Instance, a closed 18-family document-type set, and same-transaction lineage validation. Schema-level `ENABLE ALWAYS` guards reject `INSERT`, update, delete, and truncate for every role until a later governed writer migration replaces the insert denial. The current application writes no provenance row; the migration inserts none. Runtime base-table DML remains pending removal under Option C. |
 
-All 18 outer producer transactions acquire the same database-derived company
-shared advisory transaction lock before their producer bodies. Six `ENABLE
+Every registered outer producer transaction acquires the same database-derived
+company shared advisory transaction lock before its producer body. Forward
+migration `20260731130000_opening_inventory_approval_producer_barrier` adds the
+exact `OpeningInventoryCutover` family without opening the producer allowlist to
+arbitrary text. Opening submission proves live permission at the exact cutover
+location before attempting the shared barrier. Six `ENABLE
 ALWAYS` triggers apply the shared lock to registered-family Approval Instance,
 step, scope-group, scope-target, prohibited-actor, and provenance graph changes.
 The migration also installs six deferred validator trigger placeholders with a
@@ -603,7 +607,18 @@ Posted movement records are immutable.
 | `related_location_id`                                                                                                      |       No | Counterparty for transfer.                 |
 | `quantity_delta_base_uom`, `base_uom_id`                                                                                   |      Yes | Positive = stock-in; negative = stock-out. |
 
-Current Phase I scaffold implements the quantity-only inventory ledger foundation through inventory locations, immutable inventory movement records, and a balance cache keyed by inventory location, item, and normalized lot/expiry key. It stores source document lineage and idempotency keys and currently posts receiving, receiving-reversal, transfer dispatch, transfer receipt, transfer-receipt reversal, wastage, wastage-reversal, stock-adjustment, count-generated stock-adjustment, and stock-adjustment-reversal movements through controlled workflow services. Inventory movement posting is blocked for an inventory location while an active stock count with movement freeze is in progress, submitted, or in recount for that same location. It does not implement authoritative valuation, GL posting, opening-balance cutover, direct `COUNT_VARIANCE_*` posting, dispatch reversal workflows, or partial receipt-line reversal workflows yet.
+Current Phase I implementation uses immutable inventory movement records and a
+balance cache keyed by inventory location, item, and normalized lot/expiry key.
+It stores source-document lineage and idempotency keys and posts receiving,
+receiving-reversal, transfer dispatch, transfer receipt, transfer-receipt
+reversal, wastage, wastage-reversal, stock-adjustment,
+count-generated stock-adjustment, stock-adjustment-reversal, and the dedicated
+`DEC-0263` opening-cutover movements through controlled services/executor
+routines. Inventory movement posting is blocked for an inventory location while
+an active stock count freeze or opening-cutover fence applies. It does not
+implement authoritative valuation, GL posting, direct `COUNT_VARIANCE_*`
+posting, dispatch reversal workflows, or partial receipt-line reversal workflows
+yet.
 | `unit_cost_base_uom`, `value_delta` | No | Cost reference. |
 | `lot_number`, `expiry_date` | Conditional | Per item control. Future `postInventoryMovement` writes normalize lot text to trimmed nonblank text or null for the movement and matching balance key; existing legacy rows are not rewritten. |
 | `posted_by_user_id`, `posting_status` | Yes | Posted / reversed. |
@@ -620,6 +635,64 @@ Current Phase I scaffold implements the quantity-only inventory ledger foundatio
 | `reserved_quantity_base_uom`                                                                       |            Yes | Defaults to zero in Phase I.                    |
 | `last_movement_at`, `last_reconciled_at`, `status`                                                 | Yes / No / Yes | Status: active, quarantined, expired, inactive. |
 | `updated_at`                                                                                        |            Yes | Mutable cache lifecycle metadata. It is not authoritative inventory-event or movement occurrence time and must not drive recent-activity dashboard/report claims. |
+
+`InventoryBalance` is a derived cache, never an independent stock-of-record.
+The database-owned, security-definer `AFTER INSERT` trigger on
+`InventoryMovement` is its sole write path. It derives the canonical trimmed
+lot/expiry identity, validates the movement/balance scope and UOM identity, and
+increments or creates the cache row in the same transaction; a negative movement
+requires an existing sufficient balance. Runtime and opening-cutover database
+owners have `SELECT` only on the cache and cannot directly insert, update, or
+delete it. The cache guard is `ENABLE ALWAYS`, including under replication-role
+testing. Exact ledger-to-cache reconciliation is required before production
+deployment; drift blocks release and is not repaired by editing a balance row.
+
+### 9.4.1 Immutable Opening Inventory Cutover
+
+`DEC-0263` adds the company-scoped `OpeningInventoryCohort`, per-location
+`OpeningInventoryCutover` and lines, approval attestations, reconciliation
+records, append-only cohort events, and idempotent execution commands. A cohort
+binds the sealed Inventory Pilot configuration revision/digest and complete
+selected-item coverage, including recorded zero quantities. Zero-quantity lines
+remain in the immutable cutover/count evidence but must produce neither an
+`InventoryMovement` nor an `InventoryBalance` row. `STAGE` verifies and
+reconciles only; it creates no movement or cache row. `ACTIVATE` atomically
+posts every eligible positive-quantity child line in the cohort, with
+deterministic movement lineage, then the database-owned movement trigger derives
+balances.
+
+Unresolved command uniqueness is semantic rather than merely idempotency-key
+based: cohort commands are unique by `(cohort_id, command_type)` and location
+commands by `(cutover_id, command_type)` while pending, claimed, or retryable.
+Database guards require cohort actions to have no cutover target and location
+actions to have an exact same-cohort, tenant, and company cutover target. Before
+authority release, recovery is a logical cohort supersession with zero ledger
+effect; after release an approved delta Stock Adjustment is the forward-only
+correction path. The local queue and detail reads use bounded server-side pages;
+cohort-shared evidence and authority history require live view scope across every
+cohort location. The activity page is assembled through a bounded, deterministic
+newest-first database query; it does not hydrate all audit, cohort-event, or
+command rows for application-side slicing. Draft-cohort form options are limited
+to sealed-revision endpoint membership at the reader's exact current location, so
+an adjacent location cannot enumerate another location's draft cohort reference,
+revision, or digest. This is locally implemented; final regression and
+independent re-review remain pending, and production activation remains gated.
+
+Opening approval submission uses the registered `OpeningInventoryCutover`
+producer family. The service revalidates exact-location scope before it attempts
+the tenant/company approval-producer barrier; the database routine accepts only
+its closed document-family allowlist. In the related Inventory Transfer approval
+perimeter, an exact replay is resolved first, then the locked terminal source
+lifecycle is validated before dependent line validation or pilot
+classification.
+
+Opening command requests establish live scope for their exact target and, for a
+cohort command, every affected cohort location before target/advisory locks are
+taken. The same scope is rechecked in the locked transaction before durable
+command mutation. Approval decisions establish the cutover's exact location
+scope before their shared producer barrier and retain their in-transaction
+authority boundary. These orderings prevent an out-of-scope request from taking
+the contention path merely to discover or affect a controlled target.
 
 ### 9.5 Transfer Order and Line
 
@@ -652,7 +725,7 @@ Current Phase I scaffold implements the quantity-only inventory ledger foundatio
 | Wastage Header          | `company_id`, `wr_number`, `location_id`, `department_id`, `reported_by_user_id`, `reported_at`, `wastage_type`, `reason_code`, `status`                                                                                                                                                                                        | Estimated value and photo requirements recorded.                                                                                                                                                                                                                                                                                 |
 | Wastage Line            | `wastage_report_id`, `line_no`, `item_id`, `inventory_location_id`, `quantity`, `uom_id`, `quantity_base_uom`                                                                                                                                                                                                                   | Lot / expiry and photo required per policy.                                                                                                                                                                                                                                                                                      |
 | Operational Reason Code | `tenant_id`, `company_id`, `workflow`, `code`, `label`, `applies_to`, `requires_evidence`, `status`, `sort_order`                                                                                                                                                                                                               | Configured dropdown source for Wastage, Stock Adjustment, and future exception classifications.                                                                                                                                                                                                                                  |
-| Adjustment Header       | `company_id`, `sa_number`, `location_id`, `requested_by_user_id`, `adjustment_date`, `adjustment_type`, `reason_code`, `reason_description`, `status`, `source_document_type`, `source_document_id`, `source_stock_count_session_id`, `posted_by_user_id`, `reversed_by_user_id`, `posted_at`, `reversed_at`, `reversal_reason` | `DEC-0023` implements manual increase/decrease approval, separate posting, and full-document reversal. `DEC-0026` adds count-generated `COUNT_VARIANCE` adjustments. Opening balance cutover is implemented through controlled `OPENING_BALANCE` adjustments. Reclassification and backdating remain future controlled releases. |
+| Adjustment Header       | `company_id`, `sa_number`, `location_id`, `requested_by_user_id`, `adjustment_date`, `adjustment_type`, `reason_code`, `reason_description`, `status`, `source_document_type`, `source_document_id`, `source_stock_count_session_id`, `posted_by_user_id`, `reversed_by_user_id`, `posted_at`, `reversed_at`, `reversal_reason` | `DEC-0023` implements manual increase/decrease approval, separate posting, and full-document reversal. `DEC-0026` adds count-generated `COUNT_VARIANCE` adjustments. `DEC-0263` governs opening stock through a separate immutable cohort, not `OPENING_BALANCE` adjustments. Reclassification and backdating remain future controlled releases. |
 | Adjustment Line         | `stock_adjustment_id`, `line_no`, `item_id`, `adjustment_quantity_base_uom`, `posted_movement_id`                                                                                                                                                                                                                               | Stores requested quantity impact, system snapshot where available, value context where available, lot / expiry, and posted movement lineage when approved adjustment is posted.                                                                                                                                                  |
 
 **Wastage statuses:** `draft`, `submitted`, `pending_approval`, `approved`, `posted`, `rejected`, `cancelled`, `reversed`.
@@ -661,7 +734,21 @@ Current Phase I scaffold implements the quantity-only inventory ledger foundatio
 
 Current Phase I scaffold implements Wastage Reports through `wastage_report`, `wastage_line`, `wastage_policy`, `operational_reason_code`, approval instances, inventory movements, and audit records. Implemented wastage statuses are `DRAFT`, `SUBMITTED` for legacy review-only records, `PENDING_APPROVAL`, `APPROVED`, transient `POSTING`, `POSTED`, transient `REVERSING`, `REVERSED`, `REVIEWED`, `RETURNED`, `REJECTED`, and `CANCELLED`. Wastage records are scoped to the current authorized inventory location, require item, positive quantity, an active configured reason code, evidence reference where item-category or configured policy rules require it, lot/expiry where tracked, estimated unit/total cost, evaluated policy flags, policy snapshot, and audit history. Submitting wastage creates an approval instance; approving wastage creates no movement; posting approved wastage creates source-linked `WASTAGE_OUT` movements and updates balances through the inventory ledger service. Reversing posted wastage creates linked `REVERSAL` movements and restores stock through the same ledger service. Backdating remains a future controlled transition.
 
-`DEC-0019` confirmed the original non-posting Stock Adjustment foundation. `DEC-0023` adds approval-enabled posting for manual `INCREASE` and `DECREASE` adjustments. `DEC-0026` allows a reviewed Stock Count Session to generate one linked `COUNT_VARIANCE` adjustment from non-zero variance lines. Manual adjustment creation now requires an active configured reason code plus a narrative `reason_description`. Submitting creates a `StockAdjustment` approval instance; approving creates no movement; posting approved adjustments creates source-linked `ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, or opening-balance movements and updates balances only through the inventory ledger service; reversing posted adjustments creates linked `REVERSAL` movements. Direct `COUNT_VARIANCE_*` posting, reclassification, backdating, finance/accounting entries, and partial reversal require separate confirmed decisions and implementation.
+`DEC-0019` confirmed the original non-posting Stock Adjustment foundation.
+`DEC-0023` adds approval-enabled posting for manual `INCREASE` and `DECREASE`
+adjustments. `DEC-0026` allows a reviewed Stock Count Session to generate one
+linked `COUNT_VARIANCE` adjustment from non-zero variance lines. Manual
+adjustment creation requires an active configured reason code plus a narrative
+`reason_description`. Submitting creates a `StockAdjustment` approval instance;
+approving creates no movement; posting approved adjustments creates
+source-linked `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` movements, after which the
+database-owned movement trigger derives the balance cache. Reversal creates
+linked `REVERSAL` movements. `DEC-0263` separately governs locally implemented
+opening stock through a sealed cohort, reviewed count child batches, approvals,
+executor, release, and reconciliation evidence; it is not a Stock Adjustment
+path and production activation remains gated. Direct `COUNT_VARIANCE_*` posting,
+reclassification, backdating, finance/accounting entries, and partial reversal
+require separate confirmed decisions and implementation.
 
 ---
 

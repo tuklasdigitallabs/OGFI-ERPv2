@@ -250,6 +250,7 @@ async function lockMainSource(
     PurchaseOrder: "PurchaseOrder", PurchaseOrderBalanceClosure: "PurchaseOrderBalanceClosure",
     PurchaseOrderAmendment: "PurchaseOrderAmendment", WastageReport: "WastageReport",
     InventoryTransfer: "InventoryTransfer", StockCountAttemptReview: "StockCountAttempt",
+    OpeningInventoryCutover: "OpeningInventoryCutover",
     StockAdjustment: "StockAdjustment", FinanceCloseRun: "FinanceCloseRun",
     BudgetRevision: "BudgetRevision", ExpenseRequest: "ExpenseRequest",
     CashAdvanceRequest: "CashAdvanceRequest", PettyCashRequest: "PettyCashRequest",
@@ -358,6 +359,33 @@ async function loadSourceSnapshot(
           [session.createdByUserId, "SESSION_CREATOR"],
           [session.assignedToUserId, "SESSION_ASSIGNED_COUNTER"],
           ...session.attempts.flatMap((attempt) => attempt.lines.map((line) => [line.countedByUserId, "COUNTER"] as const)),
+        ]),
+      });
+    }
+    case "OpeningInventoryCutover": {
+      const row = await tx.openingInventoryCutover.findUnique({
+        where: { id: instance.documentId },
+        include: {
+          stockCountAttempt: {
+            include: { lines: { select: { countedByUserId: true } } },
+          },
+        },
+      });
+      if (!row) block("SOURCE_NOT_FOUND");
+      return sourceSnapshot({
+        tenantId: row.tenantId,
+        companyId: row.companyId,
+        status: row.status,
+        dueAt: null,
+        transitionAt: row.requestedAt,
+        scopeTargets: locationScope(row.companyId, row.locationId),
+        prohibitedActors: uniqueActors([
+          [row.requestedByUserId, "REQUESTER"],
+          [row.reviewedByUserId, "PREPARER"],
+          [row.stockCountAttempt.createdByUserId, "COUNT_CREATOR"],
+          [row.stockCountAttempt.assignedToUserId, "COUNT_ASSIGNEE"],
+          [row.stockCountAttempt.reviewedByUserId, "COUNT_REVIEWER"],
+          ...row.stockCountAttempt.lines.map((line) => [line.countedByUserId, "COUNTER"] as const),
         ]),
       });
     }

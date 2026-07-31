@@ -627,7 +627,6 @@ export async function postInventoryMovementInTransaction(
   });
 
   const normalizedLotNumber = input.lotNumber?.trim() || null;
-  const lotKey = normalizeInventoryLotKey(normalizedLotNumber, input.expiryDate);
 
   const movement = await tx.inventoryMovement.create({
     data: {
@@ -656,61 +655,6 @@ export async function postInventoryMovementInTransaction(
       postedByUserId: session.user.id
     }
   });
-
-  if (input.quantityDeltaBaseUom > 0) {
-    await tx.inventoryBalance.upsert({
-      where: {
-        inventoryLocationId_itemId_lotKey: {
-          inventoryLocationId: input.inventoryLocationId,
-          itemId: input.itemId,
-          lotKey
-        }
-      },
-      create: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocationId: input.inventoryLocationId,
-        itemId: input.itemId,
-        lotKey,
-        lotNumber: normalizedLotNumber,
-        expiryDate: input.expiryDate ?? null,
-        baseUomId: item.baseUomId,
-        qtyOnHand: input.quantityDeltaBaseUom,
-        version: 1
-      },
-      update: {
-        qtyOnHand: {
-          increment: input.quantityDeltaBaseUom
-        },
-        version: {
-          increment: 1
-        }
-      }
-    });
-  } else {
-    const updatedBalance = await tx.inventoryBalance.updateMany({
-      where: {
-        inventoryLocationId: input.inventoryLocationId,
-        itemId: input.itemId,
-        lotKey,
-        qtyOnHand: {
-          gte: Math.abs(input.quantityDeltaBaseUom)
-        }
-      },
-      data: {
-        qtyOnHand: {
-          increment: input.quantityDeltaBaseUom
-        },
-        version: {
-          increment: 1
-        }
-      }
-    });
-
-    if (updatedBalance.count !== 1) {
-      throw new Error("INVENTORY_BALANCE_NEGATIVE_NOT_ALLOWED");
-    }
-  }
 
   return { movement, duplicate: false };
 }

@@ -867,7 +867,7 @@ describe("inventory-location posting serialization", () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
-  test("normalizes future posted lots while preserving legacy balance metadata on update", async () => {
+  test("normalizes future posted lots before the ledger-owned balance cache trigger runs", async () => {
     const policy = vi.spyOn(prisma.companyPolicySetting, "findUnique")
       .mockResolvedValue(null);
     const itemId = "00000000-0000-4000-8000-000000000050";
@@ -878,7 +878,6 @@ describe("inventory-location posting serialization", () => {
         id: `movement-${sourceEventKey}`,
         ...data
       }));
-      const balanceUpsert = vi.fn().mockResolvedValue({});
       const tx = {
         $queryRaw: vi.fn().mockResolvedValue([{ id: locationA }]),
         inventoryMovement: {
@@ -902,11 +901,7 @@ describe("inventory-location posting serialization", () => {
           })
         },
         itemUomConversion: { findFirst: vi.fn() },
-        stockCountSession: { findFirst: vi.fn().mockResolvedValue(null) },
-        inventoryBalance: {
-          upsert: balanceUpsert,
-          updateMany: vi.fn()
-        }
+        stockCountSession: { findFirst: vi.fn().mockResolvedValue(null) }
       } as unknown as TransactionClient;
       const lock = await lockInventoryLocationForPosting(
         tx,
@@ -926,7 +921,7 @@ describe("inventory-location posting serialization", () => {
         sourceEventKey,
         lotNumber
       });
-      return { movementCreate, balanceUpsert };
+      return { movementCreate };
     }
 
     try {
@@ -934,45 +929,13 @@ describe("inventory-location posting serialization", () => {
       expect(trimmed.movementCreate).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ lotNumber: "LOT-1" })
       }));
-      expect(trimmed.balanceUpsert).toHaveBeenCalledWith(expect.objectContaining({
-        where: {
-          inventoryLocationId_itemId_lotKey: {
-            inventoryLocationId: locationA,
-            itemId,
-            lotKey: "LOT-1|NOEXP"
-          }
-        },
-        create: expect.objectContaining({
-          lotNumber: "LOT-1",
-          lotKey: "LOT-1|NOEXP"
-        }),
-        update: {
-          qtyOnHand: { increment: 1 },
-          version: { increment: 1 }
-        }
-      }));
 
       const blank = await postWithLot("   ", "blank-lot");
       expect(blank.movementCreate).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ lotNumber: null })
       }));
-      expect(blank.balanceUpsert).toHaveBeenCalledWith(expect.objectContaining({
-        where: {
-          inventoryLocationId_itemId_lotKey: {
-            inventoryLocationId: locationA,
-            itemId,
-            lotKey: "NOLOT|NOEXP"
-          }
-        },
-        create: expect.objectContaining({
-          lotNumber: null,
-          lotKey: "NOLOT|NOEXP"
-        }),
-        update: {
-          qtyOnHand: { increment: 1 },
-          version: { increment: 1 }
-        }
-      }));
+      const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+      expect(source).not.toContain("tx.inventoryBalance.");
     } finally {
       policy.mockRestore();
     }

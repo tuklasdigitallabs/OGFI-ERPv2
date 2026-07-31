@@ -9,11 +9,14 @@ import {
   assertSafeAdminUrl,
   assertSafeDisposableTarget,
   buildPsqlEnvironment,
+  buildInventoryPilotBootstrapTestEnvironment,
+  buildOpeningStockExecutorTestEnvironment,
   buildRuntimeEnvironment,
   buildSeedRepeatabilityEnvironment,
   createDisposablePostgresIdentity,
   shouldRunAdversarialRoleContract,
   shouldRunSeedRepeatability,
+  shouldStartInventoryPilotBootstrapBroker,
   targetDatabaseUrl,
 } from "./disposable-postgres-lifecycle.mjs";
 
@@ -34,10 +37,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     const nonce = "a".repeat(64);
     const identity = createDisposablePostgresIdentity("run-12345", nonce);
     assert.equal(identity.databaseName, "ogfi_test_run_12345_aaaaaaaaaaaaaaaa");
-    assert.match(identity.ownerRole, /^ogfi_test_run_12345_[a-f0-9]{32}_owner$/);
-    assert.match(identity.migratorRole, /^ogfi_test_run_12345_[a-f0-9]{32}_migrator$/);
-    assert.match(identity.runtimeRole, /^ogfi_test_run_12345_[a-f0-9]{32}_runtime$/);
-    assert.match(identity.adversarialRole, /^ogfi_adv_run_1234_[a-f0-9]{32}$/);
+    assert.match(identity.ownerRole, /^ogfi_[a-f0-9]{32}_owner$/);
+    assert.match(identity.migratorRole, /^ogfi_[a-f0-9]{32}_migrator$/);
+    assert.match(identity.runtimeRole, /^ogfi_[a-f0-9]{32}_runtime$/);
+    assert.match(identity.adversarialRole, /^ogfi_adv_[a-f0-9]{32}$/);
     assert.ok(identity.ownerRole.length <= 63);
     assert.ok(identity.migratorRole.length <= 63);
     assert.ok(identity.runtimeRole.length <= 63);
@@ -76,11 +79,11 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       second.runtimeRole,
     ]) {
       assert.ok(role.length <= 63, role);
-      assert.match(role, /_[a-f0-9]{32}_(?:owner|migrator|runtime)$/);
+      assert.match(role, /^ogfi_[a-f0-9]{32}_(?:owner|migrator|runtime)$/);
     }
     for (const role of [first.adversarialRole, second.adversarialRole]) {
       assert.ok(role.length <= 63, role);
-      assert.match(role, /^ogfi_adv_[a-z0-9_]{1,8}_[a-f0-9]{32}$/);
+      assert.match(role, /^ogfi_adv_[a-f0-9]{32}$/);
     }
   });
 
@@ -105,8 +108,8 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     );
     assert.match(fixture, /migrator_role <> regexp_replace\(owner_role/);
     assert.match(fixture, /runtime_role <> regexp_replace\(owner_role/);
-    assert.match(fixture, /adversarial_identity\[2\] <> controlled_identity\[2\]/);
-    assert.match(fixture, /left\(controlled_identity\[2\], 16\) <> database_identity\[2\]/);
+    assert.match(fixture, /adversarial_identity\[1\] <> controlled_identity\[1\]/);
+    assert.match(fixture, /left\(controlled_identity\[1\], 16\) <> database_identity\[2\]/);
   });
 
   it("requires an explicit admin URL", () => {
@@ -146,6 +149,9 @@ describe("disposable PostgreSQL lifecycle safety", () => {
         MIGRATOR_DSN: "postgresql://migrator:secret@localhost/db",
         ALTERNATE_DATABASE_URL: "postgresql://owner:secret@localhost/db",
         DATABASE_PASSWORD: "database-secret",
+        OPENING_STOCK_EXECUTOR_DATABASE_URL: "postgresql://executor:secret@localhost/db",
+        OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: "/tmp/leaked-bootstrap.sock",
+        OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: "leaked-bootstrap-token",
         POSTGRES_USER: "postgres",
       },
       runtimeUrl,
@@ -172,6 +178,9 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       "ALTERNATE_DATABASE_URL",
       "DATABASE_PASSWORD",
       "POSTGRES_USER",
+      "OPENING_STOCK_EXECUTOR_DATABASE_URL",
+      "OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET",
+      "OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN",
     ]) {
       assert.equal(child[key], undefined, `${key} is absent`);
     }
@@ -179,6 +188,84 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     assert.equal(child.OGFI_DISPOSABLE_DATABASE_RUN_ID, identity.runId);
     assert.equal(child.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256, identity.nonceSha256);
     assert.equal(child.DIRECT_DATABASE_URL, "");
+  });
+
+  it("confines the executor credential to the exact opening-cutover child suite", () => {
+    const executorUrl = "postgresql://executor:secret@127.0.0.1:5432/ogfi_test_run_aaaaaaaaaaaaaaaa";
+    assert.deepEqual(
+      buildOpeningStockExecutorTestEnvironment("opening-inventory-cutover", executorUrl),
+      { OPENING_STOCK_EXECUTOR_DATABASE_URL: executorUrl },
+    );
+    assert.deepEqual(
+      buildOpeningStockExecutorTestEnvironment("authorization-all", undefined),
+      {},
+    );
+    assert.throws(
+      () => buildOpeningStockExecutorTestEnvironment("authorization-all", executorUrl),
+      { message: "OPENING_STOCK_EXECUTOR_ENVIRONMENT_SUITE_FORBIDDEN" },
+    );
+    assert.throws(
+      () => buildOpeningStockExecutorTestEnvironment("opening-inventory-cutover", undefined),
+      { message: "OPENING_STOCK_EXECUTOR_DATABASE_URL_REQUIRED" },
+    );
+
+    const runner = readFileSync(
+      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      "utf8",
+    );
+    assert.match(runner, /suiteName === "opening-inventory-cutover"/);
+    assert.match(runner, /buildOpeningStockExecutorTestEnvironment\(suiteName, openingStockExecutorUrl\)/);
+    assert.doesNotMatch(runner, /buildRuntimeEnvironment\([\s\S]*OPENING_STOCK_EXECUTOR_DATABASE_URL/);
+  });
+
+  it("confines inventory-pilot bootstrap access to its approved child suites", () => {
+    const brokerEnvironment = {
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: "/tmp/ogfi-inventory-bootstrap-test.sock",
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: "opaque-test-token",
+      MIGRATOR_DATABASE_URL: "postgresql://migrator:secret@localhost/disposable",
+    };
+    for (const suite of [
+      "inventory-approval",
+      "opening-inventory-cutover",
+      "authorization-procurement-inventory",
+    ]) {
+      assert.equal(shouldStartInventoryPilotBootstrapBroker(suite), true, suite);
+      assert.deepEqual(
+        buildInventoryPilotBootstrapTestEnvironment(suite, brokerEnvironment),
+        {
+          OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET:
+            brokerEnvironment.OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET,
+          OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN:
+            brokerEnvironment.OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN,
+        },
+      );
+    }
+    for (const suite of ["authorization-all", "access-control", "authorization-finance"]) {
+      assert.equal(shouldStartInventoryPilotBootstrapBroker(suite), false, suite);
+      assert.deepEqual(buildInventoryPilotBootstrapTestEnvironment(suite, undefined), {});
+      assert.throws(
+        () => buildInventoryPilotBootstrapTestEnvironment(suite, brokerEnvironment),
+        { message: "INVENTORY_PILOT_BOOTSTRAP_ENVIRONMENT_SUITE_FORBIDDEN" },
+      );
+    }
+
+    const runner = readFileSync(
+      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      "utf8",
+    );
+    assert.match(runner, /shouldStartInventoryPilotBootstrapBroker\(suiteName\)/);
+    assert.match(
+      runner,
+      /buildInventoryPilotBootstrapTestEnvironment\(\s*suiteName,\s*inventoryPilotBootstrap\?\.runtimeEnvironment,\s*\)/,
+    );
+    assert.match(runner, /if \(suiteName === "inventory-approval"\) \{[\s\S]*installInventoryPilotRollbackHarness/);
+    assert.equal(
+      buildInventoryPilotBootstrapTestEnvironment(
+        "authorization-procurement-inventory",
+        brokerEnvironment,
+      ).MIGRATOR_DATABASE_URL,
+      undefined,
+    );
   });
 
   it("passes psql credentials only through a scrubbed PG environment", () => {
@@ -222,6 +309,7 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       adminUrl,
     );
     assert.equal(shouldRunSeedRepeatability("authorization-all"), true);
+    assert.equal(shouldRunSeedRepeatability("opening-inventory-cutover"), true);
     assert.equal(shouldRunSeedRepeatability("access-control"), false);
     assert.equal(env.OGFI_RUN_SEED_REPEATABILITY_TEST, "true");
     assert.equal(env.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME, identity.databaseName);
@@ -276,7 +364,7 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     }
     assert.match(fixture, /:'adversarial_role'/);
     assert.match(fixture, /\^ogfi_adv_/);
-    assert.match(fixture, /adversarial_identity\[2\] <> controlled_identity\[2\]/);
+    assert.match(fixture, /adversarial_identity\[1\] <> controlled_identity\[1\]/);
     assert.match(fixture, /requires PostgreSQL 17/);
     assert.doesNotMatch(fixture, /ogfi_contract_adversarial_role/);
   });

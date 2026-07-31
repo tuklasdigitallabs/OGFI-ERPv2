@@ -11351,6 +11351,284 @@
     ]
   },
   {
+    "id": "opening-inventory/[id]/page.tsx#commandAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/openingInventoryCutovers.ts#requestOpeningInventoryExecutionCommand"
+    ],
+    "callChains": [
+      "commandAction -> server/services/openingInventoryCutovers.ts#requestOpeningInventoryExecutionCommand"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-command-permission",
+      "tenant-company-command-query",
+      "command-requester-segregation",
+      "location-scope",
+      "fresh-privileged-mfa",
+      "idempotency-key",
+      "transactional-command-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-EXECUTION-AUTH-MFA-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryExecutionCommand",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/[id]/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.opening_inventory.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "opening-inventory/[id]/page.tsx#sealAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/openingInventoryCutovers.ts#sealOpeningInventoryCohort"
+    ],
+    "callChains": [
+      "sealAction -> server/services/openingInventoryCutovers.ts#sealOpeningInventoryCohort"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-cohort-query",
+      "endpoint-location-scope",
+      "version-concurrency",
+      "transactional-cohort-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCohort",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/[id]/page.tsx#submitAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/openingInventoryCutovers.ts#submitOpeningInventoryCutoverForApproval"
+    ],
+    "callChains": [
+      "submitAction -> server/services/openingInventoryCutovers.ts#submitOpeningInventoryCutoverForApproval"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-submit-permission",
+      "tenant-company-cutover-query",
+      "location-scope",
+      "approval-routing-segregation",
+      "transactional-approval-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-SUBMIT-SCOPE-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCutover",
+      "ApprovalInstance",
+      "ApprovalInstanceStep",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/page.tsx#createCohortAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort"
+    ],
+    "callChains": [
+      "createCohortAction -> server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-sealed-configuration-query",
+      "endpoint-location-scope",
+      "transactional-cohort-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCohort",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.opening_inventory.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "opening-inventory/prepare/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.opening_inventory.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "opening-inventory/prepare/page.tsx#prepareAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/openingInventoryCutovers.ts#prepareOpeningInventoryCutover"
+    ],
+    "callChains": [
+      "prepareAction -> server/services/openingInventoryCutovers.ts#prepareOpeningInventoryCutover"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-source-query",
+      "endpoint-location-scope",
+      "idempotency-key",
+      "transactional-cutover-lines-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCutover",
+      "OpeningInventoryCutoverLine",
+      "AuditEvent"
+    ]
+  },
+  {
     "id": "project-templates/page.tsx#archiveTemplateAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -14583,7 +14861,7 @@
   {
     "id": "server/services/approvals.ts#approveApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview | permissions.transferApprove | permissions.stockCountReview | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14852,6 +15130,50 @@
     "noMutationControls": [
       "ApprovalInstance",
       "ExpenseRequest",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/approvals.ts#approveOpeningInventoryCutover",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-APPROVAL-PERMISSION-MFA-SOD-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-operations-or-accounting-review-permission",
+      "tenant-company-approval-and-cutover-query",
+      "opening-cutover-prohibited-actor-check",
+      "fresh-privileged-mfa",
+      "transactional-attestation-and-approval"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-APPROVAL-PERMISSION-MFA-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryApprovalAttestation",
+      "OpeningInventoryCutover",
+      "ApprovalInstance",
+      "InventoryMovement",
+      "InventoryBalance",
       "AuditEvent"
     ]
   },
@@ -15287,7 +15609,7 @@
   {
     "id": "server/services/approvals.ts#executeCanonicalApprovalDecision",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview | permissions.transferApprove | permissions.stockCountReview | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15415,7 +15737,7 @@
   {
     "id": "server/services/approvals.ts#rejectApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview | permissions.transferApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15573,7 +15895,7 @@
   {
     "id": "server/services/approvals.ts#returnApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.workforceLeaveApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview | permissions.transferApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.workforceLeaveApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15764,7 +16086,7 @@
   {
     "id": "server/services/attachments.ts#archiveControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15824,7 +16146,7 @@
   {
     "id": "server/services/attachments.ts#authorizeControlledEvidenceSourceAction",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15865,7 +16187,7 @@
   {
     "id": "server/services/attachments.ts#canArchiveControlledEvidenceSource",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage | permissions.openingInventoryPrepare",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15886,7 +16208,7 @@
   {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -15924,7 +16246,7 @@
   {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -16040,7 +16362,7 @@
   {
     "id": "server/services/attachments.ts#linkControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -16078,7 +16400,7 @@
   {
     "id": "server/services/attachments.ts#listControlledEvidenceAttachmentPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -16121,7 +16443,7 @@
   {
     "id": "server/services/attachments.ts#listControlledEvidenceAttachments",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27195,6 +27517,103 @@
     ]
   },
   {
+    "id": "server/services/inventoryPilotApprovalPolicy.ts#classifyInventoryTransferForPilotApproval",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-TRANSFER-CLASSIFIER-ATOMIC-ADMISSION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller-owned-locked-transfer-snapshot",
+      "tenant-company-lineage-consistency",
+      "pilot-endpoint-capability-membership",
+      "sealed-activation-attestation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-TRANSFER-CLASSIFIER-ATOMIC-ADMISSION"
+    ],
+    "noMutationControls": [
+      "classifier is read-only; caller transaction admits no partial transfer, approval, intent, audit, notification, movement, or balance state"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotApprovalPolicy.ts#classifyStockCountAttemptForPilotApproval",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-STOCK-COUNT-CLASSIFIER-ATOMIC-ADMISSION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller-owned-locked-current-attempt-snapshot",
+      "tenant-company-lineage-consistency",
+      "pilot-count-endpoint-capability-membership",
+      "sealed-activation-attestation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-STOCK-COUNT-CLASSIFIER-ATOMIC-ADMISSION"
+    ],
+    "noMutationControls": [
+      "classifier is read-only; caller transaction admits no partial count, approval, intent, audit, notification, movement, or balance state"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotApprovalPolicy.ts#readInventoryPilotApprovalPolicyFromDatabase",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/itemOptionCatalogAdmission.ts#runWithItemOptionCatalogAdmission",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -28410,6 +28829,362 @@
     "noMutationControls": [
       "tenant-company-location-recipient-scope",
       "all-protected-state"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryPrepare",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-sealed-configuration-query",
+      "endpoint-location-scope",
+      "transactional-cohort-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCohort",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#getOpeningInventoryCutoverDetail",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-READ-SCOPE-NO-DISCLOSURE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-view-permission",
+      "tenant-company-record-query",
+      "record-location-non-enumeration"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-READ-SCOPE-NO-DISCLOSURE"
+    ],
+    "noMutationControls": [
+      "read-only opening-inventory detail"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#getOpeningInventoryFormOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryPrepare",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "current-location-scope",
+      "tenant-company-form-options-query"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "read-only opening-inventory form options"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#getOpeningInventoryPreparationFormOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryPrepare",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-cohort-query",
+      "endpoint-location-scope",
+      "source-attempt-non-disclosure"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "read-only opening-inventory preparation facts"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#listOpeningInventoryCutoverPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-READ-SCOPE-NO-DISCLOSURE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-view-permission",
+      "tenant-company-location-query",
+      "selected-location-scope",
+      "server-pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-READ-SCOPE-NO-DISCLOSURE"
+    ],
+    "noMutationControls": [
+      "read-only opening-inventory queue"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#prepareOpeningInventoryCutover",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryPrepare",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-source-query",
+      "endpoint-location-scope",
+      "idempotency-key",
+      "transactional-cutover-lines-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCutover",
+      "OpeningInventoryCutoverLine",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#requestOpeningInventoryExecutionCommand",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryRequestExecute | permissions.openingInventoryRequestActivate | permissions.openingInventoryRequestReverse",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-EXECUTION-AUTH-MFA-SOD-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-command-permission",
+      "tenant-company-command-query",
+      "command-requester-segregation",
+      "location-scope",
+      "fresh-privileged-mfa",
+      "idempotency-key",
+      "transactional-command-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-EXECUTION-AUTH-MFA-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryExecutionCommand",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#sealOpeningInventoryCohort",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryPrepare",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-prepare-permission",
+      "tenant-company-cohort-query",
+      "endpoint-location-scope",
+      "version-concurrency",
+      "transactional-cohort-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCohort",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/openingInventoryCutovers.ts#submitOpeningInventoryCutoverForApproval",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventorySubmit | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-SUBMIT-SCOPE-SOD-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-submit-permission",
+      "tenant-company-cutover-query",
+      "location-scope",
+      "approval-routing-segregation",
+      "transactional-approval-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-OPENING-INVENTORY-SUBMIT-SCOPE-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "OpeningInventoryCutover",
+      "ApprovalInstance",
+      "ApprovalInstanceStep",
+      "AuditEvent"
     ]
   },
   {
@@ -36723,7 +37498,7 @@
   {
     "id": "server/services/stockCounts.ts#submitStockCount",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountSubmit",
+    "permission": "permissions.stockCountSubmit | permissions.stockCountReview",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37427,7 +38202,7 @@
   {
     "id": "server/services/transfers.ts#submitInventoryTransfer",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.transferSubmit",
+    "permission": "permissions.transferSubmit | permissions.transferApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

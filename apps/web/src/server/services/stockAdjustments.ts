@@ -31,7 +31,6 @@ import {
   requireActiveOperationalReasonCode
 } from "./operationalReasonCodes";
 import {
-  getInventoryAdjustmentPolicy,
   getInventoryLotExpiryPolicy,
   inventoryItemLotExpiryRequirements
 } from "./policySettings";
@@ -42,7 +41,7 @@ import {
   type DashboardTaskFilter
 } from "./dashboardTasks";
 
-const manualAdjustmentTypes = ["INCREASE", "DECREASE", "OPENING_BALANCE"] as const;
+const manualAdjustmentTypes = ["INCREASE", "DECREASE"] as const;
 
 const optionalDateSchema = z
   .string()
@@ -146,6 +145,12 @@ export function assertStockAdjustmentCanReverse(
   }
 }
 
+export function assertDedicatedOpeningCutoverRequired(adjustmentType: string) {
+  if (adjustmentType === "OPENING_BALANCE") {
+    throw new Error("OPENING_BALANCE_REQUIRES_DEDICATED_CUTOVER");
+  }
+}
+
 export function assertStockAdjustmentReversalType(adjustmentType: string) {
   if (adjustmentType !== "INCREASE" && adjustmentType !== "DECREASE") {
     throw new Error("STOCK_ADJUSTMENT_REVERSAL_TYPE_NOT_SUPPORTED");
@@ -153,30 +158,13 @@ export function assertStockAdjustmentReversalType(adjustmentType: string) {
 }
 
 export function calculateAdjustmentDelta(
-  adjustmentType: "INCREASE" | "DECREASE" | "OPENING_BALANCE",
+  adjustmentType: "INCREASE" | "DECREASE",
   quantity: number
 ) {
   if (!Number.isFinite(quantity) || quantity <= 0) {
     throw new Error("STOCK_ADJUSTMENT_QUANTITY_INVALID");
   }
   return adjustmentType === "DECREASE" ? -quantity : quantity;
-}
-
-export function assertOpeningBalanceIsPostable(values: {
-  adjustmentType: string;
-  evidenceReference?: string | null | undefined;
-  evidenceRequired?: boolean | undefined;
-  systemQuantityBaseUom: number;
-}) {
-  if (values.adjustmentType !== "OPENING_BALANCE") {
-    return;
-  }
-  if (values.evidenceRequired !== false && !values.evidenceReference?.trim()) {
-    throw new Error("OPENING_BALANCE_EVIDENCE_REQUIRED");
-  }
-  if (values.systemQuantityBaseUom !== 0) {
-    throw new Error("OPENING_BALANCE_EXISTING_STOCK_ACTIVITY");
-  }
 }
 
 export async function nextStockAdjustmentReference(companyId: string) {
@@ -773,7 +761,7 @@ function parseStockAdjustmentLines(formData: FormData) {
 export async function listStockAdjustmentFormOptions(session: SessionContext) {
   await requirePermission(session, permissions.stockAdjustmentCreate);
 
-  const [inventoryLocations, items, reasonCodes, adjustmentPolicy] = await Promise.all([
+  const [inventoryLocations, items, reasonCodes] = await Promise.all([
     prisma.inventoryLocation.findMany({
       where: {
         tenantId: session.context.tenantId,
@@ -795,8 +783,7 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
       },
       orderBy: { itemName: "asc" }
     }),
-    listActiveOperationalReasonCodes(session, "STOCK_ADJUSTMENT"),
-    getInventoryAdjustmentPolicy(session)
+    listActiveOperationalReasonCodes(session, "STOCK_ADJUSTMENT")
   ]);
 
   return {
@@ -813,8 +800,7 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
       trackExpiry: item.trackExpiry
     })),
     adjustmentTypes: manualAdjustmentTypes,
-    reasonCodes,
-    policy: adjustmentPolicy
+    reasonCodes
   };
 }
 
@@ -1098,8 +1084,6 @@ export async function createStockAdjustment(formData: FormData) {
   }
 
   const lineDrafts: StockAdjustmentLineDraft[] = [];
-  const openingBalanceLotKeys = new Set<string>();
-  const adjustmentPolicy = await getInventoryAdjustmentPolicy(session);
   const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
 
   for (const [index, line] of lineValues.entries()) {
@@ -1135,39 +1119,6 @@ export async function createStockAdjustment(formData: FormData) {
       }
     });
     const systemQuantityBaseUom = Number(balance?.qtyOnHand ?? 0);
-
-    assertOpeningBalanceIsPostable({
-      adjustmentType: values.adjustmentType,
-      evidenceReference: line.evidenceReference || values.evidenceReference,
-      evidenceRequired: adjustmentPolicy.openingBalanceEvidenceRequired,
-      systemQuantityBaseUom
-    });
-
-    if (values.adjustmentType === "OPENING_BALANCE") {
-      const openingKey = `${item.id}:${lotKey}`;
-      if (openingBalanceLotKeys.has(openingKey)) {
-        throw new Error("OPENING_BALANCE_ALREADY_EXISTS");
-      }
-      openingBalanceLotKeys.add(openingKey);
-
-      const existingOpeningBalance = await prisma.stockAdjustmentLine.findFirst({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          inventoryLocationId: inventoryLocation.id,
-          itemId: item.id,
-          lotKey,
-          stockAdjustment: {
-            adjustmentType: "OPENING_BALANCE",
-            status: { notIn: ["CANCELLED", "REJECTED", "REVERSED"] }
-          }
-        },
-        select: { id: true }
-      });
-      if (existingOpeningBalance) {
-        throw new Error("OPENING_BALANCE_ALREADY_EXISTS");
-      }
-    }
 
     lineDrafts.push({
       lineNumber: index + 1,
@@ -1263,7 +1214,6 @@ export async function createStockAdjustment(formData: FormData) {
               reasonCode: controlledReasonCode.code,
               reasonLabel: controlledReasonCode.label,
               reasonCodeId: controlledReasonCode.id,
-              openingBalanceCutover: values.adjustmentType === "OPENING_BALANCE",
               approvalAndPostingRequired: true
             }
           }
@@ -1302,6 +1252,7 @@ export async function submitStockAdjustment(formData: FormData) {
   if (!initialAdjustment) {
     throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
   }
+  assertDedicatedOpeningCutoverRequired(initialAdjustment.adjustmentType);
   await assertPrivilegedMfaForAction(session, {
     action: "stock_adjustment.post",
     enforcementScope: "all_sensitive",
@@ -1355,6 +1306,7 @@ export async function submitStockAdjustment(formData: FormData) {
     if (!adjustment || adjustment.lines.length === 0) {
       throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
     }
+    assertDedicatedOpeningCutoverRequired(adjustment.adjustmentType);
     const transactionType = adjustment.sourceStockCountSessionId
       ? "StockCountVarianceAdjustment"
       : "StockAdjustment";
@@ -1506,8 +1458,7 @@ export async function submitStockAdjustment(formData: FormData) {
       locationId: adjustment.inventoryLocation.locationId,
       recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_STOCK_ADJUSTMENT",
-      priority:
-        adjustment.adjustmentType === "OPENING_BALANCE" ? "HIGH" : "NORMAL",
+      priority: "NORMAL",
       title: `Approve Stock Adjustment ${adjustment.publicReference}`,
       body: `${session.user.displayName} submitted ${adjustment.publicReference} for stock-adjustment approval.`,
       deepLink: `/approvals/${approval.id}`,
@@ -1699,6 +1650,7 @@ export async function postStockAdjustment(formData: FormData) {
   if (!adjustment) {
     throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
   }
+  assertDedicatedOpeningCutoverRequired(adjustment.adjustmentType);
   assertAuthorizedLocation(session, adjustment.inventoryLocation.locationId);
   assertStockAdjustmentCanPost(adjustment.status, adjustment.postedAt);
   if (adjustment.lines.length === 0) {
@@ -1780,11 +1732,7 @@ export async function postStockAdjustment(formData: FormData) {
 
       const quantityDeltaBaseUom = Number(line.quantityDeltaBaseUom);
       const movementType =
-        adjustment.adjustmentType === "OPENING_BALANCE"
-          ? "OPENING_BALANCE_IN"
-          : quantityDeltaBaseUom > 0
-            ? "ADJUSTMENT_IN"
-            : "ADJUSTMENT_OUT";
+        quantityDeltaBaseUom > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT";
       const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: line.inventoryLocationId,
         itemId: line.itemId,
@@ -1844,7 +1792,6 @@ export async function postStockAdjustment(formData: FormData) {
         metadata: {
           lineCount: adjustment.lines.length,
           movementIds,
-          openingBalanceCutover: adjustment.adjustmentType === "OPENING_BALANCE",
           totalEstimatedValueImpact: Number(adjustment.totalEstimatedValueImpact),
           reversalRequiredForCorrections: true
         }

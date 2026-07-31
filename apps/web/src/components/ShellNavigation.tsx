@@ -50,6 +50,7 @@ export type ShellActiveNav =
   | "counts"
   | "wastage"
   | "adjustments"
+  | "opening-inventory"
   | "reports"
   | "notifications"
   | "knowledge-base"
@@ -148,6 +149,7 @@ export function getNavigationSections(
   canUseWorkforce = false,
   canViewEvidenceRetention = false,
   inventoryControlPilot = false,
+  canUseOpeningInventory = false,
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -276,7 +278,8 @@ export function getNavigationSections(
     canUseTransfers ||
     canUseCounts ||
     canUseWastage ||
-    canUseStockAdjustments
+    canUseStockAdjustments ||
+    canUseOpeningInventory
       ? [
           {
             id: "inventory",
@@ -365,8 +368,19 @@ export function getNavigationSections(
                     label: "Adjustments",
                     badge: "Adj",
                     icon: Boxes,
-                    disabled: true,
+                  disabled: true,
                   },
+              ...(canUseOpeningInventory
+                ? [
+                    {
+                      label: "Opening Inventory",
+                      href: "/opening-inventory",
+                      activeKey: "opening-inventory" as const,
+                      badge: "Cutover",
+                      icon: ClipboardCheck,
+                    },
+                  ]
+                : []),
             ],
           },
         ]
@@ -931,6 +945,7 @@ export function getMobileOperationalNavItems({
   canViewInventory,
   canViewInventoryLedger,
   canViewEvidenceRetention = false,
+  canUseOpeningInventory = false,
 }: {
   canAdminister: boolean;
   canManageQuotes: boolean;
@@ -945,6 +960,7 @@ export function getMobileOperationalNavItems({
   canViewInventory: boolean;
   canViewInventoryLedger: boolean;
   canViewEvidenceRetention?: boolean;
+  canUseOpeningInventory?: boolean;
 }): MobileOperationalNavItem[] {
   return [
     ...(canUsePurchaseRequests
@@ -985,6 +1001,9 @@ export function getMobileOperationalNavItems({
       : []),
     ...(canUseStockAdjustments
       ? [{ label: "Adjustments", href: "/adjustments", tone: "slate" as const }]
+      : []),
+    ...(canUseOpeningInventory
+      ? [{ label: "Opening inventory", href: "/opening-inventory", tone: "slate" as const }]
       : []),
     ...(canAdminister
       ? [
@@ -1133,7 +1152,8 @@ function getDefaultSection(activeNav: ShellActiveNav) {
     activeNav === "transfers" ||
     activeNav === "counts" ||
     activeNav === "wastage" ||
-    activeNav === "adjustments"
+    activeNav === "adjustments" ||
+    activeNav === "opening-inventory"
   ) {
     return "inventory";
   }
@@ -1223,6 +1243,7 @@ export function ShellNavigation({
   canUseWorkforce,
   canViewEvidenceRetention,
   inventoryControlPilot,
+  canUseOpeningInventory,
   children,
 }: {
   session: SessionContext;
@@ -1250,6 +1271,7 @@ export function ShellNavigation({
   canUseWorkforce: boolean;
   canViewEvidenceRetention: boolean;
   inventoryControlPilot: boolean;
+  canUseOpeningInventory: boolean;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -1284,6 +1306,7 @@ export function ShellNavigation({
         canUseWorkforce,
         canViewEvidenceRetention,
         inventoryControlPilot,
+        canUseOpeningInventory,
       ),
     [
       canAdminister,
@@ -1309,6 +1332,7 @@ export function ShellNavigation({
       canUseWorkforce,
       canViewEvidenceRetention,
       inventoryControlPilot,
+      canUseOpeningInventory,
     ],
   );
   const mobileOperationalItems = getMobileOperationalNavItems({
@@ -1325,6 +1349,7 @@ export function ShellNavigation({
     canViewInventory,
     canViewInventoryLedger,
     canViewEvidenceRetention,
+    canUseOpeningInventory,
   });
   const mobileNavigationItems = sections.flatMap((section) =>
     section.items.filter(

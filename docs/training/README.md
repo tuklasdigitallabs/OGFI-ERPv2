@@ -14,4 +14,5 @@ Use `docs/templates/TRAINING_MODULE_TEMPLATE.md`. Do not use training materials 
 - `docs/training/phase-i-warehouse-storekeeper-quick-start.md`
 - `docs/training/phase-i-purchasing-quick-start.md`
 - `docs/training/phase-i-administrator-setup-guide.md` — administration, access controls, release readiness, privileged MFA evidence, session invalidation, break-glass, and external-security proof references
+- `docs/training/opening-inventory-cutover-pilot-training.md` — local, default-off opening-stock queue, preparation, scope-safe detail access, server-paged activity, command-lifecycle, and recovery walkthrough; not an activation or GO decision
 - `docs/training/phase-1-5-project-tracker-quick-start.md`

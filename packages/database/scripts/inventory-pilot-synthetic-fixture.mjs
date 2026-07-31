@@ -368,12 +368,12 @@ async function proveAdversarialRejection() {
     },
     {
       name: "INVENTORY_BALANCE",
-      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      expected: "INVENTORY_BALANCE_DERIVED_CACHE_WRITE_DENIED",
       mutate: (tx) => tx.inventoryBalance.create({ data: { id: uuid("synthetic-adversarial-balance"), tenantId, companyId, inventoryLocationId: uuid(warehouseInventoryLocation.id), itemId: uuid(item.id), baseUomId: uuid(item.baseUomId), qtyOnHand: "1" } }),
     },
     {
       name: "INVENTORY_MOVEMENT",
-      expected: "FIXTURE_MUST_NOT_CREATE_AUTHORITY_OR_INVENTORY_STATE",
+      expected: "OPENING_INVENTORY_LEDGER_LINEAGE_DENIED",
       mutate: (tx) => tx.inventoryMovement.create({ data: { id: uuid("synthetic-adversarial-movement"), tenantId, companyId, inventoryLocationId: uuid(warehouseInventoryLocation.id), itemId: uuid(item.id), movementType: "OPENING_BALANCE_IN", occurredAt: fixtureEffectiveAt, enteredQuantity: "1", enteredUomId: uuid(item.baseUomId), quantityDeltaBaseUom: "1", baseUomId: uuid(item.baseUomId), sourceDocumentType: "SyntheticAdversarial", sourceDocumentId: uuid("synthetic-adversarial-document"), sourceEventKey: "synthetic-adversarial-movement", postedByUserId: uuid(actor.id) } }),
     },
     {

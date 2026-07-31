@@ -10,14 +10,14 @@ import {
 describe("authorization database safety sentinel", () => {
   const safe = {
     DATABASE_URL:
-      "postgresql://ogfi_test_test_run_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_runtime:secret@localhost:5432/ogfi_test_test_run_1_aaaaaaaaaaaaaaaa?schema=public",
+      "postgresql://ogfi_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_runtime:secret@localhost:5432/ogfi_test_test_run_1_aaaaaaaaaaaaaaaa?schema=public",
     AUTHORIZATION_DATABASE_INTEGRATION: "yes",
     AUTHORIZATION_TEST_DATABASE: "ogfi_test_test_run_1_aaaaaaaaaaaaaaaa",
     AUTHORIZATION_TEST_DATABASE_HOST: "localhost",
     AUTHORIZATION_TEST_DATABASE_PORT: "5432",
     AUTHORIZATION_TEST_RUN_ID: "test-run-1",
     AUTHORIZATION_TEST_RUNTIME_ROLE:
-      "ogfi_test_test_run_1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_runtime",
+      "ogfi_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_runtime",
     AUTHORIZATION_TEST_DATABASE_NONCE_SHA256: "b".repeat(64),
   } satisfies NodeJS.ProcessEnv;
 

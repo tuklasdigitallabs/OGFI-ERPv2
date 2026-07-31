@@ -15,6 +15,8 @@ DECLARE
   owner_role text := current_setting('ogfi.contract.owner_role');
   migrator_role text := current_setting('ogfi.contract.migrator_role');
   runtime_role text := current_setting('ogfi.contract.runtime_role');
+  opening_stock_owner_role text;
+  opening_stock_executor_role text;
   expected_prefix text;
   obj record;
   grantee_obj record;
@@ -42,7 +44,7 @@ BEGIN
       RAISE EXCEPTION 'Disposable database identity is unsafe';
     END IF;
     expected_prefix := regexp_replace(owner_role, '_owner$', '');
-    IF expected_prefix !~ '^ogfi_test_[a-z0-9_]{4,45}$' THEN
+    IF expected_prefix !~ '^ogfi_[a-f0-9]{32}$' THEN
       RAISE EXCEPTION 'Disposable role prefix is unsafe';
     END IF;
   ELSE
@@ -56,6 +58,9 @@ BEGIN
     RAISE EXCEPTION 'Environment-qualified database role contract is invalid';
   END IF;
 
+  opening_stock_owner_role := expected_prefix || '_opening_stock_owner';
+  opening_stock_executor_role := expected_prefix || '_opening_stock_executor';
+
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = owner_role) THEN
     EXECUTE format('CREATE ROLE %I NOLOGIN', owner_role);
   END IF;
@@ -65,10 +70,18 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = runtime_role) THEN
     EXECUTE format('CREATE ROLE %I LOGIN', runtime_role);
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = opening_stock_owner_role) THEN
+    EXECUTE format('CREATE ROLE %I NOLOGIN', opening_stock_owner_role);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = opening_stock_executor_role) THEN
+    EXECUTE format('CREATE ROLE %I LOGIN', opening_stock_executor_role);
+  END IF;
 
   EXECUTE format('ALTER ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD NULL', owner_role);
   EXECUTE format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', migrator_role);
   EXECUTE format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', runtime_role);
+  EXECUTE format('ALTER ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD NULL', opening_stock_owner_role);
+  EXECUTE format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', opening_stock_executor_role);
 
   SELECT oid INTO STRICT owner_oid FROM pg_roles WHERE rolname = owner_role;
   IF EXISTS (
@@ -76,11 +89,11 @@ BEGIN
     FROM pg_auth_members membership
     JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
     JOIN pg_roles member_role ON member_role.oid = membership.member
-    WHERE (granted_role.rolname IN (owner_role, migrator_role, runtime_role)
-        OR member_role.rolname IN (owner_role, migrator_role, runtime_role))
+    WHERE (granted_role.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role)
+        OR member_role.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role))
       AND NOT (
-        granted_role.rolname = owner_role
-        AND member_role.rolname = migrator_role
+        member_role.rolname = migrator_role
+        AND granted_role.rolname IN (owner_role, opening_stock_owner_role)
         AND NOT membership.admin_option
         AND NOT membership.inherit_option
         AND membership.set_option
@@ -90,10 +103,22 @@ BEGIN
     FROM pg_auth_members membership
     JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
     JOIN pg_roles member_role ON member_role.oid = membership.member
-    WHERE granted_role.rolname IN (owner_role, migrator_role, runtime_role)
-       OR member_role.rolname IN (owner_role, migrator_role, runtime_role)
-  ) > 1 THEN
-    RAISE EXCEPTION 'Refusing bootstrap: controlled role membership graph contains an unexpected edge or option. Owner or runtime role membership closure is not empty. Migrator membership must be exactly owner.';
+    WHERE granted_role.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role)
+       OR member_role.rolname IN (owner_role, migrator_role, runtime_role, opening_stock_owner_role, opening_stock_executor_role)
+  ) > 2 THEN
+    RAISE EXCEPTION 'Refusing bootstrap: controlled role membership graph contains an unexpected edge or option. Runtime and opening-stock executor membership closure must be empty. Migrator membership must be SET-only to both owners.';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_auth_members membership
+    JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
+    JOIN pg_roles member_role ON member_role.oid = membership.member
+    WHERE granted_role.rolname = opening_stock_owner_role
+      AND member_role.rolname = migrator_role
+      AND NOT membership.admin_option
+      AND NOT membership.inherit_option
+      AND membership.set_option
+  ) THEN
+    EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', opening_stock_owner_role, migrator_role);
   END IF;
   IF NOT EXISTS (
     SELECT 1
@@ -115,6 +140,7 @@ BEGIN
   -- pg_catalog first makes CREATE TABLE attempt the protected system schema.
   EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO public, pg_catalog', migrator_role, database_name);
   EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO pg_catalog, public', runtime_role, database_name);
+  EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO pg_catalog', opening_stock_executor_role, database_name);
 
   IF contract_scope = 'disposable' AND to_regnamespace('ogfi_disposable_control') IS NOT NULL THEN
     EXECUTE format('GRANT USAGE ON SCHEMA ogfi_disposable_control TO %I, %I', owner_role, migrator_role);

@@ -57,6 +57,7 @@ const permissionByFamily = {
   EmployeeOvertimeRecord: permissions.workforceOvertimeApprove,
   WorkforceSchedule: permissions.workforceScheduleManage,
   AttendanceImportBatch: permissions.workforceAttendanceImportManage,
+  OpeningInventoryCutover: permissions.openingInventoryOperationsReview,
 } as const satisfies Record<SupportedApprovalDocumentType, string>;
 
 /**

@@ -9,9 +9,9 @@ import {
 } from "./approvalRoutingRegistry";
 
 describe("approval routing mapping registry", () => {
-  test("contains exactly the 20 confirmed document types with no fallback", () => {
-    expect(supportedApprovalDocumentTypes).toHaveLength(20);
-    expect(new Set(supportedApprovalDocumentTypes).size).toBe(20);
+  test("contains exactly the confirmed document types with no fallback", () => {
+    expect(supportedApprovalDocumentTypes).toHaveLength(21);
+    expect(new Set(supportedApprovalDocumentTypes).size).toBe(21);
     expect(Object.keys(approvalRoutingPolicies).sort()).toEqual(
       [...supportedApprovalDocumentTypes].sort(),
     );
@@ -52,6 +52,14 @@ describe("approval routing mapping registry", () => {
 
   test("uses the live FinanceCloseRun source status", () => {
     expect(getApprovalRoutingPolicy("FinanceCloseRun").allowedSourceStatuses).toEqual(["CLOSED"]);
+  });
+
+  test("keeps Operations as the first opening-inventory approval authority", () => {
+    expect(getApprovalRoutingPolicy("OpeningInventoryCutover")).toMatchObject({
+      requiredPermissionCode: permissions.openingInventoryOperationsReview,
+      scopeSource: "locationId",
+      allowedSourceStatuses: ["PENDING_APPROVAL"],
+    });
   });
 
   test("accepts the intentional budget pre-review and actionable states", () => {

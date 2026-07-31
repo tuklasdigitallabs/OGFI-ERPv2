@@ -87,7 +87,7 @@ Approval is non-posting. Posting is a separate authorized action after final app
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
 | Decide count-variance posting and generated adjustments | Operations + Warehouse + Finance | Before physical-count completion | Deferred |
-| Decide opening balance cutover workflow | Finance + Warehouse + IT | Before pilot opening stock load | Deferred |
+| Decide opening balance cutover workflow | Finance + Warehouse + IT | Before pilot opening stock load | Confirmed by `DEC-0263`; implementation and activation evidence remain pending |
 | Decide backdated adjustment policy | Finance + Operations | Before period-control release | Deferred |
 | Add user-facing adjustment guidance | Dunong | Before release notes | Complete — see `docs/knowledge-base/warehouse-inventory/understanding-stock-adjustments.md` |
 
@@ -108,3 +108,7 @@ The reversal service now enforces this decision's manual `INCREASE`/`DECREASE` b
 ## Supersession
 
 This decision supersedes only the `DEC-0019` deferral for manual `INCREASE` and `DECREASE` Stock Adjustment approval, posting, and full-document reversal. All other `DEC-0019` deferrals remain active.
+
+`DEC-0263` supersedes this record's opening-balance deferral only. Opening stock
+is not an ordinary `OPENING_BALANCE` Stock Adjustment: the dedicated cohort,
+atomic batch, release, executor, and correction contract in `DEC-0263` applies.

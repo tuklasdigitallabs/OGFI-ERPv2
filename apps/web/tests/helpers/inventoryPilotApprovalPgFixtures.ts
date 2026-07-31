@@ -109,6 +109,86 @@ type SealedPilotRevision = {
   configurationDigest: string;
 };
 
+export async function initializeOpeningInventoryPilotConfiguration(input: {
+  db: PrismaClient;
+  tenantId: string;
+  companyId: string;
+  actorUserId: string;
+  locations: Array<{
+    locationId: string;
+    inventoryLocationId: string;
+  }>;
+  itemIds: string[];
+}): Promise<SealedPilotRevision> {
+  const revisionId = randomUUID();
+  const revisionNumber = 1;
+  const endpoints = input.locations
+    .map(({ inventoryLocationId, locationId }) => ({
+      capability: "OPENING_STOCK_LOCATION" as const,
+      inventoryLocationId,
+      locationId,
+    }))
+    .sort((left, right) =>
+      left.inventoryLocationId.localeCompare(right.inventoryLocationId)
+      || left.locationId.localeCompare(right.locationId),
+    );
+  if (endpoints.length === 0 || new Set(endpoints.map(({ inventoryLocationId }) => inventoryLocationId)).size !== endpoints.length
+    || new Set(endpoints.map(({ locationId }) => locationId)).size !== endpoints.length) {
+    throw new Error("OPENING_INVENTORY_PILOT_LOCATIONS_INVALID");
+  }
+  const items = [...new Set(input.itemIds)]
+    .sort()
+    .map((itemId) => ({ itemId }));
+  if (items.length === 0 || items.length !== input.itemIds.length) {
+    throw new Error("OPENING_INVENTORY_PILOT_ITEMS_INVALID");
+  }
+  const canonicalJson = inventoryPilotCanonicalJson({
+    schemaVersion: 1,
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    revisionNumber,
+    status: "SEALED",
+    sourceDecisionId: "DEC-0263-PG-EXECUTOR",
+    endpoints,
+    items,
+  });
+  const configurationDigest = inventoryPilotDigest(JSON.parse(canonicalJson));
+  await input.db.$transaction(async (tx) => {
+    await tx.inventoryPilotConfigurationRevision.create({ data: {
+      id: revisionId,
+      tenantId: input.tenantId,
+      companyId: input.companyId,
+      revisionNumber,
+      schemaVersion: 1,
+      status: "SEALED",
+      canonicalJson,
+      configurationDigest,
+      sourceDecisionId: "DEC-0263-PG-EXECUTOR",
+      sealedByUserId: input.actorUserId,
+      sealedAt: new Date(),
+    } });
+    await tx.inventoryPilotEndpointMembership.createMany({ data: endpoints.map((endpoint) => ({
+      id: randomUUID(),
+      configurationRevisionId: revisionId,
+      tenantId: input.tenantId,
+      companyId: input.companyId,
+      configurationRevisionNumber: revisionNumber,
+      ...endpoint,
+    })) });
+    await tx.inventoryPilotItemMembership.createMany({
+      data: items.map(({ itemId }) => ({
+        id: randomUUID(),
+        configurationRevisionId: revisionId,
+        tenantId: input.tenantId,
+        companyId: input.companyId,
+        configurationRevisionNumber: revisionNumber,
+        itemId,
+      })),
+    });
+  });
+  return { id: revisionId, revisionNumber, configurationDigest };
+}
+
 export async function createExactSealedRevision(input: PilotConfigurationInput & {
   revisionNumber: number;
   sourceDecisionId: string;

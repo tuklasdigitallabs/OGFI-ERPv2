@@ -46,6 +46,11 @@ describe("role permission catalog metadata", () => {
       group: "Procurement",
       sensitive: true
     });
+    expect(getPermissionPresentation(permissions.openingInventoryPrepare)).toMatchObject({
+      label: "Prepare opening inventory cutovers",
+      group: "Opening Inventory",
+      sensitive: true
+    });
   });
 
   test("defines recommended defaults for configured roles", () => {
@@ -102,6 +107,8 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.evidenceRetentionView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.supplierConfidentialView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.inventoryBalanceView)).toBe(false);
+    expect(isSensitivePermissionCode(permissions.openingInventoryView)).toBe(false);
+    expect(isSensitivePermissionCode(permissions.openingInventoryRequestExecute)).toBe(true);
   });
 
   test("documents Phase 2 restaurant operations permission codes", () => {

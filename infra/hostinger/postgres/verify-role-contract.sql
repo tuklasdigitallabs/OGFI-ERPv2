@@ -13,14 +13,19 @@ DECLARE
   owner_role text := current_setting('ogfi.contract.owner_role');
   migrator_role text := current_setting('ogfi.contract.migrator_role');
   runtime_role text := current_setting('ogfi.contract.runtime_role');
+  opening_stock_owner_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_owner');
+  opening_stock_executor_role text := regexp_replace(owner_role, '_owner$', '_opening_stock_executor');
   protected_table text;
   destructive_privilege text;
   obj record;
   owner_oid oid;
   migrator_oid oid;
   runtime_oid oid;
+  opening_stock_owner_oid oid;
+  opening_stock_executor_oid oid;
   public_schema_oid oid;
   approval_shadow_schema_oid oid;
+  allowed_columns text[];
 BEGIN
   IF current_database() <> database_name THEN RAISE EXCEPTION 'Unexpected database identity'; END IF;
   IF verification_mode = 'runtime' THEN
@@ -37,24 +42,35 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Migrator role attributes are unsafe'; END IF;
   PERFORM 1 FROM pg_roles WHERE rolname = runtime_role AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls;
   IF NOT FOUND THEN RAISE EXCEPTION 'Runtime role attributes are unsafe'; END IF;
+  PERFORM 1 FROM pg_roles WHERE rolname = opening_stock_owner_role AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Opening-stock owner role attributes are unsafe'; END IF;
+  PERFORM 1 FROM pg_roles WHERE rolname = opening_stock_executor_role AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Opening-stock executor role attributes are unsafe'; END IF;
 
   SELECT oid INTO STRICT owner_oid FROM pg_roles WHERE rolname = owner_role;
   SELECT oid INTO STRICT migrator_oid FROM pg_roles WHERE rolname = migrator_role;
   SELECT oid INTO STRICT runtime_oid FROM pg_roles WHERE rolname = runtime_role;
+  SELECT oid INTO STRICT opening_stock_owner_oid FROM pg_roles WHERE rolname = opening_stock_owner_role;
+  SELECT oid INTO STRICT opening_stock_executor_oid FROM pg_roles WHERE rolname = opening_stock_executor_role;
   SELECT oid INTO STRICT public_schema_oid FROM pg_namespace WHERE nspname = 'public';
   IF (SELECT count(*) FROM pg_auth_members
-      WHERE roleid IN (owner_oid, migrator_oid, runtime_oid)
-         OR member IN (owner_oid, migrator_oid, runtime_oid)) <> 1
+      WHERE roleid IN (owner_oid, migrator_oid, runtime_oid, opening_stock_owner_oid, opening_stock_executor_oid)
+         OR member IN (owner_oid, migrator_oid, runtime_oid, opening_stock_owner_oid, opening_stock_executor_oid)) <> 2
      OR NOT EXISTS (
        SELECT 1 FROM pg_auth_members
-       WHERE member = migrator_oid AND roleid = owner_oid
+     WHERE member = migrator_oid AND roleid = owner_oid
+         AND NOT admin_option AND NOT inherit_option AND set_option
+     )
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_auth_members
+       WHERE member = migrator_oid AND roleid = opening_stock_owner_oid
          AND NOT admin_option AND NOT inherit_option AND set_option
      ) THEN
     -- Legacy diagnostic compatibility: Owner or runtime role membership closure is not empty.
     -- Legacy diagnostic compatibility: Migrator membership must be exactly owner.
     -- Every incoming and outgoing controlled-role edge is now part of one
     -- exact graph assertion.
-    RAISE EXCEPTION 'Controlled role membership graph must contain only owner to migrator with ADMIN false, INHERIT false, SET true';
+    RAISE EXCEPTION 'Controlled role membership graph must contain only the two SET-only owner paths to migrator';
   END IF;
   IF NOT pg_has_role(migrator_role, owner_role, 'MEMBER')
      OR NOT pg_has_role(migrator_role, owner_role, 'SET')
@@ -63,7 +79,17 @@ BEGIN
      OR pg_has_role(owner_role, runtime_role, 'MEMBER')
      OR pg_has_role(runtime_role, owner_role, 'MEMBER')
      OR pg_has_role(runtime_role, migrator_role, 'MEMBER')
-     OR pg_has_role(migrator_role, runtime_role, 'MEMBER') THEN
+     OR pg_has_role(migrator_role, runtime_role, 'MEMBER')
+     OR NOT pg_has_role(migrator_role, opening_stock_owner_role, 'MEMBER')
+     OR NOT pg_has_role(migrator_role, opening_stock_owner_role, 'SET')
+     OR pg_has_role(migrator_role, opening_stock_owner_role, 'USAGE')
+     OR pg_has_role(opening_stock_owner_role, migrator_role, 'MEMBER')
+     OR pg_has_role(opening_stock_executor_role, opening_stock_owner_role, 'MEMBER')
+     OR pg_has_role(opening_stock_executor_role, owner_role, 'MEMBER')
+     OR pg_has_role(opening_stock_executor_role, runtime_role, 'MEMBER')
+     OR pg_has_role(runtime_role, opening_stock_executor_role, 'MEMBER')
+     OR pg_has_role(runtime_role, opening_stock_owner_role, 'MEMBER')
+     OR pg_has_role(opening_stock_owner_role, opening_stock_executor_role, 'MEMBER') THEN
     RAISE EXCEPTION 'Controlled effective-role closure differs from the reviewed SET-only owner path';
   END IF;
 
@@ -317,6 +343,7 @@ BEGIN
     SELECT 1 FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proowner <> owner_oid
+      AND p.oid NOT IN ('public.execute_opening_inventory_command(uuid)'::regprocedure, 'public.append_opening_inventory_cohort_seal_event()'::regprocedure)
       AND NOT EXISTS (
         SELECT 1 FROM pg_depend d
         WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
@@ -360,7 +387,7 @@ BEGIN
         'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'::regprocedure,
-        '5476acd44e67de7c5037b5fa137809de', 'plpgsql', false,
+        '545894fd67665c8b6fee2a2729d389e2', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.acquire_approval_routing_producer_barrier_exclusive(uuid,uuid)'::regprocedure,
         '7b52a3ede8f97dd7ecca08eb8ded185c', 'plpgsql', false,
@@ -1592,6 +1619,12 @@ BEGIN
           'public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'
         )
       )
+      AND p.oid <> ALL (ARRAY[
+        'public.is_opening_inventory_executor_session()'::regprocedure,
+        'public.is_opening_inventory_executor_context()'::regprocedure,
+        'public.opening_inventory_utc_json_timestamp(timestamp without time zone)'::regprocedure,
+        'public.assert_opening_inventory_command_requester_segregation(uuid,uuid,"OpeningInventoryExecutionCommandType")'::regprocedure
+      ])
   ) THEN
     RAISE EXCEPTION 'Runtime or PUBLIC can execute a non-extension public routine';
   END IF;
@@ -1715,6 +1748,366 @@ BEGIN
      OR has_database_privilege(runtime_role, database_name, 'CREATE')
      OR has_database_privilege(runtime_role, database_name, 'TEMP') THEN
     RAISE EXCEPTION 'Runtime database or schema privileges are unsafe';
+  END IF;
+  IF has_schema_privilege(opening_stock_executor_role, 'public', 'CREATE')
+     OR NOT has_schema_privilege(opening_stock_executor_role, 'public', 'USAGE')
+     OR has_database_privilege(opening_stock_executor_role, database_name, 'CREATE')
+     OR has_database_privilege(opening_stock_executor_role, database_name, 'TEMP')
+     OR NOT has_database_privilege(opening_stock_executor_role, database_name, 'CONNECT') THEN
+    RAISE EXCEPTION 'Opening-stock executor database or schema privileges are unsafe';
+  END IF;
+  IF has_table_privilege(opening_stock_executor_role, 'public."InventoryMovement"', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+    RAISE EXCEPTION 'Opening-stock executor has direct inventory-movement authority';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+    WHERE d.defaclrole = owner_oid AND acl.grantee = opening_stock_executor_oid
+  ) THEN
+    RAISE EXCEPTION 'Opening-stock executor receives unsafe owner default privileges';
+  END IF;
+
+  FOREACH protected_table IN ARRAY ARRAY['OpeningInventoryCohort','OpeningInventoryCutover','OpeningInventoryCutoverLine','StockCountAttempt','StockCountAttemptLine','StockCountSession','InventoryPilotConfigurationRevision','InventoryPilotEndpointMembership','InventoryPilotItemMembership','CompanyPolicySetting','AuthSession','User','Role','UserRoleAssignment','RolePermission','Permission','UserScopeAssignment','InventoryLocation','ControlledEvidenceAttachment','Attachment','AttachmentScanAttempt','ApprovalInstance','ApprovalInstanceStep','OpeningInventoryApprovalAttestation','OpeningInventoryExecutionCommand','OpeningInventoryCohortEvent','InventoryMovement','InventoryBalance'] LOOP
+    IF NOT has_table_privilege(opening_stock_owner_role, format('public.%I', protected_table), 'SELECT') THEN
+      RAISE EXCEPTION 'Opening-stock owner is missing reviewed SELECT on %', protected_table;
+    END IF;
+    IF has_table_privilege(opening_stock_owner_role, format('public.%I', protected_table), 'DELETE,TRUNCATE,TRIGGER,REFERENCES') THEN
+      RAISE EXCEPTION 'Opening-stock owner has destructive privilege on %', protected_table;
+    END IF;
+  END LOOP;
+  FOREACH protected_table IN ARRAY ARRAY['OpeningInventoryCohort','OpeningInventoryCutover','OpeningInventoryCutoverLine','OpeningInventoryExecutionCommand','InventoryLocation'] LOOP
+    allowed_columns := CASE protected_table
+      WHEN 'OpeningInventoryCohort' THEN ARRAY['status','version','frozenAt','frozenByUserId','activatedAt','activatedByUserId','reversedAt','reversedByUserId','reversalReason','updatedAt']
+      WHEN 'OpeningInventoryCutover' THEN ARRAY['status','version','stagedAt','reconciledAt','reversalRequestedAt','reversedAt','reversalReason','updatedAt']
+      WHEN 'OpeningInventoryCutoverLine' THEN ARRAY['postedMovementId']
+      WHEN 'OpeningInventoryExecutionCommand' THEN ARRAY['status','claimedAt','claimedByExecutor','completedAt','failureCode','failureDetail']
+      ELSE ARRAY['updatedAt']
+    END;
+    IF EXISTS (SELECT 1 FROM pg_attribute attribute WHERE attribute.attrelid = format('public.%I', protected_table)::regclass AND attribute.attnum > 0 AND NOT attribute.attisdropped AND has_column_privilege(opening_stock_owner_role, attribute.attrelid, attribute.attnum, 'UPDATE') IS DISTINCT FROM (attribute.attname = ANY (allowed_columns))) THEN
+      RAISE EXCEPTION 'Opening-stock owner UPDATE column contract drifted on %', protected_table;
+    END IF;
+  END LOOP;
+  FOREACH protected_table IN ARRAY ARRAY['OpeningInventoryReconciliation','OpeningInventoryCohortEvent','InventoryMovement','AuditEvent'] LOOP
+    allowed_columns := CASE protected_table
+      WHEN 'OpeningInventoryReconciliation' THEN ARRAY['cutoverId','tenantId','companyId','inventoryLocationId','reconciliationType','lineCount','quantityDigest','valuationDigest','reconciliationJson','reconciliationDigest','reconciledByUserId','reconciledAt']
+      WHEN 'OpeningInventoryCohortEvent' THEN ARRAY['cohortId','tenantId','companyId','sequenceNumber','eventType','priorEventId','canonicalJson','eventDigest','actorUserId','occurredAt']
+      WHEN 'InventoryMovement' THEN ARRAY['tenantId','companyId','inventoryLocationId','itemId','movementType','occurredAt','enteredQuantity','enteredUomId','quantityDeltaBaseUom','baseUomId','lotNumber','expiryDate','unitCost','totalCost','sourceDocumentType','sourceDocumentId','sourceDocumentLineId','sourceEventKey','reasonCode','notes','postedByUserId']
+      ELSE ARRAY['id','tenantId','companyId','actorUserId','eventType','entityType','entityId','occurredAt','metadata']
+    END;
+    IF EXISTS (SELECT 1 FROM pg_attribute attribute WHERE attribute.attrelid = format('public.%I', protected_table)::regclass AND attribute.attnum > 0 AND NOT attribute.attisdropped AND has_column_privilege(opening_stock_owner_role, attribute.attrelid, attribute.attnum, 'INSERT') IS DISTINCT FROM (attribute.attname = ANY (allowed_columns))) THEN
+      RAISE EXCEPTION 'Opening-stock owner INSERT column contract drifted on %', protected_table;
+    END IF;
+  END LOOP;
+
+  IF to_regclass('public."OpeningInventoryExecutionCommand"') IS NOT NULL THEN
+    IF NOT has_table_privilege(runtime_role, 'public."InventoryBalance"', 'SELECT')
+       OR has_table_privilege(runtime_role, 'public."InventoryBalance"', 'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES')
+       OR has_table_privilege(opening_stock_owner_role, 'public."InventoryBalance"', 'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES')
+       OR has_table_privilege(opening_stock_executor_role, 'public."InventoryBalance"', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES') THEN
+      RAISE EXCEPTION 'InventoryBalance derived-cache table privilege boundary is unsafe';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute attribute
+       WHERE attribute.attrelid = 'public."InventoryBalance"'::regclass
+         AND attribute.attnum > 0 AND NOT attribute.attisdropped
+         AND (has_column_privilege(runtime_role, attribute.attrelid, attribute.attnum, 'INSERT,UPDATE')
+           OR has_column_privilege(opening_stock_owner_role, attribute.attrelid, attribute.attnum, 'INSERT,UPDATE')
+           OR has_column_privilege(opening_stock_executor_role, attribute.attrelid, attribute.attnum, 'SELECT,INSERT,UPDATE'))
+    ) THEN
+      RAISE EXCEPTION 'InventoryBalance derived-cache column privilege boundary is unsafe';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute a
+       WHERE a.attrelid = 'public."OpeningInventoryApprovalAttestation"'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+         AND has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT')
+         AND a.attname <> ALL (ARRAY['id','cutoverId','tenantId','companyId','inventoryLocationId','approvalInstanceId','approvalInstanceStepId','stepOrder','decisionActorUserId','requiredPermissionId','requiredPermissionCode','authSessionId','privilegeEpochAtIssue','mfaVerifiedAt','mfaMode','mfaValidUntil','decision','actedAt','canonicalJson','attestationDigest','createdAt'])
+    ) OR EXISTS (
+      SELECT 1 FROM unnest(ARRAY['id','cutoverId','tenantId','companyId','inventoryLocationId','approvalInstanceId','approvalInstanceStepId','stepOrder','decisionActorUserId','requiredPermissionId','requiredPermissionCode','authSessionId','privilegeEpochAtIssue','mfaVerifiedAt','mfaMode','mfaValidUntil','decision','actedAt','canonicalJson','attestationDigest','createdAt']) column_name
+       WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryApprovalAttestation"', column_name, 'INSERT')
+    ) THEN RAISE EXCEPTION 'OpeningInventoryApprovalAttestation runtime append grant is incomplete or overbroad'; END IF;
+    IF to_regprocedure('public.execute_opening_inventory_command(uuid)') IS NULL THEN
+      RAISE EXCEPTION 'Opening-stock execution command exists without its exact executor routine';
+    END IF;
+    FOREACH protected_table IN ARRAY ARRAY[
+      'OpeningInventoryReconciliation',
+      'OpeningInventoryCohortEvent'
+    ]
+    LOOP
+      PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+      IF NOT FOUND THEN RAISE EXCEPTION '% opening-stock ownership is unsafe', protected_table; END IF;
+      IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT') THEN
+        RAISE EXCEPTION '% required runtime read privilege is missing', protected_table;
+      END IF;
+      FOREACH destructive_privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+      LOOP
+        IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+          RAISE EXCEPTION '% runtime privilege exists on opening-stock table %', destructive_privilege, protected_table;
+        END IF;
+        IF has_table_privilege(opening_stock_executor_role, format('public.%I', protected_table), destructive_privilege)
+           OR has_table_privilege(opening_stock_executor_role, format('public.%I', protected_table), 'SELECT') THEN
+          RAISE EXCEPTION 'Opening-stock executor has direct table authority on %', protected_table;
+        END IF;
+      END LOOP;
+      PERFORM 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table
+        AND NOT t.tgisinternal AND t.tgenabled = 'A';
+      IF NOT FOUND THEN RAISE EXCEPTION '% has no ENABLE ALWAYS opening-stock integrity trigger', protected_table; END IF;
+    END LOOP;
+
+    FOREACH protected_table IN ARRAY ARRAY[
+      'OpeningInventoryCohort',
+      'OpeningInventoryCutover',
+      'OpeningInventoryCutoverLine'
+    ]
+    LOOP
+      PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+      IF NOT FOUND THEN RAISE EXCEPTION '% opening-stock ownership is unsafe', protected_table; END IF;
+      IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT') THEN
+        RAISE EXCEPTION '% required runtime read privilege is missing', protected_table;
+      END IF;
+      FOREACH destructive_privilege IN ARRAY ARRAY['DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+      LOOP
+        IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+          RAISE EXCEPTION '% runtime privilege exists on opening-stock table %', destructive_privilege, protected_table;
+        END IF;
+      END LOOP;
+      IF has_table_privilege(opening_stock_executor_role, format('public.%I', protected_table), 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES') THEN
+        RAISE EXCEPTION 'Opening-stock executor has direct table authority on %', protected_table;
+      END IF;
+    END LOOP;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."OpeningInventoryCohort"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND (
+          (has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT') AND a.attname <> ALL (ARRAY['id','tenantId','companyId','configurationRevisionId','configurationRevisionNumber','configurationDigest','publicReference','predecessorCohortId','generation','effectiveAt','status','canonicalJson','cohortDigest','version','createdByUserId','createdAt','updatedAt']))
+          OR (has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE') AND a.attname <> ALL (ARRAY['status','version','sealedByUserId','sealedAt','cancelledByUserId','cancelledAt','cancellationReason','updatedAt']))
+        )
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCohort runtime column grant exceeds the reviewed draft/approval contract'; END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY['id','tenantId','companyId','configurationRevisionId','configurationRevisionNumber','configurationDigest','publicReference','predecessorCohortId','generation','effectiveAt','status','canonicalJson','cohortDigest','version','createdByUserId','createdAt','updatedAt']) column_name
+      WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryCohort"', column_name, 'INSERT')
+    ) OR EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY['status','version','sealedByUserId','sealedAt','cancelledByUserId','cancelledAt','cancellationReason','updatedAt']) column_name
+      WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryCohort"', column_name, 'UPDATE')
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCohort runtime draft/approval column grant is incomplete'; END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."OpeningInventoryCutover"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND (
+          (has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT') AND a.attname <> ALL (ARRAY['id','cohortId','tenantId','companyId','inventoryLocationId','locationId','stockCountSessionId','stockCountAttemptId','status','version','idempotencyKey','evidenceManifestJson','evidenceDigest','valuationCanonicalJson','valuationDigest','cutoverCanonicalJson','cutoverDigest','requestedByUserId','requestedAt','createdAt','updatedAt']))
+          OR (has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE') AND a.attname <> ALL (ARRAY['status','version','reviewedByUserId','reviewedAt','approvalInstanceId','approvedAt','cancelledAt','cancellationReason','updatedAt']))
+        )
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCutover runtime column grant exceeds the reviewed draft/approval contract'; END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY['id','cohortId','tenantId','companyId','inventoryLocationId','locationId','stockCountSessionId','stockCountAttemptId','status','version','idempotencyKey','evidenceManifestJson','evidenceDigest','valuationCanonicalJson','valuationDigest','cutoverCanonicalJson','cutoverDigest','requestedByUserId','requestedAt','createdAt','updatedAt']) column_name
+      WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryCutover"', column_name, 'INSERT')
+    ) OR EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY['status','version','reviewedByUserId','reviewedAt','approvalInstanceId','approvedAt','cancelledAt','cancellationReason','updatedAt']) column_name
+      WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryCutover"', column_name, 'UPDATE')
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCutover runtime draft/approval column grant is incomplete'; END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."OpeningInventoryCutoverLine"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND (has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT') AND a.attname <> ALL (ARRAY['id','cutoverId','tenantId','companyId','inventoryLocationId','itemId','uomId','stockCountAttemptId','stockCountAttemptLineId','lineNumber','lotKey','lotNumber','expiryDate','sourceSystemQuantityBaseUom','sourceCountedQuantityBaseUom','sourceVarianceQuantityBaseUom','openingQuantityBaseUom','unitCost','openingValue','lineCanonicalJson','lineDigest','createdAt']))
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCutoverLine runtime column grant exceeds the reviewed draft capture contract'; END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY['id','cutoverId','tenantId','companyId','inventoryLocationId','itemId','uomId','stockCountAttemptId','stockCountAttemptLineId','lineNumber','lotKey','lotNumber','expiryDate','sourceSystemQuantityBaseUom','sourceCountedQuantityBaseUom','sourceVarianceQuantityBaseUom','openingQuantityBaseUom','unitCost','openingValue','lineCanonicalJson','lineDigest','createdAt']) column_name
+      WHERE NOT has_column_privilege(runtime_role, 'public."OpeningInventoryCutoverLine"', column_name, 'INSERT')
+    ) THEN RAISE EXCEPTION 'OpeningInventoryCutoverLine runtime draft capture column grant is incomplete'; END IF;
+
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = 'OpeningInventoryExecutionCommand' AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION 'OpeningInventoryExecutionCommand ownership is unsafe'; END IF;
+    IF NOT has_table_privilege(runtime_role, 'public."OpeningInventoryExecutionCommand"', 'SELECT')
+       OR NOT has_table_privilege(runtime_role, 'public."OpeningInventoryExecutionCommand"', 'INSERT') THEN
+      RAISE EXCEPTION 'OpeningInventoryExecutionCommand runtime append privilege is missing';
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, 'public."OpeningInventoryExecutionCommand"', destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on OpeningInventoryExecutionCommand', destructive_privilege;
+      END IF;
+      IF has_table_privilege(opening_stock_executor_role, 'public."OpeningInventoryExecutionCommand"', destructive_privilege)
+         OR has_table_privilege(opening_stock_executor_role, 'public."OpeningInventoryExecutionCommand"', 'SELECT,INSERT') THEN
+        RAISE EXCEPTION 'Opening-stock executor has direct command-table authority';
+      END IF;
+    END LOOP;
+    PERFORM 1
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'OpeningInventoryExecutionCommand'
+      AND NOT t.tgisinternal AND t.tgenabled = 'A';
+    IF NOT FOUND THEN RAISE EXCEPTION 'OpeningInventoryExecutionCommand has no ENABLE ALWAYS integrity trigger'; END IF;
+    PERFORM 1 FROM pg_proc routine
+      WHERE routine.oid = 'public.guard_opening_inventory_execution_command_scope()'::regprocedure
+        AND routine.proowner = owner_oid AND NOT routine.prosecdef
+        AND routine.pronargs = 0 AND routine.prorettype = 'trigger'::regtype
+        AND routine.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = '16552c4b33a97941a91d23a3a9948cd102894937662c062c56cfae20f24d8f7c';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Opening-stock command scope trigger routine contract is unsafe'; END IF;
+
+    IF EXISTS (
+      SELECT expected.table_name
+      FROM (VALUES
+        ('OpeningInventoryCohort', 'OpeningInventoryCohort_transition_trg', 'public.guard_opening_inventory_cohort()'::regprocedure),
+        ('OpeningInventoryCohort', 'OpeningInventoryCohort_seal_event_trg', 'public.append_opening_inventory_cohort_seal_event()'::regprocedure),
+        ('OpeningInventoryCutover', 'OpeningInventoryCutover_transition_trg', 'public.guard_opening_inventory_cutover()'::regprocedure),
+        ('OpeningInventoryCutoverLine', 'OpeningInventoryCutoverLine_append_only_trg', 'public.guard_opening_inventory_cutover_line()'::regprocedure),
+        ('OpeningInventoryReconciliation', 'OpeningInventoryReconciliation_append_only_trg', 'public.guard_opening_inventory_reconciliation()'::regprocedure),
+        ('OpeningInventoryApprovalAttestation', 'OpeningInventoryApprovalAttestation_append_only_trg', 'public.guard_opening_inventory_approval_attestation()'::regprocedure),
+        ('OpeningInventoryCohortEvent', 'OpeningInventoryCohortEvent_append_only_trg', 'public.guard_opening_inventory_cohort_event()'::regprocedure),
+        ('OpeningInventoryExecutionCommand', 'OpeningInventoryExecutionCommand_scope_trg', 'public.guard_opening_inventory_execution_command_scope()'::regprocedure),
+        ('OpeningInventoryExecutionCommand', 'OpeningInventoryExecutionCommand_transition_trg', 'public.guard_opening_inventory_execution_command()'::regprocedure),
+        ('InventoryMovement', '00_OpeningInventoryMovement_fence_trg', 'public.guard_opening_inventory_movement_fence()'::regprocedure),
+        ('InventoryMovement', '90_InventoryMovement_balance_cache_trg', 'public.apply_inventory_movement_to_balance()'::regprocedure),
+        ('InventoryBalance', 'InventoryBalance_derived_cache_guard_trg', 'public.guard_inventory_balance_derived_cache()'::regprocedure)
+      ) AS expected(table_name, trigger_name, function_oid)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = expected.table_name
+          AND t.tgname = expected.trigger_name AND NOT t.tgisinternal
+          AND t.tgenabled = 'A' AND t.tgfoid = expected.function_oid
+      )
+    ) THEN
+      RAISE EXCEPTION 'Opening-stock integrity trigger contract drifted';
+    END IF;
+    IF (SELECT count(*) FROM pg_trigger trigger_record
+          WHERE trigger_record.tgrelid = 'public."InventoryBalance"'::regclass
+            AND NOT trigger_record.tgisinternal) <> 1
+       OR NOT EXISTS (
+         SELECT 1 FROM pg_trigger trigger_record
+          WHERE trigger_record.tgrelid = 'public."InventoryBalance"'::regclass
+            AND trigger_record.tgname = 'InventoryBalance_derived_cache_guard_trg'
+            AND trigger_record.tgenabled = 'A' AND trigger_record.tgtype = 31
+       )
+       OR NOT EXISTS (
+         SELECT 1 FROM pg_trigger trigger_record
+          WHERE trigger_record.tgrelid = 'public."InventoryMovement"'::regclass
+            AND trigger_record.tgname = '90_InventoryMovement_balance_cache_trg'
+            AND trigger_record.tgenabled = 'A' AND trigger_record.tgtype = 5
+    ) THEN
+      RAISE EXCEPTION 'Inventory ledger-to-balance sole-trigger graph drifted';
+    END IF;
+    PERFORM 1 FROM pg_proc routine
+      WHERE routine.oid = 'public.guard_opening_inventory_movement_fence()'::regprocedure
+        AND routine.proowner = owner_oid AND NOT routine.prosecdef
+        AND routine.pronargs = 0 AND routine.prorettype = 'trigger'::regtype
+        AND routine.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = '7e62eb6b5923cdb8f0182024e8fc1629b7c8f2e771424fd2f00cb0563e54594e';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Inventory movement location/fence trigger routine contract is unsafe'; END IF;
+    PERFORM 1 FROM pg_proc routine
+      WHERE routine.oid = 'public.apply_inventory_movement_to_balance()'::regprocedure
+        AND routine.proowner = owner_oid AND routine.prosecdef
+        AND routine.pronargs = 0 AND routine.prorettype = 'trigger'::regtype
+        AND routine.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = '00bb66895c1f3fe48c5772fa893ad3c993d47cc3684182d9e30c345ce9ed4659';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Inventory movement balance-cache writer routine contract is unsafe'; END IF;
+    PERFORM 1 FROM pg_proc routine
+      WHERE routine.oid = 'public.guard_inventory_balance_derived_cache()'::regprocedure
+        AND routine.proowner = owner_oid AND NOT routine.prosecdef
+        AND routine.pronargs = 0 AND routine.prorettype = 'trigger'::regtype
+        AND routine.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = '9aa7cc47d8ae982dd2c8156ae0e9f226878c386b87394e720aae31514e662fdc';
+    IF NOT FOUND THEN RAISE EXCEPTION 'InventoryBalance derived-cache guard routine contract is unsafe'; END IF;
+    IF EXISTS (
+      SELECT 1 FROM unnest(ARRAY[
+        'public.guard_opening_inventory_movement_fence()'::regprocedure,
+        'public.apply_inventory_movement_to_balance()'::regprocedure,
+        'public.guard_inventory_balance_derived_cache()'::regprocedure
+      ]) protected_routine(function_oid)
+      JOIN pg_proc routine ON routine.oid = protected_routine.function_oid
+      WHERE has_function_privilege(runtime_role, routine.oid, 'EXECUTE')
+         OR has_function_privilege(opening_stock_owner_role, routine.oid, 'EXECUTE')
+         OR has_function_privilege(opening_stock_executor_role, routine.oid, 'EXECUTE')
+         OR EXISTS (
+           SELECT 1 FROM aclexplode(coalesce(routine.proacl, acldefault('f', routine.proowner))) acl
+            WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+         )
+    ) THEN
+      RAISE EXCEPTION 'Inventory derived-cache trigger routine is directly callable';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM unnest(ARRAY[
+        'public.is_opening_inventory_executor_session()'::regprocedure,
+        'public.is_opening_inventory_executor_context()'::regprocedure,
+        'public.opening_inventory_utc_json_timestamp(timestamp without time zone)'::regprocedure,
+        'public.assert_opening_inventory_command_requester_segregation(uuid,uuid,"OpeningInventoryExecutionCommandType")'::regprocedure
+      ]) helper(function_oid)
+      JOIN pg_proc p ON p.oid = helper.function_oid
+      WHERE NOT has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+         OR has_function_privilege(opening_stock_executor_role, p.oid, 'EXECUTE')
+         OR EXISTS (
+           SELECT 1
+           FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+           WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+         )
+    ) THEN
+      RAISE EXCEPTION 'Opening-stock runtime helper ACL contract is incomplete or overbroad';
+    END IF;
+
+    PERFORM 1 FROM pg_proc p
+      WHERE p.oid = 'public.execute_opening_inventory_command(uuid)'::regprocedure
+        AND p.proowner = opening_stock_owner_oid
+        AND p.prosecdef
+        AND p.pronargs = 1
+        AND p.proargtypes = '2950'::oidvector
+        AND p.pronargdefaults = 0
+        AND p.prorettype = 'text'::regtype
+        AND p.proconfig = ARRAY['search_path=pg_catalog']::text[]
+        AND encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex') = 'b52bd90e8d50f9697cecc9137cf4f829086a8ba4df78818d93098129bc07cfdd';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Opening-stock executor routine catalog contract is unsafe'; END IF;
+    IF NOT has_function_privilege(opening_stock_executor_role, 'public.execute_opening_inventory_command(uuid)', 'EXECUTE')
+       OR has_function_privilege(runtime_role, 'public.execute_opening_inventory_command(uuid)', 'EXECUTE')
+       OR EXISTS (
+         SELECT 1 FROM pg_proc p,
+           LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+         WHERE p.oid = 'public.execute_opening_inventory_command(uuid)'::regprocedure
+           AND acl.privilege_type = 'EXECUTE'
+           AND (acl.grantee = 0 OR acl.grantee NOT IN (opening_stock_owner_oid, opening_stock_executor_oid))
+       ) THEN
+      RAISE EXCEPTION 'Opening-stock executor routine ACL boundary is unsafe';
+    END IF;
+    PERFORM 1 FROM pg_proc p
+      WHERE p.oid = 'public.append_opening_inventory_cohort_seal_event()'::regprocedure
+        AND p.proowner = opening_stock_owner_oid
+        AND p.prosecdef
+        AND p.pronargs = 0
+        AND p.prorettype = 'trigger'::regtype
+        AND p.proconfig = ARRAY['search_path=pg_catalog']::text[]
+        AND encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex') = '728a169e4c17fcffcaddca8e8c45117ea983ff8c693d7ccea4a139777f86a0bc';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Opening-stock sealed-event trigger routine contract is unsafe'; END IF;
+    IF has_function_privilege(runtime_role, 'public.append_opening_inventory_cohort_seal_event()', 'EXECUTE')
+       OR has_function_privilege(opening_stock_executor_role, 'public.append_opening_inventory_cohort_seal_event()', 'EXECUTE')
+       OR EXISTS (
+         SELECT 1 FROM pg_proc p,
+           LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+         WHERE p.oid = 'public.append_opening_inventory_cohort_seal_event()'::regprocedure
+           AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+       ) THEN
+      RAISE EXCEPTION 'Opening-stock sealed-event trigger is callable outside its table trigger';
+    END IF;
   END IF;
   IF has_table_privilege(runtime_role, 'public._prisma_migrations', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE') THEN
     RAISE EXCEPTION 'Runtime can access Prisma migration history';

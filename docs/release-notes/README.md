@@ -12,3 +12,4 @@ Release notes do not replace source-of-truth specifications, technical deploymen
 - `docs/release-notes/phase-3-controlled-foundation-readiness-summary.md`
 - `docs/release-notes/phase-i-phase-1-5-release-readiness-summary.md`
 - `docs/release-notes/phase-1-po-approval-foundation.md`
+- `docs/release-notes/2026-07-31-immutable-opening-inventory-cutover-local-foundation.md` — local-only opening-inventory workspace foundation with scope-safe detail access and server-paged activity; not a UAT, staging, VPS, or production release

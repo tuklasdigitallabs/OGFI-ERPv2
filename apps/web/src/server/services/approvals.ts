@@ -62,6 +62,8 @@ import {
   assertPaymentRequestApprovalPolicyConfirmed
 } from "./approvalDecisionMode";
 import { acquireApprovalProducerBarrierShared } from "./approvalProducerBarrier";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import { getMfaStepUpMinutes } from "./authentication";
 import {
   classifyInventoryTransferForPilotApproval,
   classifyStockCountAttemptForPilotApproval,
@@ -165,7 +167,8 @@ export type ApprovalDetail = ApprovalQueueItem & {
     | "EmployeeLeaveRequest"
     | "EmployeeOvertimeRecord"
     | "WorkforceSchedule"
-    | "AttendanceImportBatch";
+    | "AttendanceImportBatch"
+    | "OpeningInventoryCutover";
   justification: string;
   quantity: number;
   uomCode: string;
@@ -236,7 +239,8 @@ const approvalPermissionByDocumentType: Record<string, string> = {
   EmployeeLeaveRequest: permissions.workforceLeaveApprove,
   EmployeeOvertimeRecord: permissions.workforceOvertimeApprove,
   WorkforceSchedule: permissions.workforceScheduleManage,
-  AttendanceImportBatch: permissions.workforceAttendanceImportManage
+  AttendanceImportBatch: permissions.workforceAttendanceImportManage,
+  OpeningInventoryCutover: permissions.openingInventoryOperationsReview,
 };
 
 const wastagePolicyFlagLabels: Record<string, string> = {
@@ -1707,6 +1711,44 @@ async function assertApprovalScope(session: SessionContext, locationId: string) 
   if (!(await hasApprovalScope(session, locationId))) {
     throw new Error("APPROVAL_SCOPE_DENIED");
   }
+}
+
+async function assertApprovalScopeInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  locationId: string,
+) {
+  const now = new Date();
+  const location = await tx.location.findFirst({
+    where: {
+      id: locationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE",
+    },
+    select: { companyId: true, brandId: true },
+  });
+  if (!location) throw new Error("APPROVAL_SCOPE_DENIED");
+  const assignment = await tx.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      AND: [
+        { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+        {
+          OR: [
+            { scopeType: "LOCATION", scopeId: locationId },
+            { scopeType: "COMPANY", scopeId: location.companyId },
+            ...(location.brandId ? [{ scopeType: "BRAND" as const, scopeId: location.brandId }] : []),
+          ],
+        },
+      ],
+      accessLevel: { in: ["APPROVE", "MANAGE"] },
+    },
+    select: { id: true },
+  });
+  if (!assignment) throw new Error("APPROVAL_SCOPE_DENIED");
 }
 
 async function hasApprovalScope(session: SessionContext, locationId: string) {
@@ -7284,6 +7326,290 @@ export async function approvePurchaseOrderAmendment(formData: FormData) {
   });
 }
 
+async function findOpeningInventoryCutoverApproval(
+  session: SessionContext,
+  approvalInstanceId: string,
+) {
+  const approval = await prisma.approvalInstance.findFirst({
+    where: {
+      id: approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "OpeningInventoryCutover",
+      status: "PENDING",
+    },
+    include: {
+      steps: { where: { status: "PENDING" }, orderBy: { stepOrder: "asc" } },
+    },
+  });
+  const step = approval?.steps[0];
+  if (!approval || !step || approval.currentStepOrder !== step.stepOrder) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+  const cutover = await prisma.openingInventoryCutover.findFirst({
+    where: {
+      id: approval.documentId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      status: "PENDING_APPROVAL",
+    },
+    select: {
+      id: true,
+      locationId: true,
+      requestedByUserId: true,
+      reviewedByUserId: true,
+      version: true,
+      cutoverDigest: true,
+      stockCountAttempt: {
+        select: {
+          createdByUserId: true,
+          assignedToUserId: true,
+          reviewedByUserId: true,
+          lines: { select: { countedByUserId: true } },
+        },
+      },
+    },
+  });
+  if (!cutover) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  return { approval, step, cutover };
+}
+
+function openingInventoryApprovalPermission(stepOrder: number, firstStepOrder: number) {
+  return stepOrder === firstStepOrder
+    ? permissions.openingInventoryOperationsReview
+    : permissions.openingInventoryAccountingReview;
+}
+
+function openingInventoryProhibitedActorIds(cutover: {
+  requestedByUserId: string;
+  reviewedByUserId: string | null;
+  stockCountAttempt: {
+    createdByUserId: string;
+    assignedToUserId: string | null;
+    reviewedByUserId: string | null;
+    lines: Array<{ countedByUserId: string | null }>;
+  };
+}) {
+  return Array.from(new Set([
+    cutover.requestedByUserId,
+    cutover.reviewedByUserId,
+    cutover.stockCountAttempt.createdByUserId,
+    cutover.stockCountAttempt.assignedToUserId,
+    cutover.stockCountAttempt.reviewedByUserId,
+    ...cutover.stockCountAttempt.lines.map((line) => line.countedByUserId),
+  ].filter((value): value is string => Boolean(value))));
+}
+
+async function lockOpeningInventoryCutoverApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { approvalInstanceId: string; cutoverId: string; expectedVersion: number },
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    locationId: string;
+    requestedByUserId: string;
+    reviewedByUserId: string | null;
+    version: number;
+    status: string;
+    approvalInstanceId: string | null;
+  }>>`
+    SELECT cutover.id, cutover."locationId", cutover."requestedByUserId",
+           cutover."reviewedByUserId", cutover.version, cutover.status::text,
+           cutover."approvalInstanceId"
+      FROM "OpeningInventoryCutover" cutover
+     WHERE cutover.id = ${input.cutoverId}::uuid
+       AND cutover."tenantId" = ${session.context.tenantId}::uuid
+       AND cutover."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF cutover
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "PENDING_APPROVAL" || source.version !== input.expectedVersion || source.approvalInstanceId !== input.approvalInstanceId) {
+    throw new Error("OPENING_INVENTORY_CONCURRENT_MODIFICATION");
+  }
+  const graph = await tx.$queryRaw<Array<{ id: string; currentStepOrder: number | null }>>`
+    SELECT ai.id, ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+     WHERE ai.id = ${input.approvalInstanceId}::uuid
+       AND ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+       AND ai."documentType" = 'OpeningInventoryCutover'
+       AND ai."documentId" = ${input.cutoverId}::uuid
+       AND ai.status = 'PENDING'::"ApprovalStatus"
+     FOR UPDATE OF ai
+  `;
+  if (!graph[0]) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT step.id
+      FROM "ApprovalInstanceStep" step
+     WHERE step."approvalInstanceId" = ${input.approvalInstanceId}::uuid
+     ORDER BY step."stepOrder" ASC, step.id ASC
+     FOR UPDATE OF step
+  `;
+  return source;
+}
+
+async function openingInventoryApprovalAttestationContext(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { cutoverId: string; inventoryLocationId: string; approvalInstanceId: string; approvalInstanceStepId: string; stepOrder: number; requiredPermissionCode: string },
+  mfaMode: string,
+) {
+  const authSessionId = session.authentication?.sessionId;
+  if (!authSessionId) throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+  const [permission, authSession] = await Promise.all([
+    tx.permission.findFirst({ where: { code: input.requiredPermissionCode }, select: { id: true } }),
+    tx.authSession.findFirst({
+      where: { id: authSessionId, tenantId: session.context.tenantId, userId: session.user.id, status: "ACTIVE" },
+      select: { id: true, privilegeEpochAtIssue: true, mfaAuthenticatedAt: true, assuranceLevel: true, idleExpiresAt: true, absoluteExpiresAt: true },
+    }),
+  ]);
+  if (!permission || !authSession?.mfaAuthenticatedAt || mfaMode !== "runtime_mfa") throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+  const mfaValidUntil = new Date(Math.min(
+    authSession.mfaAuthenticatedAt.getTime() + getMfaStepUpMinutes() * 60_000,
+    authSession.idleExpiresAt.getTime(),
+    authSession.absoluteExpiresAt.getTime(),
+  ));
+  if (mfaValidUntil <= new Date()) throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+  return { permissionId: permission.id, authSession, mfaMode, mfaValidUntil, input };
+}
+
+export async function approveOpeningInventoryCutover(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = decisionSchema.parse(Object.fromEntries(formData));
+  const { approval, step, cutover } = await findOpeningInventoryCutoverApproval(session, values.approvalInstanceId);
+  const firstStep = await prisma.approvalInstanceStep.findFirst({
+    where: { approvalInstanceId: approval.id },
+    orderBy: { stepOrder: "asc" },
+    select: { stepOrder: true },
+  });
+  if (!firstStep) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  const requiredPermissionCode = openingInventoryApprovalPermission(step.stepOrder, firstStep.stepOrder);
+  await requirePermission(session, requiredPermissionCode);
+  // Reject a stale or adjacent-scope approver before it can wait on the producer barrier.
+  await assertApprovalScope(session, cutover.locationId);
+  await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, { tenantId: session.context.tenantId, companyId: session.context.companyId, documentType: "OpeningInventoryCutover" });
+    const source = await lockOpeningInventoryCutoverApprovalSource(tx, session, { approvalInstanceId: approval.id, cutoverId: cutover.id, expectedVersion: cutover.version });
+    await assertApprovalScopeInTransaction(tx, session, source.locationId);
+    const prohibitedApproverUserIds = openingInventoryProhibitedActorIds(cutover);
+    if (step.stepOrder === firstStep.stepOrder) {
+      const accountingStep = await tx.approvalInstanceStep.findFirst({
+        where: { approvalInstanceId: approval.id, status: "WAITING" },
+        orderBy: { stepOrder: "asc" },
+        select: { id: true },
+      });
+      if (!accountingStep) throw new Error("APPROVAL_NOT_ACTIONABLE");
+      await tx.approvalInstanceStepProhibitedActor.createMany({
+        data: [{ approvalInstanceStepId: accountingStep.id, userId: session.user.id, reasonCode: "OPERATIONS_APPROVER" }],
+        skipDuplicates: true,
+      });
+    }
+    await assertPrivilegedMfaForAction(session, { action: "opening_inventory.approval_decision", enforcementScope: "all_sensitive", permissionCode: requiredPermissionCode, entityType: "OpeningInventoryCutover", entityId: cutover.id, reason: "Opening inventory approval is a sensitive cutover control." }, { transaction: tx, forceEnforcement: true });
+    const attestation = await openingInventoryApprovalAttestationContext(tx, session, {
+      cutoverId: cutover.id,
+      inventoryLocationId: cutover.locationId,
+      approvalInstanceId: approval.id,
+      approvalInstanceStepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode,
+    }, "runtime_mfa");
+    const result = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode,
+      locationId: source.locationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds,
+      notification: { recipientUserIds: [], publicReference: cutover.id, locationName: source.locationId, entityLabel: "Opening inventory cutover" },
+      audit: { eventType: "opening_inventory.approval_step_approved", entityType: "OpeningInventoryCutover", entityId: cutover.id, metadata: { requiredPermissionCode, sourceMutationDeferred: true } },
+    });
+    const attestationCanonicalJson = JSON.stringify({
+      approvalInstanceId: approval.id,
+      approvalInstanceStepId: step.id,
+      attestationVersion: 1,
+      actedAt: result.actedAt.toISOString(),
+      authSessionId: attestation.authSession.id,
+      cutoverDigest: cutover.cutoverDigest,
+      cutoverId: cutover.id,
+      decision: "APPROVED",
+      decisionActorUserId: session.user.id,
+      inventoryLocationId: cutover.locationId,
+      mfaMode: attestation.mfaMode,
+      mfaValidUntil: attestation.mfaValidUntil.toISOString(),
+      mfaVerifiedAt: attestation.authSession.mfaAuthenticatedAt!.toISOString(),
+      privilegeEpochAtIssue: attestation.authSession.privilegeEpochAtIssue,
+      requiredPermissionCode,
+      requiredPermissionId: attestation.permissionId,
+      stepOrder: step.stepOrder,
+    });
+    await tx.openingInventoryApprovalAttestation.create({ data: {
+      cutoverId: cutover.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      inventoryLocationId: cutover.locationId,
+      approvalInstanceId: approval.id,
+      approvalInstanceStepId: step.id,
+      stepOrder: step.stepOrder,
+      decisionActorUserId: session.user.id,
+      requiredPermissionId: attestation.permissionId,
+      requiredPermissionCode,
+      authSessionId: attestation.authSession.id,
+      privilegeEpochAtIssue: attestation.authSession.privilegeEpochAtIssue,
+      mfaVerifiedAt: attestation.authSession.mfaAuthenticatedAt!,
+      mfaMode: attestation.mfaMode,
+      mfaValidUntil: attestation.mfaValidUntil,
+      actedAt: result.actedAt,
+      canonicalJson: attestationCanonicalJson,
+      attestationDigest: createHash("sha256").update(attestationCanonicalJson).digest("hex"),
+    } });
+    if (!result.isFinalStep) return;
+    const updated = await tx.openingInventoryCutover.updateMany({
+      where: { id: cutover.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_APPROVAL", version: source.version, approvalInstanceId: approval.id },
+      data: { status: "APPROVED", approvedAt: result.actedAt, reviewedByUserId: session.user.id, reviewedAt: result.actedAt, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new Error("OPENING_INVENTORY_CONCURRENT_MODIFICATION");
+    await tx.auditEvent.create({ data: { tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id, eventType: "opening_inventory.cutover_approved", entityType: "OpeningInventoryCutover", entityId: cutover.id, beforeData: { status: "PENDING_APPROVAL", version: source.version }, afterData: { status: "APPROVED", version: source.version + 1 }, metadata: { approvalInstanceId: approval.id, cutoverDigest: cutover.cutoverDigest, nonPostingApproval: true } } });
+  });
+}
+
+async function closeOpeningInventoryCutoverWithDecision(
+  formData: FormData,
+  decisionStatus: "RETURNED" | "REJECTED",
+) {
+  const session = await requireSessionContext();
+  const values = decisionSchema.parse(Object.fromEntries(formData));
+  const { approval, step, cutover } = await findOpeningInventoryCutoverApproval(session, values.approvalInstanceId);
+  const firstStep = await prisma.approvalInstanceStep.findFirst({ where: { approvalInstanceId: approval.id }, orderBy: { stepOrder: "asc" }, select: { stepOrder: true } });
+  if (!firstStep) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  const requiredPermissionCode = openingInventoryApprovalPermission(step.stepOrder, firstStep.stepOrder);
+  await requirePermission(session, requiredPermissionCode);
+  // Reject a stale or adjacent-scope approver before it can wait on the producer barrier.
+  await assertApprovalScope(session, cutover.locationId);
+  await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, { tenantId: session.context.tenantId, companyId: session.context.companyId, documentType: "OpeningInventoryCutover" });
+    const source = await lockOpeningInventoryCutoverApprovalSource(tx, session, { approvalInstanceId: approval.id, cutoverId: cutover.id, expectedVersion: cutover.version });
+    await assertApprovalScopeInTransaction(tx, session, source.locationId);
+    const prohibitedApproverUserIds = openingInventoryProhibitedActorIds(cutover);
+    await assertPrivilegedMfaForAction(session, { action: "opening_inventory.approval_decision", enforcementScope: "all_sensitive", permissionCode: requiredPermissionCode, entityType: "OpeningInventoryCutover", entityId: cutover.id, reason: "Opening inventory approval is a sensitive cutover control." }, { transaction: tx, forceEnforcement: true });
+    const result = await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder, requiredPermissionCode, locationId: source.locationId, remarks: values.remarks, prohibitedApproverUserIds,
+      notification: { recipientUserIds: [], publicReference: cutover.id, locationName: source.locationId, entityLabel: "Opening inventory cutover" },
+      audit: { eventType: "opening_inventory.approval_closed", entityType: "OpeningInventoryCutover", entityId: cutover.id, metadata: { requiredPermissionCode, decisionStatus, sourceMutationDeferred: true } },
+      decisionStatus,
+    });
+    const nextStatus = decisionStatus === "RETURNED" ? "RETURNED" : "REJECTED";
+    const updated = await tx.openingInventoryCutover.updateMany({
+      where: { id: cutover.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_APPROVAL", version: source.version, approvalInstanceId: approval.id },
+      data: { status: nextStatus, reviewedByUserId: session.user.id, reviewedAt: result.actedAt, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) throw new Error("OPENING_INVENTORY_CONCURRENT_MODIFICATION");
+    await tx.auditEvent.create({ data: { tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id, eventType: `opening_inventory.cutover_${nextStatus.toLowerCase()}`, entityType: "OpeningInventoryCutover", entityId: cutover.id, beforeData: { status: "PENDING_APPROVAL", version: source.version }, afterData: { status: nextStatus, version: source.version + 1 }, metadata: { approvalInstanceId: approval.id, remarks: values.remarks ?? null, cutoverDigest: cutover.cutoverDigest, nonPostingApproval: true } } });
+  });
+}
+
 export async function approveApproval(formData: FormData) {
   const session = await requireSessionContext();
   const values = decisionSchema.parse(Object.fromEntries(formData));
@@ -7328,6 +7654,11 @@ export async function approveApproval(formData: FormData) {
 
   if (approval.documentType === "StockAdjustment") {
     await approveStockAdjustment(formData);
+    return;
+  }
+
+  if (approval.documentType === "OpeningInventoryCutover") {
+    await approveOpeningInventoryCutover(formData);
     return;
   }
 
@@ -7472,6 +7803,11 @@ export async function returnApproval(formData: FormData) {
       "RETURNED",
       "stock_adjustment.returned"
     );
+    return;
+  }
+
+  if (approval.documentType === "OpeningInventoryCutover") {
+    await closeOpeningInventoryCutoverWithDecision(formData, "RETURNED");
     return;
   }
 
@@ -7649,6 +7985,11 @@ export async function rejectApproval(formData: FormData) {
       "REJECTED",
       "stock_adjustment.rejected"
     );
+    return;
+  }
+
+  if (approval.documentType === "OpeningInventoryCutover") {
+    await closeOpeningInventoryCutoverWithDecision(formData, "REJECTED");
     return;
   }
 

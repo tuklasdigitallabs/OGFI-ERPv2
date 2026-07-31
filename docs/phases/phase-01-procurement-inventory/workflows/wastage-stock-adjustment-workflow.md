@@ -19,7 +19,7 @@ Wastage and stock adjustment are separate processes. Wastage records a real oper
 ### In scope
 - Spoilage, expiry, damage, quality reject, preparation loss, burnt / overcooked stock
 - Staff meals, complimentary items, test / R&D use where stock needs controlled reduction
-- Stock adjustment increase, decrease, correction, reclassification, opening balance
+- Stock adjustment increase, decrease, correction, reclassification
 - Physical-count variance posting
 - Backdated correction control
 - Reversal workflow
@@ -39,7 +39,7 @@ Wastage and stock adjustment are separate processes. Wastage records a real oper
 | Term | Meaning |
 |---|---|
 | Wastage | Actual inventory loss or authorized non-sale consumption, recorded with reason and evidence. |
-| Stock Adjustment | Controlled correction of recorded stock due to count variance, data error, opening balance, or approved reclassification. |
+| Stock Adjustment | Controlled correction of recorded stock due to count variance, data error, or approved reclassification. It is not the opening-stock cutover aggregate. |
 | Count Variance | Difference between physical count and system quantity at approved cutoff. |
 | Reversal | Opposite movement that neutralizes a posted transaction without erasing history. |
 | Backdated Transaction | A record effective before current controlled operating period. |
@@ -160,7 +160,7 @@ Posted reports cannot be edited. Correction requires reversal and, if necessary,
 
 ## 7. Stock Adjustment Workflow
 
-`DEC-0019` introduced non-posting `StockAdjustment` and `StockAdjustmentLine` foundation records. `DEC-0023` adds the controlled Phase I slice for manual `INCREASE` and `DECREASE` adjustments: approval is required, approval is non-posting, a separate authorized post action writes inventory movements, and posted adjustments are corrected through full-document reversal. Opening balance, count-variance posting, reclassification, backdating, finance/accounting entry, and partial reversal remain deferred until separate confirmed implementation slices.
+`DEC-0019` introduced non-posting `StockAdjustment` and `StockAdjustmentLine` foundation records. `DEC-0023` adds the controlled Phase I slice for manual `INCREASE` and `DECREASE` adjustments: approval is required, approval is non-posting, a separate authorized post action writes inventory movements, and posted adjustments are corrected through full-document reversal. `DEC-0263` separately confirms the dedicated immutable opening-stock cutover cohort; it is not an ordinary Stock Adjustment. Count-variance posting, reclassification, backdating, finance/accounting entry, and partial reversal remain deferred until separate confirmed implementation slices.
 
 ```text
 Discrepancy / correction identified
@@ -183,7 +183,6 @@ Discrepancy / correction identified
 | Increase | Verified missing receipt / correction, verified stock discovery; implemented for approval, posting, and reversal under `DEC-0023` |
 | Decrease | Verified overstated balance or controlled correction; implemented for approval, posting, and reversal under `DEC-0023` |
 | Reclassify | Future controlled release only |
-| Opening Balance | Future controlled release only |
 | Correction | Documented data-entry error, linked to original record where possible |
 | Count Variance | Future controlled release only; no count-variance posting in the `DEC-0023` slice |
 
@@ -209,7 +208,7 @@ Required line:
 Validation:
 - Authorized reason and scope.
 - Reviewed stock counts remain eligible for a future linked `COUNT_VARIANCE` adjustment, but generation is currently disabled pending immutable recount recovery, attempt-lineage migration, and production evidence under `DEC-0098`; direct count-variance movement posting remains deferred.
-- Opening balance is blocked in this slice and requires a separate cutover decision.
+- Opening stock is outside this workflow. `DEC-0263` provides a dedicated immutable cohort, reviewed-count child batches, separate Operations and Accounting approval, cutover fence, isolated executor, and release contract. The database-owned movement trigger is the sole balance-cache writer; zero-quantity opening lines remain immutable evidence but create no movement or balance row. Opening approval submission proves exact-location scope before acquiring the shared producer barrier, whose closed allowlist now registers only the exact `OpeningInventoryCutover` family for this workflow. Command requests establish target/cohort-location scope before locks and recheck it inside the locked transaction. It is locally implemented but remains production-activation pending, including final remediation regression/re-review, browser UAT, and hardening of the broad ordinary `InventoryMovement` runtime credential; it is not an ordinary adjustment path.
 - Quantity cannot be zero.
 - Decrease does not reduce stock until approval is complete and a separate authorized posting action succeeds.
 - Backdating is not implemented in this slice.
@@ -224,10 +223,10 @@ Baseline:
 - minor count-derived adjustment: Branch / Warehouse Manager;
 - material count variance: manager + Operations + Finance;
 - manual adjustment not linked to count: Operations / Finance review;
-- opening balance: Finance + authorized executive / project owner;
+- opening stock: governed only by `DEC-0263` (separate Operations and Accounting approval); it is not a Stock Adjustment approval route;
 - backdated correction: Finance plus manager / executive as configured.
 
-Final approval makes a manual or linked count-derived adjustment eligible for posting but does not change inventory. Posting must create `adjustment_in` or `adjustment_out` movement through the inventory ledger service, update balance only through that service, mark the record `posted`, preserve source movement lineage, and log all actions. Direct `count_variance` movement types remain future controlled scope.
+Final approval makes a manual or linked count-derived adjustment eligible for posting but does not change inventory. Posting must create `adjustment_in` or `adjustment_out` movement through the inventory ledger service; the database-owned movement trigger then derives the balance cache in the same transaction. The post marks the record `posted`, preserves source movement lineage, and logs all actions. Direct `count_variance` movement types remain future controlled scope.
 
 ---
 
@@ -317,7 +316,7 @@ Exportable reports:
 5. Stock adjustment foundation records require type, reason, evidence where configured, quantity impact, scope, requester, and audit history.
 6. Stock adjustment submit creates approval instances; approval is non-posting.
 7. Posting approved manual increase/decrease adjustments writes source-linked `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` movements and updates balances only through the ledger service.
-8. Opening balances, direct count-variance movement posting, reclassification, and backdating remain future controlled releases; count-generated adjustments still require Stock Adjustment approval and separate posting.
+8. Opening stock is governed separately by `DEC-0263`, is locally implemented, and remains production-activation pending; direct count-variance movement posting, reclassification, and backdating remain future controlled releases; count-generated adjustments still require Stock Adjustment approval and separate posting.
 9. Posted wastage and posted manual stock adjustments cannot be directly edited; correction requires reversal.
 10. Material actions have actor, timestamp, and reason in audit trail.
 11. Lists filter and export by company, brand, location, item, category, reason, user, approver, status, date, and value.

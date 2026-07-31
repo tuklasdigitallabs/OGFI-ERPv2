@@ -333,6 +333,54 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Stock Adjustments",
     sensitive: true
   },
+  [permissions.openingInventoryView]: {
+    label: "View opening inventory cutovers",
+    description: "View scoped opening-inventory cohorts, cutovers, and reconciliation evidence.",
+    group: "Opening Inventory",
+    sensitive: false
+  },
+  [permissions.openingInventoryPrepare]: {
+    label: "Prepare opening inventory cutovers",
+    description: "Prepare controlled opening-inventory cohorts and source-count manifests without posting stock.",
+    group: "Opening Inventory",
+    sensitive: true
+  },
+  [permissions.openingInventorySubmit]: {
+    label: "Submit opening inventory cutovers",
+    description: "Submit prepared opening-inventory location cutovers for separate Operations and Accounting approval.",
+    group: "Opening Inventory",
+    sensitive: true
+  },
+  [permissions.openingInventoryOperationsReview]: {
+    label: "Review opening inventory for Operations",
+    description: "Provide the Operations approval step for an opening-inventory location cutover.",
+    group: "Approvals",
+    sensitive: true
+  },
+  [permissions.openingInventoryAccountingReview]: {
+    label: "Review opening inventory for Accounting",
+    description: "Provide the Accounting approval step for an opening-inventory location cutover.",
+    group: "Approvals",
+    sensitive: true
+  },
+  [permissions.openingInventoryRequestExecute]: {
+    label: "Request opening inventory staging",
+    description: "Request an immutable, separately executed staging command after approval and fresh MFA.",
+    group: "Opening Inventory",
+    sensitive: true
+  },
+  [permissions.openingInventoryRequestActivate]: {
+    label: "Request opening inventory activation",
+    description: "Request the cohort-wide activation command after reconciliation and fresh MFA.",
+    group: "Opening Inventory",
+    sensitive: true
+  },
+  [permissions.openingInventoryRequestReverse]: {
+    label: "Request opening inventory reversal",
+    description: "Request a controlled immutable reversal command with fresh MFA and audit evidence.",
+    group: "Opening Inventory",
+    sensitive: true
+  },
   [permissions.projectView]: {
     label: "View projects",
     description: "View authorized project tracker records.",

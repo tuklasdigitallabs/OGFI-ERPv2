@@ -15,3 +15,4 @@ Use the knowledge-base article template and follow the knowledge-base standard.
 - `docs/knowledge-base/warehouse-inventory/running-stock-counts.md`
 - `docs/knowledge-base/warehouse-inventory/logging-wastage.md`
 - `docs/knowledge-base/warehouse-inventory/understanding-stock-adjustments.md`
+- `docs/knowledge-base/warehouse-inventory/using-the-opening-inventory-cutover-pilot.md` — local, default-off queue, preparation, scope-safe unavailable detail state, server-paged activity, recovery, and command-lifecycle guidance; not an activation or GO decision

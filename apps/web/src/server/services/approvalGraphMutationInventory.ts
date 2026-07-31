@@ -81,6 +81,7 @@ export const canonicalApprovalDocumentTypes = [
   "StockCountAttemptReview",
   "WastageReport",
   "StockAdjustment",
+  "OpeningInventoryCutover",
 ] as const;
 
 export const specializedApprovalDocumentTypes = [
@@ -275,6 +276,17 @@ const sharedEntries = [
     ],
   },
   {
+    id: "decision.opening-inventory-operations-segregation",
+    category: "CANONICAL_DECISION",
+    file: "services/approvals.ts",
+    functionName: "approveOpeningInventoryCutover",
+    documentTypes: ["OpeningInventoryCutover"],
+    dataAuthority: "The Operations decision records the acting reviewer as prohibited on the waiting Accounting step before the canonical decision CAS advances the graph.",
+    mutations: [
+      { model: "approvalInstanceStepProhibitedActor", operation: "createMany", access: "DIRECT_DELEGATE", count: 1 },
+    ],
+  },
+  {
     id: "decision.finance-close-instance",
     category: "SPECIALIZED_DECISION",
     file: "services/financePeriodClose.ts",
@@ -331,6 +343,7 @@ export const approvalGraphToolingMutationInventory = Object.freeze([
 ] as const);
 
 export const approvalGraphToolingDdlInventory = Object.freeze([
+  "infra/hostinger/postgres/handoff-opening-stock-owner.sql",
   "infra/hostinger/postgres/reconcile-ownership-and-grants.sql",
   "packages/database/prisma/migrations/0001_core_administration_foundation/migration.sql",
   "packages/database/prisma/migrations/20260626015833_sync_prisma_schema/migration.sql",
@@ -356,6 +369,7 @@ export const approvalGraphToolingDdlInventory = Object.freeze([
   "packages/database/prisma/migrations/20260727150000_approval_routing_producer_barrier_dormant/migration.sql",
   "packages/database/prisma/migrations/20260727160000_approval_routing_shadow_observers/migration.sql",
   "packages/database/prisma/migrations/20260731090000_inventory_pilot_classifier_activation_intents/migration.sql",
+  "packages/database/prisma/migrations/20260731110000_opening_inventory_cutover_foundation/migration.sql",
 ] as const);
 
 export const approvalGraphToolingProbeInventory = Object.freeze([
@@ -386,7 +400,7 @@ export const approvalRawSqlCallInventory: readonly ApprovalRawSqlCallInventoryEn
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "findAnyEligibleActorForExpectedDescriptor", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 0, ownerBodyDigest: "1a739780ee43e0897af538fef36aab704c804aacb4a5ae811a7348445b676f07" },
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "inspectOrApplyInstance", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 0, ownerBodyDigest: "49ad485f32afcea9413e232128922222d00cbfab67c48bd191cc43df0daad88b" },
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "loadReplayBatch", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 0, ownerBodyDigest: "bbefd04d80ac545fddcf573e1c357b17d19f7f5268e3b9ef6145ff0b92ee1be9" },
-  { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "lockMainSource", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 1, ownerBodyDigest: "16308f0b055857e4bb7a7aa86dd1633d7c9cf3346631f3fdaa2802b510602d48", dynamicArgumentReview: "Reviewed closed document-type table mapping and owner body; digest drift requires re-review." },
+  { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "lockMainSource", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 1, ownerBodyDigest: "41438f0d725ca4e1025a9358e895af42c0641a0e2567828d3613a0c5cb0e3ba2", dynamicArgumentReview: "Reviewed closed document-type table mapping and owner body; digest drift requires re-review." },
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "processDurablePage", method: "$executeRawUnsafe", count: 7, dynamicArgumentCount: 0, ownerBodyDigest: "38f3e94c592225c17b61362df2562a2e7bee4d8204797e5ce5f810608c8a363d" },
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "processDurablePage", method: "$queryRawUnsafe", count: 2, dynamicArgumentCount: 0, ownerBodyDigest: "38f3e94c592225c17b61362df2562a2e7bee4d8204797e5ce5f810608c8a363d" },
   { file: "apps/web/src/server/services/approvalRoutingBackfill.ts", functionName: "replayResult", method: "$queryRawUnsafe", count: 1, dynamicArgumentCount: 0, ownerBodyDigest: "73535f1e5bbc716f44f4910beb21fdccbb2757e9d6f234ef6a551b8fa7637770" },

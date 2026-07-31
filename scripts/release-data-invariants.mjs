@@ -87,7 +87,11 @@ const checks = [
   ),
   zeroCheck(
     "Inventory ledger balance reconciliation",
-    'WITH movement AS (SELECT "tenantId", "companyId", "inventoryLocationId", "itemId", sum("quantityDeltaBaseUom") qty FROM "InventoryMovement" GROUP BY 1,2,3,4), balance AS (SELECT "tenantId", "companyId", "inventoryLocationId", "itemId", sum("qtyOnHand") qty FROM "InventoryBalance" GROUP BY 1,2,3,4) SELECT count(*) FROM movement m FULL JOIN balance b USING ("tenantId", "companyId", "inventoryLocationId", "itemId") WHERE coalesce(m.qty, 0) <> coalesce(b.qty, 0)',
+    'WITH movement AS (SELECT "tenantId", "companyId", "inventoryLocationId", "itemId", (coalesce(nullif(btrim("lotNumber"), \'\'), \'NOLOT\') || \'|\' || coalesce(to_char("expiryDate", \'YYYY-MM-DD\'), \'NOEXP\')) AS "lotKey", "baseUomId", sum("quantityDeltaBaseUom") qty FROM "InventoryMovement" GROUP BY 1,2,3,4,5,6), balance AS (SELECT "tenantId", "companyId", "inventoryLocationId", "itemId", "lotKey", "baseUomId", sum("qtyOnHand") qty FROM "InventoryBalance" GROUP BY 1,2,3,4,5,6) SELECT count(*) FROM movement m FULL JOIN balance b USING ("tenantId", "companyId", "inventoryLocationId", "itemId", "lotKey", "baseUomId") WHERE coalesce(m.qty, 0) <> coalesce(b.qty, 0)',
+  ),
+  zeroCheck(
+    "Inventory balance canonical lot identity and nonnegative quantity",
+    'SELECT count(*) FROM "InventoryBalance" WHERE "qtyOnHand" < 0 OR "lotKey" <> (coalesce(nullif(btrim("lotNumber"), \'\'), \'NOLOT\') || \'|\' || coalesce(to_char("expiryDate", \'YYYY-MM-DD\'), \'NOEXP\'))',
   ),
   zeroCheck(
     "Goods receipt accepted quantity integrity",

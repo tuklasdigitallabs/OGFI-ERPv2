@@ -7,8 +7,8 @@ import {
   assertStockAdjustmentCanPost,
   assertStockAdjustmentCanReverse,
   assertStockAdjustmentCanSubmit,
+  assertDedicatedOpeningCutoverRequired,
   assertStockAdjustmentQuantity,
-  assertOpeningBalanceIsPostable,
   calculateAdjustmentDelta,
   listStockAdjustmentMyTaskPage,
   resolveStockAdjustmentDashboardProfile,
@@ -88,12 +88,12 @@ describe("stock adjustment controlled workflow rules", () => {
       "utf8"
     );
 
-    expect(listPage).toContain("Approve, post, and reverse controlled stock correction and opening-balance requests");
-    expect(listPage).toContain("OPENING_BALANCE_IN ledger movements");
+    expect(listPage).toContain("Opening inventory uses its dedicated cutover workflow");
+    expect(listPage).not.toContain("OPENING_BALANCE_IN ledger movements");
     expect(detailPage).toContain(
       "Approval does not change stock. Only the separate Post Adjustment action"
     );
-    expect(detailPage).toContain("through reversal");
+    expect(detailPage).toContain("dedicated cutover workspace");
     expect(listPage).not.toContain("This foundation records");
     expect(detailPage).not.toContain("in this foundation");
   });
@@ -250,55 +250,22 @@ describe("stock adjustment controlled workflow rules", () => {
   test("maps increase and decrease to signed base quantity deltas", () => {
     expect(calculateAdjustmentDelta("INCREASE", 2.5)).toBe(2.5);
     expect(calculateAdjustmentDelta("DECREASE", 2.5)).toBe(-2.5);
-    expect(calculateAdjustmentDelta("OPENING_BALANCE", 2.5)).toBe(2.5);
     expect(() => calculateAdjustmentDelta("INCREASE", 0)).toThrow(
       "STOCK_ADJUSTMENT_QUANTITY_INVALID"
     );
   });
 
-  test("opening balances require cutover evidence and zero existing stock", () => {
-    expect(() =>
-      assertOpeningBalanceIsPostable({
-        adjustmentType: "OPENING_BALANCE",
-        evidenceReference: "SIGNED-COUNT-001",
-        systemQuantityBaseUom: 0
-      })
-    ).not.toThrow();
-    expect(() =>
-      assertOpeningBalanceIsPostable({
-        adjustmentType: "OPENING_BALANCE",
-        evidenceReference: "",
-        evidenceRequired: true,
-        systemQuantityBaseUom: 0
-      })
-    ).toThrow("OPENING_BALANCE_EVIDENCE_REQUIRED");
-    expect(() =>
-      assertOpeningBalanceIsPostable({
-        adjustmentType: "OPENING_BALANCE",
-        evidenceReference: "",
-        evidenceRequired: false,
-        systemQuantityBaseUom: 0
-      })
-    ).not.toThrow();
-    expect(() =>
-      assertOpeningBalanceIsPostable({
-        adjustmentType: "OPENING_BALANCE",
-        evidenceReference: "SIGNED-COUNT-001",
-        systemQuantityBaseUom: 1
-      })
-    ).toThrow("OPENING_BALANCE_EXISTING_STOCK_ACTIVITY");
-  });
-
-  test("opening balance evidence enforcement reads the configurable DEC-0036 policy", () => {
-    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
-    const policySource = readFileSync(
-      path.resolve(__dirname, "policySettings.ts"),
-      "utf8"
+  test("routes opening inventory away from generic stock adjustments", () => {
+    expect(() => assertDedicatedOpeningCutoverRequired("INCREASE")).not.toThrow();
+    expect(() => assertDedicatedOpeningCutoverRequired("OPENING_BALANCE")).toThrow(
+      "OPENING_BALANCE_REQUIRES_DEDICATED_CUTOVER"
     );
-
-    expect(source).toContain("getInventoryAdjustmentPolicy");
-    expect(source).toContain("openingBalanceEvidenceRequired");
-    expect(policySource).toContain("inventory.adjustment.opening_balance_evidence_required");
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    expect(source).toContain(
+      'const manualAdjustmentTypes = ["INCREASE", "DECREASE"] as const'
+    );
+    expect(source).toContain("assertDedicatedOpeningCutoverRequired(initialAdjustment.adjustmentType)");
+    expect(source).toContain("assertDedicatedOpeningCutoverRequired(adjustment.adjustmentType)");
   });
 
   test("submits draft, submitted, or returned adjustments into approval", () => {
@@ -360,7 +327,7 @@ describe("stock adjustment controlled workflow rules", () => {
     const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
 
     expect(source).toContain('movementType: "REVERSAL"');
-    expect(source).toContain('"OPENING_BALANCE_IN"');
+    expect(source).not.toContain('"OPENING_BALANCE_IN"');
     expect(source).toContain('quantityDeltaBaseUom > 0');
     expect(source).toContain("sourceEventKey: `stock_adjustment_line:${line.id}:post`");
     expect(source).toContain("sourceEventKey: `stock_adjustment_line:${line.id}:reverse`");

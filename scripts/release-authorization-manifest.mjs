@@ -58,6 +58,7 @@ const workspacePolicies = {
   "my-tasks": ["SERVICE_ENFORCED", ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"]],
   "my-work": ["authenticated", ["TENANT", "COMPANY"]],
   notifications: ["authenticated", ["TENANT", "COMPANY"]],
+  "opening-inventory": ["inventory.opening_inventory.view", ["TENANT", "COMPANY", "LOCATION"]],
   "project-templates": ["projects.template.view", ["TENANT", "COMPANY"]],
   projects: ["projects.project.view", ["TENANT", "COMPANY", "PROJECT", "MEMBERSHIP", "RESTRICTED_PROJECT"]],
   "purchase-orders": ["purchasing.purchase_order.view", ["TENANT", "COMPANY", "LOCATION", "DEPARTMENT"]],

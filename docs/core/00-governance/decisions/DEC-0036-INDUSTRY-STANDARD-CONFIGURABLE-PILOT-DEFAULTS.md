@@ -41,7 +41,7 @@ The project had several intentionally open decisions so development could procee
 - High-risk and perishable inventory count cadence defaults to weekly. General inventory count cadence defaults to monthly. Both are configurable by item/category/location.
 - Lot and expiry tracking are required by default for regulated, perishable, high-risk, batch-sensitive, and food-safety-critical items. The requirement is configurable by item/category.
 - Inventory stock changes remain ledger-driven. Balances must reconcile to posted immutable inventory movements.
-- Opening balances are handled through controlled opening-balance adjustments with cutover date, evidence, approval, reconciliation, and lock/signoff.
+- Opening-stock cutover uses the dedicated immutable cohort and child-batch contract in `DEC-0263`, with sealed cohort scope, controlled evidence, valuation snapshot, separate Operations and Accounting approval, reconciliation, a pilot-wide fence, and authority release. Ordinary Stock Adjustments are not a cutover substitute.
 - Backdated wastage, backdated adjustments, period-closed corrections, reclassification, and valuation/GL impacts require explicit permission, reason, evidence, audit, and period policy.
 - Wastage and adjustment reversals use equal opposite movements, reason, audit, and separate permission; high-value reversals require escalation.
 

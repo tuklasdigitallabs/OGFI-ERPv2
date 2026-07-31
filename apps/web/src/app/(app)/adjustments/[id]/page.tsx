@@ -172,8 +172,8 @@ export default async function AdjustmentDetailPage({
 
           <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             Approval does not change stock. Only the separate Post Adjustment action
-            creates inventory movements. Opening balances post through the same
-            immutable ledger and can be corrected only through reversal.
+            creates inventory movements. Opening inventory is handled only in
+            the dedicated cutover workspace.
           </div>
 
           <dl className="mt-6 grid gap-4 ogfi-record-summary p-4 sm:grid-cols-2">

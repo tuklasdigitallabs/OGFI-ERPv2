@@ -84,7 +84,7 @@ Use controlled import templates with a data dictionary reference. At minimum:
 
 ### 7.1 Preparation
 
-- Freeze or tightly control stock movements at each pilot location during the count window.
+- Use the `DEC-0263` pilot-wide cutover fence to deny conflicting inventory movements while the sealed cohort is counted, reviewed, reconciled, and released; do not substitute an informal local freeze.
 - Ensure item masters, UOM conversions, locations, and approved par levels are complete.
 - Assign counters and approvers.
 - Prepare count sheets or mobile count workflow.
@@ -93,9 +93,9 @@ Use controlled import templates with a data dictionary reference. At minimum:
 
 - Count physical stock by actual storage location.
 - Record lot and expiry details where configured.
-- Reconcile count to approved opening balance template.
-- Finance confirms the approved unit-cost/valuation basis.
-- Post opening inventory through a dedicated opening-balance transaction type, never by manually editing stock balance.
+- Reconcile each reviewed opening count to the sealed cohort's complete selected-item manifest, including recorded zero quantities. Retain a zero line as immutable count/cutover evidence, but do not expect an opening movement or balance-cache row for it after activation.
+- Accounting approves the immutable valuation snapshot; controlled evidence is mandatory.
+- Post only through the dedicated immutable cohort child-batch executor. Ordinary `OPENING_BALANCE` Stock Adjustments and direct balance edits are prohibited.
 
 ### 7.3 Approval and sign-off
 
@@ -103,8 +103,62 @@ Opening inventory requires sign-off from:
 
 - Warehouse/branch custodian
 - Location manager
-- Warehouse/Operations manager
-- Finance representative
+- Operations approver, separate from the Accounting approver
+- Accounting approver, separate from the Operations approver
+
+`DEC-0263` additionally requires that every child batch be eligible and
+reconciled before the single cohort authority-release event. A released cohort is
+corrected only by the forward-only, separately approved delta-adjustment path.
+Before that release, a rejected or superseded cohort is recovered only as an
+auditable logical supersession with zero ledger effect; it is not a direct
+balance edit or a posted-movement reversal.
+
+### 7.4 Deployment and cache-reconciliation fence
+
+- `STAGE` verifies the sealed cohort and reconciliation evidence only. It must
+  not create an inventory movement or balance cache row.
+- `ACTIVATE` must post the entire eligible cohort atomically. It is not valid to
+  release one location while another selected location is unposted.
+- Allow at most one unresolved semantic command per target/action: cohort-level
+  `FREEZE_COHORT`/`ACTIVATE_COHORT` commands are unique by cohort and action,
+  while location-level `STAGE_LOCATION`/`REVERSE_LOCATION` commands are unique
+  by cutover and action.
+  The database must reject malformed cohort/location target shape or a target
+  whose cohort, tenant, or company lineage does not match the command.
+- Apply forward migration
+  `20260731130000_opening_inventory_approval_producer_barrier` before enabling
+  opening approval submission. It registers only the exact
+  `OpeningInventoryCutover` producer in the existing closed allowlist. The
+  application must revalidate the submitter's exact cutover-location scope
+  before attempting the tenant/company shared producer barrier.
+- Opening execution-command requests establish live scope for the exact target
+  and, for a cohort action, every affected cohort location before target or
+  advisory locks are taken. The service retains an in-transaction scope recheck
+  after those locks and before command mutation. Approval decisions establish
+  the cutover's exact location scope before their producer barrier and retain
+  their transaction authority checks.
+- Preserve the related transfer terminal-ordering contract: after exact replay
+  resolution, validate the locked source lifecycle before validating transfer
+  lines or invoking the pilot classifier.
+- Reconcile the exact expected balance derived from all posted ledger movements
+  against every `InventoryBalance` row before production deployment. Any drift
+  is a release blocker; do not repair it by a direct cache edit.
+- Deploy the application, movement-trigger/ACL migration, and release procedure
+  as one coordinated maintenance-fenced artifact. An old application paired
+  with the new cache trigger is not an approved operating state.
+- The local implementation evidence does not authorize production activation.
+  Complete production backup/recovery, browser role-flow, named roster,
+  recovery rehearsal, raw ordinary-movement credential hardening, and Release
+  Board gates first. The latter replaces the runtime credential's broad ability
+  to forge an ordinary `InventoryMovement` outside source-specific authority.
+  Current local evidence covers 146 migration directories/files, opening
+  PostgreSQL 12/12,
+  procurement/inventory authorization 71/71 across 8 files, authorization
+  manifest 21/21, focused opening/UI/schema/service 31/31, service ordering
+  45/45, and web typecheck. Final regression and independent re-review after
+  exact-location draft-option filtering, bounded activity pagination, lock-order
+  scope checks, and visible-surface remediation remain pending for the parent to
+  record. Browser-authenticated responsive UAT remains incomplete.
 
 ## 8. Open transactions decision
 
@@ -125,7 +179,7 @@ Perform at least one test migration before production:
 | Required fields | All mandatory fields complete or listed as controlled exceptions. |
 | UOM conversion | Purchase/issue/base conversions pass validation. |
 | Supplier links | Supplier status and item-price records match approved source. |
-| Opening inventory | Quantity and valuation totals reconcile by location/category/item. |
+| Opening inventory | Quantity and valuation totals reconcile by location/category/item; exact ledger-derived balance matches the cache; zero lines create no movement or cache row. |
 | Role scopes | Pilot users see only their permitted scope. |
 | Approval routing | Seeded users/roles route test transactions correctly. |
 | Reporting | On-hand and opening value reports reconcile to approved upload totals. |
@@ -135,8 +189,9 @@ Perform at least one test migration before production:
 1. Freeze master-data changes for the cutover window.
 2. Complete final approved imports.
 3. Load and validate users/roles/scopes.
-4. Load opening inventory using controlled ledger transaction.
-5. Reconcile dashboard/report totals.
+4. Stage and reconcile the sealed opening cohort without posting inventory.
+5. Reconcile exact ledger-derived balance/cache totals, then activate the full
+   eligible cohort atomically under the coordinated deployment fence.
 6. Run a full pilot: PR → approval → PO → receiving → transfer → count → wastage.
 7. Obtain written go-live sign-off.
 8. Maintain hypercare support and daily reconciliation for the first operating period.

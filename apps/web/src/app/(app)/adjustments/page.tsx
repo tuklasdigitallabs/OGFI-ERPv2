@@ -126,7 +126,7 @@ export default async function AdjustmentsPage({
     <AppShell
       session={session}
       title="Stock Adjustments"
-      subtitle="Approve, post, and reverse controlled stock correction and opening-balance requests"
+      subtitle="Approve, post, and reverse controlled stock-correction requests"
       activeNav="adjustments"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
@@ -140,8 +140,8 @@ export default async function AdjustmentsPage({
         </div>
         <p className="mt-3 text-sm">
           <strong>Adjustments are controlled correction requests.</strong> Approval
-          does not change stock; only posting writes adjustment or opening-balance
-          movements to the ledger.
+          does not change stock; only posting writes adjustment movements to the
+          ledger. Opening inventory uses its dedicated cutover workflow.
         </p>
       </div>
       <div className="space-y-4">
@@ -159,9 +159,6 @@ export default async function AdjustmentsPage({
                   adjustmentTypes={formOptions.adjustmentTypes}
                   inventoryLocations={formOptions.inventoryLocations}
                   items={formOptions.items}
-                  openingBalanceEvidenceRequired={
-                    formOptions.policy.openingBalanceEvidenceRequired
-                  }
                   reasonCodes={formOptions.reasonCodes}
                 />
               )}
@@ -178,7 +175,7 @@ export default async function AdjustmentsPage({
               <p className="text-sm text-slate-500">
                 {profile
                   ? `${profilePage?.totalItems ?? 0} pending, approved, posting, or returned adjustment exceptions at the selected inventory location`
-                  : "Approval is non-posting; stock changes only after the separate Post Adjustment action. Post Adjustment writes ADJUSTMENT_IN, ADJUSTMENT_OUT, or OPENING_BALANCE_IN ledger movements. Opening balances are for controlled cutover baselines only."}
+                  : "Approval is non-posting; stock changes only after the separate Post Adjustment action. Manual adjustments write ADJUSTMENT_IN or ADJUSTMENT_OUT movements. Opening inventory uses the dedicated cutover workspace."}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -207,7 +204,7 @@ export default async function AdjustmentsPage({
                 title={profile ? "No adjustment exceptions" : "No stock adjustment requests yet"}
                 description={profile
                   ? "No pending, approved, posting, or returned adjustment requests are in the selected inventory-location scope."
-                  : "Record a proposed increase or decrease when inventory needs a documented correction or opening baseline that is not wastage, receiving shortage, or transfer loss."}
+                  : "Record a proposed increase or decrease when inventory needs a documented correction that is not wastage, receiving shortage, transfer loss, or opening inventory."}
               />
             </div>
           ) : (

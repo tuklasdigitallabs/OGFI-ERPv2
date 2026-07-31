@@ -26,8 +26,7 @@ export function assertDisposableAuthorizationDatabaseConfigured(
   const databaseName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
   const databaseIdentity =
     /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/.exec(databaseName);
-  const runtimeIdentity =
-    /^ogfi_test_([a-z0-9_]{1,10})_([a-f0-9]{32})_runtime$/.exec(runtimeRole);
+  const runtimeIdentity = /^ogfi_([a-f0-9]{32})_runtime$/.exec(runtimeRole);
   const runToken = runId
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
@@ -43,8 +42,8 @@ export function assertDisposableAuthorizationDatabaseConfigured(
     databaseIdentity?.[1] !== runToken && "RUN_TOKEN_MISMATCH",
     /(?:^|_)(?:prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:_|$)/i.test(databaseName) && "FORBIDDEN_DATABASE_TOKEN",
     !runtimeIdentity && "RUNTIME_IDENTITY_INVALID",
-    runtimeIdentity?.[1] !== runToken.slice(0, 10) && "RUNTIME_TOKEN_MISMATCH",
-    !runtimeIdentity?.[2]?.startsWith(databaseIdentity?.[2] ?? "") && "RUNTIME_ENTROPY_MISMATCH",
+    runtimeIdentity?.[1]?.slice(0, 16) !== databaseIdentity?.[2] &&
+      "RUNTIME_ENTROPY_MISMATCH",
     decodeURIComponent(parsed.username) !== runtimeRole && "RUNTIME_USERNAME_MISMATCH",
     !/^[A-Za-z0-9._-]{6,128}$/.test(runId) && "RUN_ID_INVALID",
     !/^[a-f0-9]{64}$/.test(nonceSha256) && "NONCE_DIGEST_INVALID",

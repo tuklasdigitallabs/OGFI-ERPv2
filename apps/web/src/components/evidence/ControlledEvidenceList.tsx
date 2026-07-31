@@ -166,7 +166,7 @@ export function ControlledEvidenceList({
                 </span>
                 {state.downloadable ? (
                   <a
-                    className="inline-flex min-h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     href={`/evidence/${attachment.id}/download`}
                   >
                     Download
@@ -218,7 +218,7 @@ export function ControlledEvidenceList({
                   canArchive &&
                   (attachment.requiredForAction || attachment.legalHold) ? (
                   <button
-                    className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-500"
+                    className="inline-flex min-h-11 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-500"
                     disabled
                     title={
                       attachment.legalHold
@@ -240,7 +240,7 @@ export function ControlledEvidenceList({
       })}
       {attachments.length > 10 ? (
         <a
-          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50"
           href={`/evidence?sourceType=${encodeURIComponent(sourceType)}&sourceRecordId=${encodeURIComponent(sourceRecordId)}&page=1`}
         >
           View all evidence

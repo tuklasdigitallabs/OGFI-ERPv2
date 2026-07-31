@@ -43,7 +43,8 @@ export type EvidenceSourceType =
   | "WORKFORCE_OVERTIME"
   | "WORKFORCE_SCHEDULE"
   | "WORKFORCE_ATTENDANCE_IMPORT"
-  | "PROJECT_REQUIREMENT";
+  | "PROJECT_REQUIREMENT"
+  | "OPENING_INVENTORY_COHORT";
 
 export type EvidencePurpose =
   | "EVIDENCE"

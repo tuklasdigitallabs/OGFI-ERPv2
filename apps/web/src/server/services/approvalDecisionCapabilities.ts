@@ -72,6 +72,12 @@ const approvalDecisionFamilyContracts = {
     rejectLabel: "Reject Stock Count",
     supportsSupplementalEvidence: false,
   },
+  OpeningInventoryCutover: {
+    decisions: ["APPROVE", "RETURN", "REJECT"],
+    approveLabel: "Approve Opening Inventory Cutover",
+    rejectLabel: "Reject Opening Inventory Cutover",
+    supportsSupplementalEvidence: false,
+  },
   WastageReport: {
     decisions: ["APPROVE", "RETURN", "REJECT"],
     approveLabel: "Approve Wastage Report",

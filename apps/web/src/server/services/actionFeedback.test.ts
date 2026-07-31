@@ -205,6 +205,45 @@ const mappedOperationalCodes = [
 ];
 
 describe("action feedback helpers", () => {
+  it("maps every stable opening-inventory failure to safe corrective guidance", () => {
+    const codes = [
+      "OPENING_INVENTORY_CONFIGURATION_NOT_SEALED",
+      "OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED",
+      "OPENING_INVENTORY_ITEM_SCOPE_DENIED",
+      "OPENING_INVENTORY_SOURCE_ATTEMPT_NOT_REVIEWED",
+      "OPENING_INVENTORY_SOURCE_COUNT_COVERAGE_INVALID",
+      "OPENING_INVENTORY_SOURCE_ATTEMPT_ALREADY_BOUND",
+      "OPENING_INVENTORY_EVIDENCE_REQUIRED",
+      "OPENING_INVENTORY_VALUATION_REQUIRED",
+      "OPENING_INVENTORY_CONCURRENT_MODIFICATION",
+      "OPENING_INVENTORY_APPROVAL_RULE_NOT_CONFIGURED",
+      "OPENING_INVENTORY_APPROVAL_ALREADY_SUBMITTED",
+      "OPENING_INVENTORY_COMMAND_NOT_REQUESTABLE",
+      "OPENING_INVENTORY_COMMAND_IDEMPOTENCY_CONFLICT",
+      "OPENING_INVENTORY_COMMAND_REQUESTER_CONFLICT",
+      "OPENING_INVENTORY_COMMAND_IN_FLIGHT",
+      "OPENING_INVENTORY_AUTHORITY_STALE",
+      "OPENING_INVENTORY_RECOVERY_PREDECESSOR_NOT_FULLY_REVERSED",
+      "OPENING_INVENTORY_SOURCE_CUTOFF_AFTER_EFFECTIVE_AT",
+      "OPENING_INVENTORY_CUTOVER_POLICY_NOT_READY",
+      "OPENING_INVENTORY_CUTOVER_WINDOW_NOT_CONFIGURED",
+      "OPENING_INVENTORY_EFFECTIVE_AT_IN_FUTURE",
+      "APPROVAL_STEP_ELIGIBLE_ACTOR_NOT_AVAILABLE",
+    ];
+
+    for (const code of codes) {
+      expect(getActionFeedback({ error: code }), code).toEqual(
+        expect.objectContaining({
+          code,
+          title: "Action not completed",
+          message: expect.not.stringContaining(
+            "The action could not be completed. Review the form and try again.",
+          ),
+        }),
+      );
+    }
+  });
+
   it("provides specific user-safe messages for Receiving validation and conflict errors", () => {
     const codes = [
       "RECEIVING_STATUS_FILTER_INVALID",

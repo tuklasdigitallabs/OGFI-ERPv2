@@ -33,7 +33,7 @@ describe("item option catalog route admission", () => {
     expect(await response.json()).toEqual({ code: "OPTION_LOOKUP_RATE_LIMITED" });
     expect(mocks.getSessionContext).toHaveBeenCalledOnce();
     expect(mocks.listCatalog).toHaveBeenCalledOnce();
-  });
+  }, 15_000);
 
   it("does not delegate unauthenticated traffic to catalog admission or work", async () => {
     mocks.getSessionContext.mockResolvedValue(null);

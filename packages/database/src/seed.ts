@@ -105,6 +105,19 @@ const ids = {
   stockAdjustmentReversePermissionId: "00000000-0000-4000-8000-000000000080",
   stockAdjustmentApprovalRuleId: "00000000-0000-4000-8000-000000000081",
   stockAdjustmentApprovalRuleStepId: "00000000-0000-4000-8000-000000000082",
+  openingInventoryViewPermissionId: "00000000-0000-4000-8000-000000000178",
+  openingInventoryPreparePermissionId: "00000000-0000-4000-8000-000000000179",
+  openingInventorySubmitPermissionId: "00000000-0000-4000-8000-000000000180",
+  openingInventoryOperationsReviewPermissionId:
+    "00000000-0000-4000-8000-000000000181",
+  openingInventoryAccountingReviewPermissionId:
+    "00000000-0000-4000-8000-000000000182",
+  openingInventoryRequestExecutePermissionId:
+    "00000000-0000-4000-8000-000000000183",
+  openingInventoryRequestActivatePermissionId:
+    "00000000-0000-4000-8000-000000000184",
+  openingInventoryRequestReversePermissionId:
+    "00000000-0000-4000-8000-000000000185",
   receivingReversePermissionId: "00000000-0000-4000-8000-000000000083",
   stockCountVarianceApprovalRuleId: "00000000-0000-4000-8000-000000000084",
   stockCountVarianceApprovalRuleStepId: "00000000-0000-4000-8000-000000000085",
@@ -6552,7 +6565,6 @@ function isPrismaUniqueConflict(error: unknown) {
 
 async function ensureSeedInventoryMovement(
   movement: SeedInventoryMovement,
-  applyBalanceDelta: (tx: Prisma.TransactionClient) => Promise<void>,
 ) {
   const verifyExisting = async (tx: Prisma.TransactionClient) => {
     const existingMovements = await tx.inventoryMovement.findMany({
@@ -6600,7 +6612,6 @@ async function ensureSeedInventoryMovement(
       }
 
       await tx.inventoryMovement.create({ data: movement });
-      await applyBalanceDelta(tx);
       await verifyExisting(tx);
     });
   } catch (error) {
@@ -6685,7 +6696,7 @@ async function seedOpeningInventoryBalances() {
     orderBy: { itemCode: "asc" },
   });
 
-  const openingDate = new Date("2026-07-01T01:00:00.000Z");
+  const demoStockDate = new Date("2026-07-01T01:00:00.000Z");
   for (const inventoryLocation of inventoryLocations) {
     const isWarehouse =
       inventoryLocation.id === ids.warehouseInventoryLocationId;
@@ -6704,25 +6715,21 @@ async function seedOpeningInventoryBalances() {
       const expiryDate = item.trackExpiry
         ? new Date("2026-12-31T15:59:59.000Z")
         : null;
-      const lotKey =
-        lotNumber && expiryDate
-          ? `${lotNumber}|${expiryDate.toISOString().slice(0, 10)}`
-          : "NOLOT|NOEXP";
-      const sourceEventKey = `opening:${inventoryLocation.id}:${item.id}`;
+      const sourceEventKey = `demo-seed-stock:${inventoryLocation.id}:${item.id}`;
       const sourceDocumentId = deterministicSeedUuid(
-        "demo-opening-document",
+        "demo-seed-stock-document",
         sourceEventKey,
       );
 
       const movement = {
-        id: deterministicSeedUuid("demo-opening-movement", sourceEventKey),
+        id: deterministicSeedUuid("demo-seed-stock-movement", sourceEventKey),
         tenantId: ids.tenantId,
         companyId: ids.companyId,
         inventoryLocationId: inventoryLocation.id,
         relatedInventoryLocationId: null,
         itemId: item.id,
-        movementType: "OPENING_BALANCE_IN" as const,
-        occurredAt: openingDate,
+        movementType: "ADJUSTMENT_IN" as const,
+        occurredAt: demoStockDate,
         enteredQuantity: quantity,
         enteredUomId: item.baseUomId,
         quantityDeltaBaseUom: quantity,
@@ -6731,12 +6738,12 @@ async function seedOpeningInventoryBalances() {
         expiryDate,
         unitCost: null,
         totalCost: null,
-        sourceDocumentType: "DEMO_OPENING_BALANCE",
+        sourceDocumentType: "DEMO_SEED_INVENTORY",
         sourceDocumentId,
         sourceDocumentLineId: null,
         sourceEventKey,
-        reasonCode: "OPENING_BALANCE",
-        notes: `Demo opening balance for ${
+        reasonCode: "DEMO_SEED_BASELINE",
+        notes: `Synthetic demo inventory baseline for ${
           locationByInventoryId.get(inventoryLocation.id)?.code ??
           "inventory location"
         }.`,
@@ -6744,31 +6751,7 @@ async function seedOpeningInventoryBalances() {
         postedByUserId: ids.adminUserId,
       } satisfies SeedInventoryMovement;
 
-      await ensureSeedInventoryMovement(movement, async (tx) => {
-        await tx.inventoryBalance.upsert({
-          where: {
-            inventoryLocationId_itemId_lotKey: {
-              inventoryLocationId: inventoryLocation.id,
-              itemId: item.id,
-              lotKey,
-            },
-          },
-          create: {
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            inventoryLocationId: inventoryLocation.id,
-            itemId: item.id,
-            lotKey,
-            lotNumber,
-            expiryDate,
-            baseUomId: item.baseUomId,
-            qtyOnHand: quantity,
-          },
-          update: {
-            qtyOnHand: { increment: quantity },
-          },
-        });
-      });
+      await ensureSeedInventoryMovement(movement);
 
     }
   }
@@ -6912,27 +6895,23 @@ async function seedPhase2ActualConsumptionDemoData() {
         sourceEventKey,
       );
 
-      const openingMovement = await prisma.inventoryMovement.findFirst({
+      const demoSeedMovement = await prisma.inventoryMovement.findFirst({
         where: {
           tenantId: ids.tenantId,
           companyId: ids.companyId,
           inventoryLocationId: branch.inventoryLocationId,
           itemId: item.id,
-          sourceDocumentType: "DEMO_OPENING_BALANCE",
-          sourceEventKey: `opening:${branch.inventoryLocationId}:${item.id}`,
+          sourceDocumentType: "DEMO_SEED_INVENTORY",
+          sourceEventKey: `demo-seed-stock:${branch.inventoryLocationId}:${item.id}`,
         },
         select: { lotNumber: true, expiryDate: true },
       });
-      if (!openingMovement) {
+      if (!demoSeedMovement) {
         throw new Error(
-          `MISSING_ACTUAL_CONSUMPTION_OPENING_MOVEMENT:${branch.inventoryLocationId}:${item.itemCode}`,
+          `MISSING_ACTUAL_CONSUMPTION_DEMO_SEED_MOVEMENT:${branch.inventoryLocationId}:${item.itemCode}`,
         );
       }
 
-      const lotKey =
-        openingMovement.lotNumber && openingMovement.expiryDate
-          ? `${openingMovement.lotNumber}|${openingMovement.expiryDate.toISOString().slice(0, 10)}`
-          : "NOLOT|NOEXP";
       const movement = {
         id: deterministicSeedUuid(
           "demo-actual-consumption-movement",
@@ -6952,8 +6931,8 @@ async function seedPhase2ActualConsumptionDemoData() {
         enteredUomId: item.baseUomId,
         quantityDeltaBaseUom: -Math.abs(line.quantity),
         baseUomId: item.baseUomId,
-        lotNumber: openingMovement.lotNumber,
-        expiryDate: openingMovement.expiryDate,
+        lotNumber: demoSeedMovement.lotNumber,
+        expiryDate: demoSeedMovement.expiryDate,
         unitCost,
         totalCost,
         sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
@@ -6966,30 +6945,7 @@ async function seedPhase2ActualConsumptionDemoData() {
         postedByUserId: ids.adminUserId,
       } satisfies SeedInventoryMovement;
 
-      await ensureSeedInventoryMovement(movement, async (tx) => {
-        const balance = await tx.inventoryBalance.findUnique({
-          where: {
-            inventoryLocationId_itemId_lotKey: {
-              inventoryLocationId: branch.inventoryLocationId,
-              itemId: item.id,
-              lotKey,
-            },
-          },
-          select: { id: true },
-        });
-        if (!balance) {
-          throw new Error(
-            `MISSING_ACTUAL_CONSUMPTION_BALANCE:${branch.inventoryLocationId}:${item.itemCode}:${lotKey}`,
-          );
-        }
-
-        await tx.inventoryBalance.update({
-          where: { id: balance.id },
-          data: {
-            qtyOnHand: { decrement: line.quantity },
-          },
-        });
-      });
+      await ensureSeedInventoryMovement(movement);
     }
   }
 }
@@ -8051,6 +8007,29 @@ async function main() {
     },
   ];
   for (const permission of stockAdjustmentPermissions) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      create: {
+        id: permission.id,
+        code: permission.code,
+        module: "inventory",
+        action: permission.action,
+      },
+      update: {},
+    });
+  }
+
+  const openingInventoryPermissions = [
+    { id: ids.openingInventoryViewPermissionId, code: "inventory.opening_inventory.view", action: "opening_inventory.view" },
+    { id: ids.openingInventoryPreparePermissionId, code: "inventory.opening_inventory.prepare", action: "opening_inventory.prepare" },
+    { id: ids.openingInventorySubmitPermissionId, code: "inventory.opening_inventory.submit", action: "opening_inventory.submit" },
+    { id: ids.openingInventoryOperationsReviewPermissionId, code: "inventory.opening_inventory.review.operations", action: "opening_inventory.review.operations" },
+    { id: ids.openingInventoryAccountingReviewPermissionId, code: "inventory.opening_inventory.review.accounting", action: "opening_inventory.review.accounting" },
+    { id: ids.openingInventoryRequestExecutePermissionId, code: "inventory.opening_inventory.request_execute", action: "opening_inventory.request_execute" },
+    { id: ids.openingInventoryRequestActivatePermissionId, code: "inventory.opening_inventory.request_activate", action: "opening_inventory.request_activate" },
+    { id: ids.openingInventoryRequestReversePermissionId, code: "inventory.opening_inventory.request_reverse", action: "opening_inventory.request_reverse" },
+  ];
+  for (const permission of openingInventoryPermissions) {
     await prisma.permission.upsert({
       where: { code: permission.code },
       create: {
