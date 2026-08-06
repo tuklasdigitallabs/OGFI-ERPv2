@@ -8,8 +8,6 @@ import {
 } from "./authorizationDatabaseSafety";
 
 const boundaryMock = vi.hoisted(() => ({
-  assertCanManageCompanyScope: vi.fn().mockResolvedValue(undefined),
-  requirePermission: vi.fn().mockResolvedValue(undefined),
   requireSessionContext: vi.fn(),
 }));
 
@@ -20,23 +18,6 @@ vi.mock("../src/server/services/context", async () => {
   return {
     ...actual,
     requireSessionContext: boundaryMock.requireSessionContext,
-  };
-});
-
-vi.mock("../src/server/services/authorization", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/server/services/authorization")
-  >("../src/server/services/authorization");
-  return { ...actual, requirePermission: boundaryMock.requirePermission };
-});
-
-vi.mock("../src/server/services/coreAdmin", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/server/services/coreAdmin")
-  >("../src/server/services/coreAdmin");
-  return {
-    ...actual,
-    assertCanManageCompanyScope: boundaryMock.assertCanManageCompanyScope,
   };
 });
 
@@ -80,6 +61,10 @@ describe.skipIf(!databaseEnabled).sequential(
     let primaryCompanyId: string;
     let foreignCompanyId: string;
     let actorId: string;
+    let itemEditorRoleId: string;
+    let itemEditPermissionId: string;
+    let coreAdminPermissionId: string;
+    let companyScopeAssignmentId: string;
     let session: SessionContext;
 
     beforeAll(async () => {
@@ -135,12 +120,54 @@ describe.skipIf(!databaseEnabled).sequential(
           displayName: `DEC-0241 actor ${suffix}`,
         },
       });
+      const grantedPermissions = await prisma.permission.findMany({
+        where: {
+          code: { in: ["master_data.item.edit", "core.administer"] },
+        },
+        select: { id: true, code: true },
+      });
+      itemEditPermissionId =
+        grantedPermissions.find(({ code }) => code === "master_data.item.edit")
+          ?.id ?? "";
+      coreAdminPermissionId =
+        grantedPermissions.find(({ code }) => code === "core.administer")?.id ??
+        "";
+      if (!itemEditPermissionId || !coreAdminPermissionId) {
+        throw new Error("ITEM_CORRECTION_PERMISSION_FIXTURE_MISSING");
+      }
+      itemEditorRoleId = randomUUID();
+      await prisma.role.create({
+        data: {
+          id: itemEditorRoleId,
+          tenantId,
+          code: `ITEM-EDITOR-${suffix}`,
+          name: `DEC-0241 item editor ${suffix}`,
+          permissions: { create: { permissionId: itemEditPermissionId } },
+        },
+      });
+      await prisma.userRoleAssignment.create({
+        data: {
+          id: randomUUID(),
+          userId: actorId,
+          roleId: itemEditorRoleId,
+        },
+      });
+      companyScopeAssignmentId = randomUUID();
+      await prisma.userScopeAssignment.create({
+        data: {
+          id: companyScopeAssignmentId,
+          userId: actorId,
+          scopeType: "COMPANY",
+          scopeId: primaryCompanyId,
+          accessLevel: "MANAGE",
+        },
+      });
       session = {
         user: {
           id: actorId,
           email: `item-correction-${suffix}@example.test`,
           displayName: `DEC-0241 actor ${suffix}`,
-          role: "Core Administrator",
+          role: "Item Editor",
         },
         context: {
           tenantId,
@@ -156,6 +183,17 @@ describe.skipIf(!databaseEnabled).sequential(
         permissionCodes: [],
       } satisfies SessionContext;
       boundaryMock.requireSessionContext.mockResolvedValue(session);
+      const [{ getGrantedPermissionCodes }, { assertCanManageCompanyMasterDataScope }] =
+        await Promise.all([
+          import("../src/server/services/authorization"),
+          import("../src/server/services/coreAdmin"),
+        ]);
+      await expect(getGrantedPermissionCodes(session)).resolves.toContain(
+        "master_data.item.edit",
+      );
+      await expect(
+        assertCanManageCompanyMasterDataScope(session, primaryCompanyId),
+      ).resolves.toBeUndefined();
     });
 
     afterAll(async () => {
@@ -329,6 +367,66 @@ describe.skipIf(!databaseEnabled).sequential(
       });
     }
 
+    test("a revoked item-edit grant denies and leaves no Item or audit mutation", async () => {
+      const fixture = await createFixture();
+      const before = await itemSnapshot(fixture.itemId);
+      await prisma.rolePermission.delete({
+        where: {
+          roleId_permissionId: {
+            roleId: itemEditorRoleId,
+            permissionId: itemEditPermissionId,
+          },
+        },
+      });
+      try {
+        await expect(
+          items.updateItem(
+            correctionForm(
+              fixture,
+              "DEC-0241 revoked permission correction",
+              "Attempt a correction after the narrow edit grant was revoked.",
+            ),
+          ),
+        ).rejects.toThrow("PERMISSION_DENIED");
+        await expect(itemSnapshot(fixture.itemId)).resolves.toEqual(before);
+        await expect(itemUpdateAudits(fixture.itemId)).resolves.toEqual([]);
+      } finally {
+        await prisma.rolePermission.create({
+          data: {
+            roleId: itemEditorRoleId,
+            permissionId: itemEditPermissionId,
+          },
+        });
+      }
+    });
+
+    test("a revoked company MANAGE scope denies and leaves no Item or audit mutation", async () => {
+      const fixture = await createFixture();
+      const before = await itemSnapshot(fixture.itemId);
+      await prisma.userScopeAssignment.update({
+        where: { id: companyScopeAssignmentId },
+        data: { status: "INACTIVE" },
+      });
+      try {
+        await expect(
+          items.updateItem(
+            correctionForm(
+              fixture,
+              "DEC-0241 revoked scope correction",
+              "Attempt a correction after company management scope was revoked.",
+            ),
+          ),
+        ).rejects.toThrow("MASTER_DATA_SCOPE_DENIED");
+        await expect(itemSnapshot(fixture.itemId)).resolves.toEqual(before);
+        await expect(itemUpdateAudits(fixture.itemId)).resolves.toEqual([]);
+      } finally {
+        await prisma.userScopeAssignment.update({
+          where: { id: companyScopeAssignmentId },
+          data: { status: "ACTIVE" },
+        });
+      }
+    });
+
     test("two corrections sharing one version produce one winner, one conflict, and one exact audit", async () => {
       const fixture = await createFixture();
       const before = await itemSnapshot(fixture.itemId);
@@ -448,20 +546,37 @@ describe.skipIf(!databaseEnabled).sequential(
       form.set("itemId", fixture.itemId);
       form.set("reason", "Attempt direct deactivation before governance is available.");
 
-      await expect(items.deactivateItem(form)).rejects.toThrow(
-        "ITEM_DEACTIVATION_GOVERNANCE_REQUIRED",
-      );
-      await expect(itemSnapshot(fixture.itemId)).resolves.toEqual(before);
-      await expect(
-        prisma.auditEvent.findMany({
+      await prisma.rolePermission.create({
+        data: {
+          roleId: itemEditorRoleId,
+          permissionId: coreAdminPermissionId,
+        },
+      });
+      try {
+        await expect(items.deactivateItem(form)).rejects.toThrow(
+          "ITEM_DEACTIVATION_GOVERNANCE_REQUIRED",
+        );
+        await expect(itemSnapshot(fixture.itemId)).resolves.toEqual(before);
+        await expect(
+          prisma.auditEvent.findMany({
+            where: {
+              tenantId,
+              entityType: "Item",
+              entityId: fixture.itemId,
+              eventType: { in: ["item.updated", "item.deactivated"] },
+            },
+          }),
+        ).resolves.toEqual([]);
+      } finally {
+        await prisma.rolePermission.delete({
           where: {
-            tenantId,
-            entityType: "Item",
-            entityId: fixture.itemId,
-            eventType: { in: ["item.updated", "item.deactivated"] },
+            roleId_permissionId: {
+              roleId: itemEditorRoleId,
+              permissionId: coreAdminPermissionId,
+            },
           },
-        }),
-      ).resolves.toEqual([]);
+        });
+      }
     });
 
     const forgedMaterialFields = [
