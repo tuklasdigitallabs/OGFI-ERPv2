@@ -72,6 +72,13 @@
       "testName": "AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
       "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
       "coveredControls": ["constant-time host token denial", "non-enumerating response", "aggregate-only metrics", "no business mutation"]
+    },
+    {
+      "id": "AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+      "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
+      "testName": "AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": ["exact CI runtime admission", "constant-time per-run token denial", "non-enumerating response", "no topology disclosure", "no audit mutation"]
     }
   ],
   "boundaries": [

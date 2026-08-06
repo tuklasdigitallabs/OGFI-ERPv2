@@ -910,6 +910,7 @@ export function buildPettyCashApprovalStepIntent(
 }
 
 export async function executeCanonicalApprovalDecision(input: unknown) {
+  const command = parseCanonicalApprovalDecisionCommand(input);
   const session = await requireSessionContext();
   const globalRoutingEnabled = normalizedApprovalRoutingEnabled();
   if (!globalRoutingEnabled) {
@@ -928,7 +929,6 @@ export async function executeCanonicalApprovalDecision(input: unknown) {
       throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
     }
   }
-  const command = parseCanonicalApprovalDecisionCommand(input);
   if (!globalRoutingEnabled) {
     assertNormalizedApprovalDecisionAvailable(command.family, command.decision);
     const eligiblePage = await listEligibleApprovalStepPage(session, {

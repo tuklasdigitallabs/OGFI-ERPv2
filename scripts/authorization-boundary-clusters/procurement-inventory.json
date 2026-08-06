@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "cluster": "procurement-inventory",
   "testFiles": [
+    "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+    "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
     "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
     "apps/web/tests/inventoryPilotApprovalPg.integration.test.ts",
     "apps/web/tests/inventoryPilotConfiguration.integration.test.ts"
@@ -286,6 +288,76 @@
       "testName": "AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION",
       "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
       "coveredControls": ["live create, enter, and adjustment permissions", "wrong inventory location non-enumeration", "start lifecycle", "entry lifecycle", "variance-adjustment lifecycle", "no stock-count, adjustment, balance, movement, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "file": "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
+      "testName": "writer fence first freezes the reviewed aggregate and one decision commits",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["tenant-company PR aggregate fence", "writer-first serialization", "exactly one decision", "no stale comment or approval mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "file": "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
+      "testName": "decision fence first commits once and the waiting writer remains frozen",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["tenant-company PR aggregate fence", "decision-first serialization", "exactly one decision", "no post-review comment mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "file": "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
+      "testName": "quotation writer fence first rejects a new quote and one reviewed recommendation commits",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["tenant-company quotation aggregate fence", "writer-first serialization", "exactly one recommendation decision", "no stale quotation mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "file": "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
+      "testName": "quotation decision fence first commits once and rejects the waiting new quote",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["tenant-company quotation aggregate fence", "decision-first serialization", "exactly one recommendation decision", "no post-review quotation mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "file": "apps/web/tests/approvalReviewSnapshotConcurrency.integration.test.ts",
+      "testName": "rejects a decision when a canonical PR comment changed after review",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["signed PR review", "canonical digest mismatch", "stale review denial", "no approval, audit, notification, movement, or balance mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "file": "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+      "testName": "InventoryTransfer approves exactly once without custody or ledger movement",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["signed current inventory review", "server-derived approval family", "exactly-once approval", "no custody, ledger, or balance mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "file": "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+      "testName": "%s approves exactly once from a signed current review without posting inventory",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["QuotationRecommendation, PurchaseOrder, WastageReport, and StockAdjustment review branches", "server-derived approval family", "signed current review", "exactly-once approval", "no inventory posting"]
+    },
+    {
+      "id": "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "file": "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+      "testName": "StockCountAttemptReview approves the pinned attempt exactly once without posting variance",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["signed pinned-attempt review", "server-derived approval family", "exactly-once approval", "no variance, movement, or balance posting"]
+    },
+    {
+      "id": "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION",
+      "file": "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+      "testName": "stale StockAdjustment review is denied with zero approval or inventory mutation",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["signed current review", "tenant-company source scope", "stale review denial", "no approval mutation", "no inventory mutation", "no verification audit"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-REVIEW-DETAIL-NON-DISCLOSURE-NO-MUTATION",
+      "file": "apps/web/tests/approvalReviewSevenFamily.integration.test.ts",
+      "testName": "review detail denies foreign scope, revoked authority, and prohibited actors without disclosure or mutation",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["malformed and foreign ID non-enumeration", "tenant and company isolation", "adjacent location denial", "live role and scope revocation", "prohibited actor segregation", "no source, approval, audit, notification, movement, or balance mutation"]
     }
   ],
   "boundaries": [
@@ -303,6 +375,15 @@
     {"surfaceId":"server/services/approvals.ts#returnApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["approval-document-dispatch","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","source document","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#returnPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseRequest","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#runApprovalReminderScan","classification":"PUBLIC_BOUNDARY","adapterIds":["live-approval-read-permission","stale-session-revocation"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-APPROVAL-READ-AND-REMINDER-STALE-SESSION-REVOKED"],"noMutationControls":["Notification"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#executeEligibleApprovalDecision","classification":"PUBLIC_BOUNDARY","adapterIds":["authenticated live session","approval ID validation before record probe","exact runtime feature admission","eligible-step tenant-company-location-role scope query","server-derived document family","signed reviewed-snapshot claims","canonical permission, segregation-of-duties, transaction, and source adapters"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION","AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"],"noMutationControls":["ineligible or stale review cannot mutate ApprovalInstance, source document, InventoryMovement, InventoryBalance, AuditEvent, or Notification"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalReviewAggregateFence.ts#acquireApprovalReviewAggregateFence","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller transaction","tenant-company-source-family domain-separated advisory lock","transaction-scoped serialization"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"],"noMutationControls":["losing transaction writes no comment, quotation, source, approval, notification, movement, or balance mutation"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalReviewAggregateFence.ts#acquireApprovalReviewDecisionAggregateFences","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller transaction","closed seven-family mapping","deterministic parent-before-child locks","tenant-company-document identity"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"],"noMutationControls":["exactly one decision winner and no duplicate approval outcome or inventory posting"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalReviewAggregateFence.ts#assertApprovalReviewEvidenceSourceMutable","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["scoped source row lock","governed-approval before-after comparison","pending-review freeze","non-enumerating scope rejection"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE"],"noMutationControls":["frozen evidence source receives no concurrent comment or evidence mutation"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalReviewAggregateFence.ts#assertApprovalReviewQuotationRequestMutable","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["parent quotation-request lock","scoped governed-recommendation set","before-after stability check","pending-review freeze"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"],"noMutationControls":["frozen quotation request receives no concurrent quotation mutation"],"status":"COVERED"},
+    {"surfaceId":"server/services/boundedApprovalProcurementReview.ts#getBoundedApprovalProcurementReview","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["delegated authenticated session","tenant-company procurement source query","canonical review digest"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE","AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE","AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE"],"noMutationControls":["read-only procurement review assembly cannot mutate source, approval, or audit state"],"status":"COVERED"},
+    {"surfaceId":"server/services/boundedApprovalInventoryReview.ts#loadBoundedApprovalInventoryReview","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["delegated authenticated session","tenant-company inventory source query","canonical review digest"],"caseIds":["AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"],"noMutationControls":["read-only inventory review assembly cannot mutate source, approval, ledger, balance, or audit state"],"status":"COVERED"},
+    {"surfaceId":"server/services/boundedApprovalReview.ts#getBoundedInventoryUatApprovalReview","classification":"PUBLIC_BOUNDARY","adapterIds":["authenticated session","eligible-step non-enumeration","live permission and scope","signed reviewed-snapshot token"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-DETAIL-NON-DISCLOSURE-NO-MUTATION","AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION","AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"],"noMutationControls":["review assembly is read-only and discloses no adjacent approval or source"],"status":"COVERED"},
+    {"surfaceId":"server/services/boundedApprovalReview.ts#assertBoundedApprovalReviewMatchesLockedState","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller-owned transaction","signed review claims","locked current source snapshot","exact signed digest equality"],"caseIds":["AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION","AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE","AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"],"noMutationControls":["stale or mismatched review rolls back approval, source, inventory, audit, and notification mutations"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#approveAttendanceImportBatchApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","AttendanceImportBatch","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#approveBudgetRevision","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","BudgetRevision","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#approveCashAdvanceRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","CashAdvanceRequest","AuditEvent"],"status":"COVERED"},

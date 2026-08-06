@@ -257,6 +257,23 @@ function reviewAuditCount(input: {
   });
 }
 
+async function reviewBoundarySnapshot(fixture: ApprovalDecisionPgFixture) {
+  const [source, approval, steps, audits, notifications, inventory] = await Promise.all([
+    prisma.stockAdjustment.findUniqueOrThrow({ where: { id: fixture.sourceId } }),
+    prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId },
+    }),
+    prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: [{ stepOrder: "asc" }, { id: "asc" }],
+    }),
+    prisma.auditEvent.count({ where: { tenantId: fixture.tenantId } }),
+    prisma.notification.count({ where: { tenantId: fixture.tenantId } }),
+    scopedInventoryCounts(fixture),
+  ]);
+  return { source, approval, steps, audits, notifications, inventory };
+}
+
 async function withGlobalRoutingForAdmission<T>(operation: () => Promise<T>) {
   process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
   try {
@@ -518,6 +535,68 @@ describe.skipIf(!runPg).sequential(
         },
       })).resolves.toBe(0);
     }, 30_000);
+
+    test("review detail denies foreign scope, revoked authority, and prohibited actors without disclosure or mutation", async () => {
+      const assertDenied = async (
+        fixture: ApprovalDecisionPgFixture,
+        session: SessionContext,
+        approvalInstanceId = fixture.approvalInstanceId,
+      ) => {
+        const before = await reviewBoundarySnapshot(fixture);
+        await expect(
+          getBoundedInventoryUatApprovalReview(session, approvalInstanceId),
+        ).rejects.toThrow("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+        expect(await reviewBoundarySnapshot(fixture)).toEqual(before);
+      };
+
+      const scoped = await createSharedScenario("StockAdjustment");
+      await assertDenied(scoped.fixture, scoped.session, "not-a-uuid");
+      await assertDenied(scoped.fixture, scoped.session, randomUUID());
+      await assertDenied(scoped.fixture, {
+        ...scoped.session,
+        context: { ...scoped.session.context, tenantId: randomUUID() },
+      });
+      await assertDenied(scoped.fixture, {
+        ...scoped.session,
+        context: { ...scoped.session.context, companyId: randomUUID() },
+      });
+      const adjacentLocationId = randomUUID();
+      await assertDenied(scoped.fixture, {
+        ...scoped.session,
+        context: {
+          ...scoped.session.context,
+          locationId: adjacentLocationId,
+        },
+        authorizedLocations: scoped.session.authorizedLocations.map((location) => ({
+          ...location,
+          locationId: adjacentLocationId,
+        })),
+      });
+
+      const scopeRevoked = await createSharedScenario("StockAdjustment");
+      await prisma.userScopeAssignment.deleteMany({
+        where: { userId: scopeRevoked.session.user.id },
+      });
+      await assertDenied(scopeRevoked.fixture, scopeRevoked.session);
+
+      const roleRevoked = await createSharedScenario("StockAdjustment");
+      await prisma.userRoleAssignment.deleteMany({
+        where: { userId: roleRevoked.session.user.id },
+      });
+      await assertDenied(roleRevoked.fixture, roleRevoked.session);
+
+      const prohibited = await createSharedScenario("StockAdjustment");
+      const prohibitedStepId = prohibited.fixture.stepIds[0];
+      if (!prohibitedStepId) throw new Error("APPROVAL_REVIEW_TEST_STEP_MISSING");
+      await prisma.approvalInstanceStepProhibitedActor.create({
+        data: {
+          approvalInstanceStepId: prohibitedStepId,
+          userId: prohibited.session.user.id,
+          reasonCode: "PROHIBITED_ACTOR_TEST",
+        },
+      });
+      await assertDenied(prohibited.fixture, prohibited.session);
+    }, 45_000);
 
     // Live permission/scope/SOD revocation is exercised with zero mutation by
     // approvalDecisionRevocationPg.integration.test.ts and

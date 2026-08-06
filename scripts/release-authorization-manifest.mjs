@@ -1292,6 +1292,40 @@ export function buildAuthorizationSurfaceManifest() {
         noMutationControls: ["no metric disclosure or business-state mutation"],
       },
     ],
+    [
+      "app/api/internal/production-auth-e2e-proxy-probe/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["HOST_OPERATOR"],
+        guardChain: [
+          "exact-ci-runtime-admission",
+          "loopback-edge-publication",
+          "constant-time-per-run-probe-token",
+          "trusted-single-hop-proxy-normalization",
+          "bounded-topology-payload",
+        ],
+        denialContract: "NOT_FOUND_NO_PROXY_TOPOLOGY_DISCLOSURE",
+        method: "GET",
+        testIds: [
+          "BOUNDARY_CASE:AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+        delegatedServiceIds: [],
+        boundaryCaseIds: [
+          "AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+        authorizationAdapterIds: [
+          "exact CI lane admission",
+          "loopback-only edge publication",
+          "constant-time per-run probe token",
+          "trusted request fingerprint",
+          "bounded proxy-topology response",
+        ],
+        noMutationControls: [
+          "no session, audit, tenant, user, approval, or business-record mutation",
+          "no topology disclosure when runtime or token admission fails",
+        ],
+      },
+    ],
   ]);
   const controlledLookupRoutes = new Map([
     [
@@ -1584,7 +1618,7 @@ export function buildAuthorizationSurfaceManifest() {
           testIds: controlledInternalPolicy.testIds,
           boundaryCaseIds: controlledInternalPolicy.boundaryCaseIds,
           boundaryClassifications: ["HOST_INTERNAL_BOUNDARY"],
-          authorizationAdapterIds: [
+          authorizationAdapterIds: controlledInternalPolicy.authorizationAdapterIds ?? [
             "loopback-only edge publication",
             "constant-time bearer token",
             "bounded aggregate payload",
@@ -2167,6 +2201,10 @@ export function authorizationBoundaryCoverageReport(manifest) {
         : surface.id === "app/api/internal/item-option-catalog-metrics/route.ts#GET"
           ? !surface.executableTestIds.includes(
               "BOUNDARY_CASE:AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+            )
+        : surface.id === "app/api/internal/production-auth-e2e-proxy-probe/route.ts#GET"
+          ? !surface.executableTestIds.includes(
+              "BOUNDARY_CASE:AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
             )
         : [
               "app/api/evidence/uploads/route.ts#POST",

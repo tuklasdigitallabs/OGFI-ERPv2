@@ -472,6 +472,7 @@ describe("authorization surface manifest", () => {
     const hostOperatorRoutes = new Set([
       "app/api/internal/authentication-metrics/route.ts#GET",
       "app/api/internal/item-option-catalog-metrics/route.ts#GET",
+      "app/api/internal/production-auth-e2e-proxy-probe/route.ts#GET",
     ]);
     for (const surface of manifest) {
       expect(surface.id).toBeTruthy();

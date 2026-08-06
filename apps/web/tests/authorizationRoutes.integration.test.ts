@@ -291,4 +291,70 @@ describe("protected route authorization matrix", () => {
       }
     }
   });
+
+  it("AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION", async () => {
+    const admittedEnvironment = {
+      NODE_ENV: "production",
+      APP_ENV: "uat",
+      CI: "true",
+      AUTH_MODE: "local",
+      AUTH_HARDENED_UAT_RUNTIME_ENABLED: "true",
+      BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: "true",
+      APPROVAL_ROUTING_V1_ENABLED: "false",
+      OGFI_PRODUCTION_AUTH_E2E_PROBE_TOKEN:
+        "authorization-route-proxy-probe-token-at-least-32-bytes",
+    } as const;
+    const previousEnvironment = new Map(
+      Object.keys(admittedEnvironment).map((name) => [name, process.env[name]]),
+    );
+    for (const [name, value] of Object.entries(admittedEnvironment)) {
+      process.env[name] = value;
+    }
+    const beforeAuditCount = await prisma.auditEvent.count({
+      where: { tenantId: ids.tenant },
+    });
+    try {
+      const { GET } = await import(
+        "../src/app/api/internal/production-auth-e2e-proxy-probe/route"
+      );
+      for (const providedToken of [
+        undefined,
+        "short",
+        "incorrect-proxy-probe-token-at-least-32-bytes",
+      ]) {
+        const headers = new Headers();
+        if (providedToken) headers.set("x-ogfi-e2e-probe-token", providedToken);
+        const response = await GET(
+          new Request(
+            "http://localhost/api/internal/production-auth-e2e-proxy-probe",
+            { headers },
+          ),
+        );
+        expect(response.status).toBe(404);
+        expect(await response.text()).toBe("");
+      }
+      process.env.APP_ENV = "production";
+      const invalidRuntimeResponse = await GET(
+        new Request(
+          "http://localhost/api/internal/production-auth-e2e-proxy-probe",
+          {
+            headers: {
+              "x-ogfi-e2e-probe-token":
+                admittedEnvironment.OGFI_PRODUCTION_AUTH_E2E_PROBE_TOKEN,
+            },
+          },
+        ),
+      );
+      expect(invalidRuntimeResponse.status).toBe(404);
+      expect(await invalidRuntimeResponse.text()).toBe("");
+      expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant } })).toBe(
+        beforeAuditCount,
+      );
+    } finally {
+      for (const [name, value] of previousEnvironment) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
 });

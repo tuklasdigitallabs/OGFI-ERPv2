@@ -3265,6 +3265,45 @@
     ]
   },
   {
+    "id": "app/api/internal/production-auth-e2e-proxy-probe/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "HOST_OPERATOR"
+    ],
+    "guardChain": [
+      "exact-ci-runtime-admission",
+      "loopback-edge-publication",
+      "constant-time-per-run-probe-token",
+      "trusted-single-hop-proxy-normalization",
+      "bounded-topology-payload"
+    ],
+    "denialContract": "NOT_FOUND_NO_PROXY_TOPOLOGY_DISCLOSURE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "delegatedServiceIds": [],
+    "callChains": [],
+    "boundaryCaseIds": [
+      "AUTHZ-PRODUCTION-AUTH-E2E-PROXY-PROBE-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "HOST_INTERNAL_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "exact CI lane admission",
+      "loopback-only edge publication",
+      "constant-time per-run probe token",
+      "trusted request fingerprint",
+      "bounded proxy-topology response"
+    ],
+    "noMutationControls": [
+      "no session, audit, tenant, user, approval, or business-record mutation",
+      "no topology disclosure when runtime or token admission fails"
+    ]
+  },
+  {
     "id": "app/api/item-master/category/create/route.ts#POST",
     "surfaceType": "ROUTE_HANDLER",
     "permission": "SERVICE_ENFORCED",
@@ -3904,46 +3943,6 @@
     ]
   },
   {
-    "id": "approvals/[id]/page.tsx#addComment",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/purchaseRequests.ts#addPurchaseRequestComment"
-    ],
-    "callChains": [
-      "addComment -> server/services/purchaseRequests.ts#addPurchaseRequestComment"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "record-location-non-enumeration"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "PurchaseRequestComment",
-      "AuditEvent"
-    ]
-  },
-  {
     "id": "approvals/[id]/page.tsx#page",
     "surfaceType": "PAGE",
     "permission": "SERVICE_ENFORCED",
@@ -3984,31 +3983,38 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
-      "server/services/approvals.ts#executeCanonicalApprovalDecision",
+      "server/services/approvals.ts#executeEligibleApprovalDecision",
       "server/services/authentication.ts#assertTrustedServerActionOrigin"
     ],
     "callChains": [
-      "reviewApproval -> server/services/approvals.ts#executeCanonicalApprovalDecision",
+      "reviewApproval -> server/services/approvals.ts#executeEligibleApprovalDecision",
       "reviewApproval -> server/services/authentication.ts#assertTrustedServerActionOrigin"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
     "authorizationAdapterIds": [
-      "authenticated session",
-      "normalized live approval preflight",
-      "tenant-company approval scope",
-      "segregation of duties",
-      "transactional source adapter"
+      "authenticated live session",
+      "approval ID validation before record probe",
+      "exact runtime feature admission",
+      "eligible-step tenant-company-location-role scope query",
+      "server-derived document family",
+      "signed reviewed-snapshot claims",
+      "canonical permission, segregation-of-duties, transaction, and source adapters"
     ],
     "boundaryCaseIds": [
-      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
-      "FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
-      "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
     ],
     "noMutationControls": [
-      "ineligible actor cannot mutate approval or source",
-      "failed source effect rolls back approval and notifications"
+      "ineligible or stale review cannot mutate ApprovalInstance, source document, InventoryMovement, InventoryBalance, AuditEvent, or Notification"
     ]
   },
   {
@@ -15324,6 +15330,173 @@
     ]
   },
   {
+    "id": "server/services/approvalReviewAggregateFence.ts#acquireApprovalReviewAggregateFence",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "tenant-company-source-family domain-separated advisory lock",
+      "transaction-scoped serialization"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "noMutationControls": [
+      "losing transaction writes no comment, quotation, source, approval, notification, movement, or balance mutation"
+    ]
+  },
+  {
+    "id": "server/services/approvalReviewAggregateFence.ts#acquireApprovalReviewDecisionAggregateFences",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "closed seven-family mapping",
+      "deterministic parent-before-child locks",
+      "tenant-company-document identity"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "noMutationControls": [
+      "exactly one decision winner and no duplicate approval outcome or inventory posting"
+    ]
+  },
+  {
+    "id": "server/services/approvalReviewAggregateFence.ts#assertApprovalReviewEvidenceSourceMutable",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "scoped source row lock",
+      "governed-approval before-after comparison",
+      "pending-review freeze",
+      "non-enumerating scope rejection"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE"
+    ],
+    "noMutationControls": [
+      "frozen evidence source receives no concurrent comment or evidence mutation"
+    ]
+  },
+  {
+    "id": "server/services/approvalReviewAggregateFence.ts#assertApprovalReviewQuotationRequestMutable",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "parent quotation-request lock",
+      "scoped governed-recommendation set",
+      "before-after stability check",
+      "pending-review freeze"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE"
+    ],
+    "noMutationControls": [
+      "frozen quotation request receives no concurrent quotation mutation"
+    ]
+  },
+  {
     "id": "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -16765,6 +16938,63 @@
     ]
   },
   {
+    "id": "server/services/approvals.ts#executeEligibleApprovalDecision",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview | permissions.transferApprove | permissions.stockCountReview | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authenticated live session",
+      "approval ID validation before record probe",
+      "exact runtime feature admission",
+      "eligible-step tenant-company-location-role scope query",
+      "server-derived document family",
+      "signed reviewed-snapshot claims",
+      "canonical permission, segregation-of-duties, transaction, and source adapters"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "ineligible or stale review cannot mutate ApprovalInstance, source document, InventoryMovement, InventoryBalance, AuditEvent, or Notification"
+    ]
+  },
+  {
     "id": "server/services/approvals.ts#findEligibleApprovalActor",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -16826,6 +17056,27 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/approvals.ts#listBoundedInventoryUatApprovalQueuePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/approvals.ts#listBoundedInventoryUatApprovalWorklistPage",
@@ -17242,7 +17493,7 @@
   {
     "id": "server/services/attachments.ts#archiveControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17302,7 +17553,7 @@
   {
     "id": "server/services/attachments.ts#authorizeControlledEvidenceSourceAction",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17343,7 +17594,7 @@
   {
     "id": "server/services/attachments.ts#canArchiveControlledEvidenceSource",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage | permissions.openingInventoryPrepare",
+    "permission": "permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.quoteManage | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage | permissions.openingInventoryPrepare",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17364,7 +17615,7 @@
   {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17402,7 +17653,7 @@
   {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17518,7 +17769,7 @@
   {
     "id": "server/services/attachments.ts#linkControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17556,7 +17807,7 @@
   {
     "id": "server/services/attachments.ts#listControlledEvidenceAttachmentPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -17599,7 +17850,7 @@
   {
     "id": "server/services/attachments.ts#listControlledEvidenceAttachments",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.quoteManage | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.purchaseRequestCreate | permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove | permissions.quoteManage | permissions.purchaseOrderView | permissions.projectView | permissions.openingInventoryView | permissions.openingInventoryPrepare | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.purchaseOrderCreate | permissions.purchaseOrderAmend | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -19626,6 +19877,186 @@
     ],
     "noMutationControls": [
       "session denial does not amplify audit rows"
+    ]
+  },
+  {
+    "id": "server/services/boundedApprovalInventoryReview.ts#loadBoundedApprovalInventoryReview",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "delegated authenticated session",
+      "tenant-company inventory source query",
+      "canonical review digest"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "read-only inventory review assembly cannot mutate source, approval, ledger, balance, or audit state"
+    ]
+  },
+  {
+    "id": "server/services/boundedApprovalProcurementReview.ts#getBoundedApprovalProcurementReview",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "BOUNDARY_CASE:AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "delegated authenticated session",
+      "tenant-company procurement source query",
+      "canonical review digest"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-WRITER-FIRST-RACE",
+      "AUTHZ-PI-APPROVAL-REVIEW-QUOTE-DECISION-FIRST-RACE",
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE"
+    ],
+    "noMutationControls": [
+      "read-only procurement review assembly cannot mutate source, approval, or audit state"
+    ]
+  },
+  {
+    "id": "server/services/boundedApprovalReview.ts#assertBoundedApprovalReviewMatchesLockedState",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller-owned transaction",
+      "signed review claims",
+      "locked current source snapshot",
+      "exact signed digest equality"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "stale or mismatched review rolls back approval, source, inventory, audit, and notification mutations"
+    ]
+  },
+  {
+    "id": "server/services/boundedApprovalReview.ts#getBoundedInventoryUatApprovalReview",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-DETAIL-NON-DISCLOSURE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "BOUNDARY_CASE:AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authenticated session",
+      "eligible-step non-enumeration",
+      "live permission and scope",
+      "signed reviewed-snapshot token"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-APPROVAL-REVIEW-DETAIL-NON-DISCLOSURE-NO-MUTATION",
+      "AUTHZ-PI-APPROVAL-REVIEW-PR-STALE-SNAPSHOT-NO-MUTATION",
+      "AUTHZ-PI-SHARED-FOUR-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-STOCK-COUNT-REVIEWED-DECISION-EXACTLY-ONCE",
+      "AUTHZ-PI-SEVEN-FAMILY-REVIEWED-DECISION-STALE-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "review assembly is read-only and discloses no adjacent approval or source"
     ]
   },
   {
