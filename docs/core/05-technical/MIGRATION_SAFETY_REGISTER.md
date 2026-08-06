@@ -1,6 +1,6 @@
 # Migration Safety Register
 
-This register provides the explicit, machine-readable review disposition required by `scripts/release-migration-review.mjs` for migrations that mutate data, drop a table, column, type, constraint, or index, truncate data, alter an enum, set a column `NOT NULL`, or add uniqueness to an existing table. Additive migrations that do not meet those conditions receive the generator's `ADDITIVE_DEFAULT` classification.
+This register provides the explicit, machine-readable review disposition required by `scripts/release-migration-review.mjs` for migrations that mutate data, drop a table, column, type, constraint, index, or trigger, disable a trigger, truncate data, alter an enum, set a column `NOT NULL`, or add uniqueness to an existing table. Additive migrations that do not meet those conditions receive the generator's `ADDITIVE_DEFAULT` classification.
 
 `PENDING` means the migration has been inventoried but has not been accepted for a release rehearsal. `APPROVED_FOR_REHEARSAL` authorizes only the disposable exact-SHA rehearsal for the exact migration hash; it is not production approval or data-preservation evidence. `APPROVED` is reserved for final reviewed evidence after the rehearsal. `REJECTED` blocks execution and promotion. Each row is bound to the reviewed SQL by `sha256`; a content change fails the generator until a new review updates the row.
 
@@ -1469,6 +1469,108 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "owner": "Database Engineering owns the constraint, preflight, migration, and recovery; Backend owns writer compatibility; Security and QA own scope, format, and integrity verification; Release owns exact-SHA rehearsal and promotion evidence.",
     "verification": "Static migration/schema contracts, Prisma validation, disposable PostgreSQL empty and populated-restore execution, constraint-catalog attestation, invalid-row rollback, concurrent-write lock behavior, idempotent redeploy, and recovery evidence are required. No production or UAT credit is claimed from authoring alone.",
     "expectedRecoveryTime": "Measure migration rollback, lock-timeout recovery, idempotent redeploy, forward correction, and isolated restore against approved RPO/RTO before promotion."
+  },
+  {
+    "migration": "20260731090000_inventory_pilot_classifier_activation_intents",
+    "sha256": "a560e3e9fd5f70f4bd117bb07215a518148cd4246d88005a2ec2e5a9a0732895",
+    "risk": "The exact transfer-approval permission seed can conflict with existing metadata; replacing the transfer status constraint and adding scoped unique indexes can fail on populated predecessor data; and incorrect pilot or approval-intent guards could weaken scope, lineage, idempotency, or append-only controls.",
+    "expectedDataEffect": "Insert exactly the inventory.transfer.approve permission when absent, add version and pilot-control schema, and create no pilot revision, membership, activation, approval-intent, inventory-movement, or inventory-balance row. Existing ledger and balance content must remain unchanged.",
+    "recovery": "The migration uses one explicit PostgreSQL transaction. Resolve permission metadata, status, or duplicate-key preflight failures through a reviewed forward correction and retry; restore the verified predecessor backup if integrity is uncertain. Never delete controlled pilot or approval history as rollback.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "Permission identity or metadata conflict; unsupported transfer status; populated scoped-key duplicate; cross-scope foreign-key acceptance; invalid activation or intent lineage; mutable history; checksum mismatch; redeploy delta; schema drift; unexpected ledger or balance delta; or restore non-equivalence.",
+    "transactionBehavior": "One explicit transaction installs the permission, schema, constraints, indexes, functions, and ENABLE ALWAYS guards atomically. No runtime pilot activation or approval submission is performed by the migration.",
+    "reversibility": "Retain additive schema and the stable permission row through application rollback. Once controlled history exists, use an evidence-preserving forward correction or the approved restore path rather than dropping tables, guards, or evidence.",
+    "decisionTrigger": "Stop rehearsal or promotion on any SQL, checksum, duplicate, scope, lineage, idempotency, append-only, authorization, ledger, balance, redeploy, drift, or restore failure.",
+    "owner": "Database Engineering owns migration, preflight, constraints, and recovery; Backend owns transactional writers; Security and QA verify scope, authority, segregation, idempotency, and inventory invariants; Release owns exact-hash promotion evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, prove one exact permission row and no implicit role grant; zero rows in the new pilot and intent tables; unchanged source, ledger, and balance digests; scoped FK and unique-index integrity; activation CAS and intent idempotency; denied cross-scope, unauthorized, and self-approval paths; second deploy without delta; and isolated restore equivalence. Production approval remains blocked.",
+    "expectedRecoveryTime": "Measure lock failure, forward correction, second deploy, application rollback, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260731110000_opening_inventory_cutover_foundation",
+    "sha256": "19319932c478073e9a6a5ea2936314ced4dc64896271e01f8aac70e05442af2b",
+    "risk": "OPENING_STOCK_LOCATION is added to an existing enum before the explicit transaction; subsequent scoped indexes, executor functions, inventory-movement fences, derived-balance guards, and cutover constraints can fail or block valid posting. A later failure can leave the enum label installed even when the migration is incomplete.",
+    "expectedDataEffect": "Add the opening-inventory capability and empty cohort, cutover, line, reconciliation, approval-attestation, event, and command foundations. Create no cohort, cutover, command, inventory movement, or balance row and preserve every existing ledger and balance fact.",
+    "recovery": "Treat the pre-transaction enum change as potentially persistent after failure. Restore the disposable predecessor backup or deploy a reviewed forward correction; do not assume transaction rollback removes the enum value. The remaining DDL is transaction-wrapped and must roll back together.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "Enum partial state; populated UOM or stock-count-line duplicate; executor ownership or ACL drift; direct balance-write acceptance; unfenced opening movement; invalid approval or cutover lineage; duplicate movement; ledger/balance mismatch; checksum or schema drift; failed retry; or restore non-equivalence.",
+    "transactionBehavior": "ALTER TYPE ADD VALUE executes before BEGIN and is not covered by the later transaction. All following opening-inventory schema, constraints, functions, triggers, ownership changes, and grants commit or roll back together.",
+    "reversibility": "Do not attempt an automatic enum down migration. Preserve opening evidence after any accepted execution; recover an incomplete rehearsal from the verified predecessor backup or an evidence-preserving forward correction.",
+    "decisionTrigger": "Stop rehearsal or promotion on partial enum state without proven retry, any SQL or checksum error, scope or role drift, unexpected opening or ledger row, balance mismatch, duplicate movement, normal-posting regression, redeploy delta, or restore mismatch.",
+    "owner": "Database Engineering owns migration, executor role, guards, and recovery; Inventory Engineering owns exactly-once cutover and ledger behavior; Security and QA verify authority and invariants; Release owns exact-hash backup, retry, restore, and promotion evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, prove the enum value exists once, all seven opening foundations begin empty, restricted runtime cannot execute opening commands or write balances directly, staged opening creates no movement, activated opening posts exactly once, normal receiving/transfer/wastage/adjustment posting remains valid, derived balances equal immutable movements, failed commands roll back, a second deploy is inert, and the isolated predecessor restore is equivalent. Production approval remains blocked.",
+    "expectedRecoveryTime": "Measure enum-partial retry, migration execution, cutover rollback, application rollback, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260731140000_stock_count_recount_recovery_foundation",
+    "sha256": "be9f5e0a1d8f521fa3512504628c6427c5bfc71a698289974188a071c8e94412",
+    "risk": "The one-open-attempt index can expose duplicate predecessor attempts; replacing the StockAdjustment status constraint can reject unexpected values; and incorrect recount lineage, MFA, evidence, activation, adjustment-disposition, or append-only guards could strand counts or weaken inventory correction controls.",
+    "expectedDataEffect": "Add recount recovery fields, one empty append-only transition relation, constraints, and guards without creating a transition or changing an adjustment, stock-count fact, inventory movement, or balance.",
+    "recovery": "The migration is one explicit transaction. Resolve duplicate open attempts or incompatible adjustment statuses through a reviewed forward correction; restore the verified predecessor backup if complete rollback or schema integrity cannot be proven.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "Duplicate open attempt; incompatible adjustment status; missing or cross-scope qualification; invalid actor, MFA session, configuration activation, source/successor lineage, or adjustment disposition; accepted history mutation; unexpected ledger delta; checksum, drift, redeploy, or restore failure.",
+    "transactionBehavior": "One explicit transaction performs fail-closed duplicate preflight, installs the partial unique index, replaces the adjustment status check, creates recount lineage, and enables transition, adjustment, and attempt-line guards atomically.",
+    "reversibility": "Keep additive recovery lineage dormant through application rollback. Once a transition exists, never delete or rewrite it; use a reviewed forward correction or approved restore procedure that preserves audit and inventory history.",
+    "decisionTrigger": "Stop rehearsal or promotion on any preflight, SQL, checksum, scope, MFA, evidence, approval, lineage, append-only, ledger, balance, redeploy, drift, or restore failure.",
+    "owner": "Database Engineering owns schema, guards, preflight, and recovery; Inventory Engineering owns recovery transactions; Security and QA verify authority, evidence, segregation, immutability, and inventory neutrality; Release owns exact-hash evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, prove the new transition relation begins empty, source adjustments and ledger digests are unchanged, duplicate open attempts fail before unsafe DDL, one-open-attempt and exact-scope keys hold, valid and invalid recount transitions behave atomically, evidence/MFA/actor/configuration pins fail closed, linked adjustment disposition is terminal and unambiguous, failed attempts leave no source/successor mutation, second deploy is inert, and restore is equivalent. Production activation and approval remain blocked.",
+    "expectedRecoveryTime": "Measure duplicate remediation, transaction rollback, forward correction, application rollback, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260731150000_stock_count_recount_transition_truncate_guard",
+    "sha256": "6f9029c8c992964b25c19e10603eb2961264696208d1b5bc42971c89e4b38dab",
+    "risk": "The migration drops and recreates the recount append-only trigger without an explicit transaction. A failure after DROP TRIGGER can leave protected transition history without its UPDATE, DELETE, and TRUNCATE guard.",
+    "expectedDataEffect": "Replace only the StockCountRecountTransition append-only trigger so UPDATE, DELETE, and TRUNCATE are rejected. Change no transition, count, adjustment, movement, balance, or audit row.",
+    "recovery": "After any failure, inspect the Prisma journal and live trigger catalog before retry. Restore the exact ENABLE ALWAYS guard through a reviewed forward repair or restore the verified predecessor backup; never leave the table available to runtime while the guard is absent.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "DROP succeeds but CREATE or ENABLE ALWAYS fails; trigger definition or state drifts; UPDATE, DELETE, or TRUNCATE succeeds; row digest changes; checksum mismatch; second deploy delta; or restore non-equivalence.",
+    "transactionBehavior": "No explicit transaction wrapper is present. The rehearsal must treat a partially replaced guard as possible and verify final catalog state before any protected relation is admitted.",
+    "reversibility": "No automatic down migration is safe. Retain the stronger guard; repair forward or restore the predecessor backup if replacement fails, while preserving every recount transition.",
+    "decisionTrigger": "Stop rehearsal or promotion on an absent, disabled, non-ALWAYS, or behaviorally ineffective guard, any protected-row delta, migration-journal ambiguity, checksum or schema drift, redeploy change, or restore mismatch.",
+    "owner": "Database Engineering owns trigger replacement, catalog attestation, and recovery; Security and QA own direct destructive-DML denial; Release owns exact-hash, partial-failure, redeploy, and restore evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, query the exact trigger body and ENABLE ALWAYS state; prove UPDATE, DELETE, and TRUNCATE each fail with the append-only error under applicable roles; compare row counts and digests before and after; exercise failure/retry or backup recovery; run a second deploy without change; and prove isolated restore equivalence. Production approval remains blocked.",
+    "expectedRecoveryTime": "Measure guard inspection, emergency forward repair, migration retry, application isolation, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260803090000_wastage_reason_code_explicit_applicability",
+    "sha256": "a93ac9f23eafe904811dc7e07fe5698183d8534d6c5e8d70d501f1c44661729a",
+    "risk": "Adding non-null applicability arrays and updating four named WASTAGE reason codes can misclassify existing company-scoped codes or leave partial schema/data state because the file has no explicit transaction. A wrong mapping can expose an invalid wastage reason to operational users.",
+    "expectedDataEffect": "Add empty wastageTypes and inventoryClasses arrays to existing reason codes, then populate only SPOILAGE_EXPIRY, PREP_TRIM_LOSS, KITCHEN_ERROR, and DAMAGED_PACKAGING rows whose workflow is WASTAGE. Insert or delete no reason code and rewrite no WastageReport, movement, balance, or audit fact.",
+    "recovery": "Capture tenant/company/code counts and content before execution. On failure, inspect column, index, and row state; use a reviewed exact mapping correction or restore the verified predecessor backup. Do not broaden eligibility to make an incomplete migration appear usable.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "Unexpected target row set or count; cross-workflow or cross-code update; wrong type/class mapping; non-target applicability delta; selector/service mismatch; accepted invalid posting; checksum mismatch; partial state; redeploy delta; or restore non-equivalence.",
+    "transactionBehavior": "No explicit transaction wrapper is present. The migration adds two defaulted non-null arrays, creates one index, and performs one deterministic update over the four named WASTAGE codes.",
+    "reversibility": "Preserve recorded applicability and historical wastage facts. Correct mappings through a reviewed forward migration or restore the predecessor backup before accepting post-migration operations; never erase wastage history.",
+    "decisionTrigger": "Stop rehearsal or promotion on any row-count, scope, mapping, authorization, evidence, posting, checksum, drift, redeploy, partial-state, or restore failure.",
+    "owner": "Database Engineering owns migration, target-set evidence, and recovery; Wastage Engineering owns dual-dimension enforcement; Operations owns approved mappings; Security and QA verify scope and fail-closed behavior; Release owns exact-hash evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, seed predecessor reason codes before migration; prove total row count is unchanged; verify exactly the four confirmed WASTAGE mappings across tenant/company scope; prove all other WASTAGE codes remain empty and fail closed; verify no other workflow changed; exercise mismatched type/class and evidence-required denials; run a second deploy without delta; and prove isolated restore equivalence. Production approval remains blocked.",
+    "expectedRecoveryTime": "Measure target-set investigation, forward correction, migration retry, application rollback, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260806120000_inventory_pilot_configuration_draft_seal",
+    "sha256": "a85526568663ba79cef9490a7275a8fe4e7cfbf8fde989923df5b0fac67cb837",
+    "risk": "Replacing revision identity checks and adding predecessor, role-assignment, and approval-rule uniqueness can fail on populated data. Incorrect draft, snapshot, digest, successor, or sealing guards could admit cross-scope authority, mutable sealed evidence, incomplete pilot membership, or non-idempotent sealing.",
+    "expectedDataEffect": "Add empty draft, draft membership, sealed participant/route membership, and seal-operation foundations plus versioned predecessor lineage. Create no draft, seal operation, sealed revision, participant, route, endpoint, item, activation, inventory, or approval row.",
+    "recovery": "The migration is one explicit transaction. Resolve malformed revision lineage or duplicate role/rule keys through a reviewed forward correction; restore the verified predecessor backup if schema or canonical-digest compatibility cannot be proven. Preserve any later sealed evidence.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "reviewerIdentity": "Codex Decision Chair after independent Database Engineering, QA, and Release review",
+    "reviewedAtUtc": "2026-08-06T12:24:50Z",
+    "failurePoint": "Malformed predecessor revision; duplicate role assignment or approval-rule version; weakened revision constraint; cross-scope FK acceptance; mutable terminal draft or sealed membership; route-snapshot mismatch; canonical digest drift; incomplete cohort acceptance; non-idempotent or concurrent seal; checksum, redeploy, schema-drift, or restore failure.",
+    "transactionBehavior": "One explicit transaction replaces revision constraints, adds scoped keys and draft/seal schema, installs canonical snapshot and digest routines, and enables terminal, immutable, and seal-operation guards atomically. It performs no runtime seal.",
+    "reversibility": "The additive draft foundation may remain dormant through application rollback. Once a draft is sealed or a successor exists, preserve all lineage and evidence; use a forward correction or approved restore rather than deleting or rewriting revisions.",
+    "decisionTrigger": "Stop rehearsal or promotion on any preflight, SQL, checksum, scope, authorization, segregation, snapshot, digest, lineage, immutability, idempotency, concurrency, redeploy, drift, or restore failure.",
+    "owner": "Database Engineering owns migration, canonical functions, guards, and recovery; Backend owns draft and sealing transactions; Security and QA verify scope, named-user authority, segregation, immutability, idempotency, and concurrency; Release owns exact-hash evidence.",
+    "verification": "For the disposable exact-SHA rehearsal, prove all new draft and seal tables begin empty; existing schema-v1 revision canonical JSON and digests remain valid; exact tenant/company FKs hold; only DRAFT records mutate; SEALED and ABANDONED records and sealed memberships are immutable; readiness requires the configured participants, capabilities, items, and route snapshots; unauthorized or cross-scope actors fail closed; concurrent sealing has one authoritative winner and stable replay; successor revisions advance monotonically; second deploy is inert; and isolated restore is equivalent. Production approval remains blocked.",
+    "expectedRecoveryTime": "Measure duplicate remediation, migration rollback, seal forward correction, application rollback, and isolated restore against the approved hosted RPO/RTO."
   }
 ]
 ```

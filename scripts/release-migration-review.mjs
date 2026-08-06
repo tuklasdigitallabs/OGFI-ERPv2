@@ -178,7 +178,7 @@ function inspectMigration(name, file, sql, order, disposition) {
     alter: countMatches(executableSql, /\bALTER\s+(?:TABLE|TYPE)\b/gi),
     drop: countMatches(
       executableSql,
-      /\bDROP\s+(?:TABLE|COLUMN|TYPE|INDEX|CONSTRAINT)\b/gi,
+      /\bDROP\s+(?:TABLE|COLUMN|TYPE|INDEX|CONSTRAINT|TRIGGER)\b/gi,
     ),
     insert: countMatches(executableSql, /\bINSERT\s+INTO\b/gi),
     update: countMatches(executableSql, /(?:^|;)\s*UPDATE\s+"/gim),
@@ -212,6 +212,10 @@ function inspectMigration(name, file, sql, order, disposition) {
     destructiveReasons.push("DROP_CONSTRAINT");
   if (/\bDROP\s+INDEX\b/i.test(executableSql))
     destructiveReasons.push("DROP_INDEX");
+  if (/\bDROP\s+TRIGGER\b/i.test(executableSql))
+    destructiveReasons.push("DROP_TRIGGER");
+  if (/\bALTER\s+TABLE\s+"[^"]+"\s+DISABLE\s+TRIGGER\b/i.test(executableSql))
+    destructiveReasons.push("DISABLE_TRIGGER");
   if (/\bTRUNCATE(?:\s+TABLE)?\b/i.test(executableSql))
     destructiveReasons.push("TRUNCATE");
   if (/\bDELETE\s+FROM\b/i.test(executableSql))

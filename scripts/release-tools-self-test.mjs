@@ -2185,15 +2185,32 @@ function testMigrationReviewInventory() {
   const migrationsDir = join(fixtureRoot, "migrations");
   const additiveDir = join(migrationsDir, "0001_additive");
   const destructiveDir = join(migrationsDir, "0002_destructive");
+  const triggerDestructiveDir = join(
+    migrationsDir,
+    "0003_trigger_destructive",
+  );
   const registerFile = join(fixtureRoot, "register.md");
   const outputFile = join(fixtureRoot, "inventory.json");
   const destructiveSql = 'ALTER TABLE "Example" DROP CONSTRAINT "Example_code_key";\n';
+  const triggerDestructiveSql = [
+    'DROP TRIGGER IF EXISTS "Example_append_only_trg" ON "Example";',
+    'ALTER TABLE "Example" DISABLE TRIGGER "Example_append_only_trg";',
+    "",
+  ].join("\n");
   mkdirSync(additiveDir, { recursive: true });
   mkdirSync(destructiveDir, { recursive: true });
+  mkdirSync(triggerDestructiveDir, { recursive: true });
   writeFileSync(join(migrationsDir, "migration_lock.toml"), 'provider = "postgresql"\n');
   writeFileSync(join(additiveDir, "migration.sql"), 'CREATE TABLE "Example" ("id" UUID PRIMARY KEY);\n');
   writeFileSync(join(destructiveDir, "migration.sql"), destructiveSql);
+  writeFileSync(
+    join(triggerDestructiveDir, "migration.sql"),
+    triggerDestructiveSql,
+  );
   const hash = createHash("sha256").update(destructiveSql).digest("hex");
+  const triggerHash = createHash("sha256")
+    .update(triggerDestructiveSql)
+    .digest("hex");
   writeFileSync(
     registerFile,
     [
@@ -2215,6 +2232,21 @@ function testMigrationReviewInventory() {
           expectedRecoveryTime: "Measure during rehearsal against approved RTO/RPO.",
           reviewerStatus: "PENDING",
         },
+        {
+          migration: "0003_trigger_destructive",
+          sha256: triggerHash,
+          risk: "Trigger removal or disablement can weaken integrity.",
+          expectedDataEffect: "No row mutation.",
+          recovery: "Restore the trigger through a reviewed forward fix.",
+          failurePoint: "Trigger removal or disablement can weaken integrity.",
+          transactionBehavior: "No explicit transaction; inspect partial state.",
+          reversibility: "Use a forward fix or restore backup.",
+          decisionTrigger: "Stop on any failed release gate.",
+          owner: "Database Engineering / Release Manager.",
+          verification: "Verify migration journal, trigger state, data, and invariants.",
+          expectedRecoveryTime: "Measure during rehearsal against approved RTO/RPO.",
+          reviewerStatus: "PENDING",
+        },
       ]),
       "```",
       "<!-- MIGRATION_SAFETY_REGISTER_JSON_END -->",
@@ -2230,8 +2262,16 @@ function testMigrationReviewInventory() {
     RELEASE_MIGRATION_REVIEW_REQUIRE_APPROVED: "no",
   });
   const inventory = JSON.parse(readFileSync(outputFile, "utf8"));
-  assert(inventory.summary.migrationCount === 2, "migration inventory should include every migration");
-  assert(inventory.summary.destructiveMigrationCount === 1, "migration inventory should classify dropped constraints as destructive");
+  assert(inventory.summary.migrationCount === 3, "migration inventory should include every migration");
+  assert(inventory.summary.destructiveMigrationCount === 2, "migration inventory should classify dropped constraints and trigger defenses as destructive");
+  const triggerMigration = inventory.migrations.find(
+    ({ name }) => name === "0003_trigger_destructive",
+  );
+  assert(
+    triggerMigration?.reviewReasons.includes("DROP_TRIGGER") &&
+      triggerMigration.reviewReasons.includes("DISABLE_TRIGGER"),
+    "migration inventory should require explicit review for dropped or disabled triggers",
+  );
 
   const approvalResult = spawnSync(
     process.execPath,
@@ -2257,7 +2297,7 @@ function testMigrationReviewInventory() {
       ),
     "migration review release mode should reject pending dispositions",
   );
-  evidenceLines.push("PASS | Migration inventory is hash-bound and fails closed on pending destructive review.");
+  evidenceLines.push("PASS | Migration inventory is hash-bound, classifies dropped or disabled triggers, and fails closed on pending destructive review.");
 }
 
 function testDataEquivalenceFailsClosed() {
