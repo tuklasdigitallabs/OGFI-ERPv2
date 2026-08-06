@@ -118,6 +118,7 @@ function testDatabaseRoleTooling() {
       "--test",
       "scripts/db-migrate-controlled.test.mjs",
       "scripts/db-append-only-contract.test.mjs",
+      "scripts/report-e2e-junit-failures.test.mjs",
     ],
     { cwd: workspaceRoot, encoding: "utf8" },
   );

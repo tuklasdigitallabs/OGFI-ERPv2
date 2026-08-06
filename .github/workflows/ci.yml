@@ -67,7 +67,11 @@ jobs:
       # not pre-set its integration sentinel for the preceding unit-test pass.
       - run: pnpm test:authorization
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - id: ordinary_e2e
+        run: pnpm test:e2e
+      - name: Report bounded ordinary E2E failures
+        if: ${{ failure() && steps.ordinary_e2e.outcome == 'failure' }}
+        run: node scripts/report-e2e-junit-failures.mjs apps/web/test-results/e2e-junit.xml
       - name: Restore Next.js generated type reference
         run: git restore -- apps/web/next-env.d.ts
       - run: pnpm release:authorization-manifest
