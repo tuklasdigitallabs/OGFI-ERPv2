@@ -1,0 +1,8 @@
+"use client";
+import { useActionState } from "react";
+
+type State = { password?: string; expiresAt?: string; error?: string };
+export function TemporaryPasswordPanel({ users, action }: { users: Array<{ id: string; label: string }>; action: (state: State, formData: FormData) => Promise<State> }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return <section className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h2 className="font-semibold text-slate-950">Manual temporary password</h2><p className="mt-1 text-sm text-slate-700">Non-privileged accounts only. The password is shown once, expires in 30 minutes, and must be changed before ERP access.</p><form action={formAction} className="mt-3 flex flex-wrap gap-3"><select name="targetUserId" className="min-h-11 rounded-md border border-slate-300 bg-white px-3" required><option value="">Select account</option>{users.map((user) => <option key={user.id} value={user.id}>{user.label}</option>)}</select><button disabled={pending} className="min-h-11 rounded-md bg-amber-700 px-4 text-sm font-semibold text-white">Issue temporary password</button></form>{state.error ? <p className="mt-3 text-sm text-red-700">{state.error}</p> : null}{state.password ? <div className="mt-3 rounded-md border border-amber-300 bg-white p-3"><p className="text-xs font-semibold text-slate-600">Copy and relay through the verified out-of-band channel. It will not be shown again.</p><code className="mt-1 block break-all text-base font-bold">{state.password}</code><p className="mt-1 text-xs text-slate-600">Expires {state.expiresAt}</p></div> : null}</section>;
+}

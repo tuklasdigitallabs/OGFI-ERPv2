@@ -8,6 +8,9 @@ import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
 import { StockCountEntriesEditor } from "@/components/StockCountEntriesEditor";
 import {
+  StockCountRecoveryPanel
+} from "@/components/stock-count-recovery/StockCountRecoveryPanel";
+import {
   actionErrorRedirectPath,
   getActionFeedback
 } from "@/server/services/actionFeedback";
@@ -160,6 +163,23 @@ export default async function CountDetailPage({
     isAssignedEntryActor &&
     count.status === "DRAFT" &&
     count.scheduledStartEligible;
+  const recountRecoveryEnabled =
+    process.env.STOCK_COUNT_RECOUNT_RECOVERY_V1_ENABLED === "true";
+  const canStartRecount =
+    recountRecoveryEnabled &&
+    canStartOrEnter &&
+    isAssignedEntryActor &&
+    count.status === "RECOUNT_REQUESTED";
+  const recountStartReadOnlyReason =
+    count.status !== "RECOUNT_REQUESTED"
+      ? null
+      : !recountRecoveryEnabled
+        ? "Protected recount start is unavailable while the recovery feature is disabled."
+        : !canStartOrEnter
+          ? "You have read-only access because you do not have stock-count entry permission."
+          : !isAssignedEntryActor
+            ? `This protected recount is assigned to ${count.assignedToName ?? "another counter"}. Only the assigned counter can start it.`
+            : null;
   const canEditLines =
     canStartOrEnter &&
     isAssignedEntryActor &&
@@ -289,6 +309,26 @@ export default async function CountDetailPage({
             ) : null}
           </dl>
 
+          <StockCountRecoveryPanel
+            adjustment={
+              count.canShowSystemQuantity &&
+              count.varianceAdjustmentId &&
+              count.varianceAdjustmentStatus
+                ? {
+                    id: count.varianceAdjustmentId,
+                    publicReference: count.varianceAdjustmentReference,
+                    status: count.varianceAdjustmentStatus
+                  }
+                : null
+            }
+            canShowProtectedFacts={count.canShowSystemQuantity}
+            caseStatus={count.status}
+            currentAttemptNumber={count.currentAttemptNumber}
+            freezeMovements={count.freezeMovements}
+            inventoryLocationName={count.inventoryLocationName}
+            attemptHistory={count.attemptHistory}
+          />
+
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <ButtonLink href="/counts" className="bg-slate-700 hover:bg-slate-800">
               Back to Counts
@@ -296,8 +336,16 @@ export default async function CountDetailPage({
             {canStartCount ? (
               <form action={startCountAction}>
                 <input name="id" type="hidden" value={count.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                   Start Count
+                </button>
+              </form>
+            ) : null}
+            {canStartRecount ? (
+              <form action={startCountAction}>
+                <input name="id" type="hidden" value={count.id} />
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                  Start Recount
                 </button>
               </form>
             ) : null}
@@ -309,12 +357,19 @@ export default async function CountDetailPage({
                   type="hidden"
                   value={`ui:stock-count-review:${randomUUID()}`}
                 />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
                   Submit for Review
                 </button>
               </form>
             ) : null}
           </div>
+
+          {recountStartReadOnlyReason ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-semibold">Protected recount start unavailable</p>
+              <p className="mt-1 leading-6">{recountStartReadOnlyReason}</p>
+            </div>
+          ) : null}
 
           {!isAssignedEntryActor &&
           ["DRAFT", "IN_PROGRESS"].includes(count.status) ? (

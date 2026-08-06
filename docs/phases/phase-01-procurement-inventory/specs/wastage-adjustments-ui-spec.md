@@ -90,4 +90,6 @@ Reversed with reason and audit history
 - Required reason/evidence rules block invalid Stock Adjustment submission; approval is non-posting, posting is separate and permissioned, and reversal is used for posted correction.
 - Posting-enabled wastage reconciles inventory movement, balance, report, and audit record.
 - Manager can identify pending, rejected, repeated, and high-value wastage quickly.
+
+Stock-affecting detail actions provide explicit pending feedback (`Posting Wastage…`, `Reversing Wastage…`, `Posting Adjustment…`, and `Reversing Adjustment…`) and disable duplicate submission. The server remains authoritative: before movement or reversal writes it rechecks live actor/session, permission, exact location scope, and privileged MFA.
 - Stock Adjustment submission records scope, requester, item, quantity impact, reason, evidence where configured, and audit history; approval is non-posting, while separate authorized posting/reversal creates linked inventory movements.

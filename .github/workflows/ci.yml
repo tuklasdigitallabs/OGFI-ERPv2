@@ -68,62 +68,6 @@ jobs:
       - run: pnpm test:authorization
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
-      - name: Configure isolated production-authenticated browser runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libnss3-tools
-          tls_dir="$(mktemp -d)"
-          # Docker bind mounts must traverse the directory; the private key
-          # itself remains owner-readable only.
-          chmod 755 "$tls_dir"
-          openssl genrsa -out "$tls_dir/ca.key" 3072
-          openssl req -x509 -new -sha256 -key "$tls_dir/ca.key" -days 1 -subj "/CN=OGFI CI Production Auth CA" -out "$tls_dir/ca.crt"
-          openssl genrsa -out "$tls_dir/tls.key" 2048
-          chmod 600 "$tls_dir/ca.key" "$tls_dir/tls.key"
-          openssl req -new -sha256 -key "$tls_dir/tls.key" -subj "/CN=127.0.0.1" -out "$tls_dir/tls.csr"
-          printf '%s\n' 'subjectAltName=IP:127.0.0.1' 'basicConstraints=CA:FALSE' 'keyUsage=digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > "$tls_dir/tls.ext"
-          openssl x509 -req -in "$tls_dir/tls.csr" -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$tls_dir/tls.crt" -days 1 -sha256 -extfile "$tls_dir/tls.ext"
-          mkdir -p "$HOME/.pki/nssdb"
-          certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password || true
-          certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n "ogfi-production-auth-e2e" -i "$tls_dir/ca.crt"
-          {
-            write_secret() { printf '%s=%s\n' "$1" "$2"; }
-            echo "NODE_ENV=production"
-            echo "APP_ENV=production"
-            echo "DEPLOYMENT_ENVIRONMENT=production"
-            echo "AUTH_MODE=local"
-            echo "AUTH_TRUSTED_PROXY_MODE=caddy_single_hop"
-            echo "APP_URL=https://127.0.0.1:3443"
-            echo "AUTH_ARGON2_MAX_CONCURRENCY=1"
-            write_secret AUTH_SECRET "$(openssl rand -hex 32)"
-            echo "AUTH_THROTTLE_HMAC_KEY=$(openssl rand -hex 32)"
-            write_secret APP_ENCRYPTION_KEY "$(openssl rand -base64 32)"
-            echo "APP_ENCRYPTION_KEY_VERSION=1"
-            echo "SMTP_HOST=127.0.0.1"
-            echo "SMTP_PORT=465"
-            echo "SMTP_USERNAME=ci-production-auth"
-            echo "SMTP_PASSWORD=$(openssl rand -hex 32)"
-            echo "SMTP_FROM=ci-production-auth@example.test"
-            echo "SMTP_SECURITY=implicit"
-            echo "NEXT_DIST_DIR=.next-production-authenticated-e2e"
-            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_DIR=$tls_dir"
-            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CA_FILE=$tls_dir/ca.crt"
-            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CERT_FILE=$tls_dir/tls.crt"
-            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_KEY_FILE=$tls_dir/tls.key"
-            echo "OGFI_PRODUCTION_AUTH_E2E_FIXTURE_FILE=$tls_dir/fixture.json"
-            echo "NODE_EXTRA_CA_CERTS=$tls_dir/ca.crt"
-          } >> "$GITHUB_ENV"
-      - run: pnpm test:production-authenticated-e2e-proxy
-      - run: pnpm test:e2e:production-authenticated
-      - name: Remove production-authenticated browser material
-        if: always()
-        run: |
-          certutil -d "sql:$HOME/.pki/nssdb" -D -n "ogfi-production-auth-e2e" || true
-          case "${OGFI_PRODUCTION_AUTH_E2E_TLS_DIR:-}" in
-            /tmp/*) rm -rf -- "$OGFI_PRODUCTION_AUTH_E2E_TLS_DIR" ;;
-            "") true ;;
-            *) echo "Unexpected production-authenticated TLS cleanup path" >&2; exit 1 ;;
-          esac
       - name: Restore Next.js generated type reference
         run: git restore -- apps/web/next-env.d.ts
       - run: pnpm release:authorization-manifest
@@ -138,3 +82,358 @@ jobs:
             release-evidence/
             apps/web/playwright-report/
             apps/web/test-results/
+
+  production-authenticated-browser:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        lane:
+          - production
+          - bounded-uat
+    env:
+      CI: "true"
+      NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: production
+      AUTH_MODE: local
+      AUTH_TRUSTED_PROXY_MODE: caddy_single_hop
+      APP_URL: https://127.0.0.1:3443
+      AUTH_ARGON2_MAX_CONCURRENCY: "1"
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_IMAGE: docker.io/library/postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_ALIAS: ogfi-production-auth-database
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build immutable candidate and proxy images
+        run: |
+          git diff --quiet -- . ':(exclude)apps/web/next-env.d.ts'
+          git diff --cached --quiet
+          artifact_sha="$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)"
+          docker build \
+            --file infra/docker/Dockerfile.web.example \
+            --target release-runner \
+            --build-arg RELEASE_COMMIT_SHA="$GITHUB_SHA" \
+            --build-arg RELEASE_ARTIFACT_SHA256="$artifact_sha" \
+            --tag ogfi-production-auth-candidate:"$GITHUB_SHA-${{ matrix.lane }}" \
+            .
+          web_image="$(docker image inspect ogfi-production-auth-candidate:"$GITHUB_SHA-${{ matrix.lane }}" --format '{{.Id}}')"
+          [[ "$web_image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker build \
+            --file infra/caddy/Dockerfile \
+            --build-arg CADDY_BUILDER_IMAGE=docker.io/library/caddy:2.11.4-builder-alpine@sha256:8e89605351333ad2cc2f3bcc95275a2ccc427f88914050e86a5fde0fd77a63c4 \
+            --build-arg CADDY_RUNTIME_IMAGE=docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 \
+            --tag ogfi-production-auth-caddy:"$GITHUB_SHA-${{ matrix.lane }}" \
+            .
+          caddy_image="$(docker image inspect ogfi-production-auth-caddy:"$GITHUB_SHA-${{ matrix.lane }}" --format '{{.Id}}')"
+          [[ "$caddy_image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker build \
+            --file infra/ci/production-authenticated-e2e/Dockerfile.database-lifecycle \
+            --build-arg OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_IMAGE="ogfi-production-auth-candidate:$GITHUB_SHA-${{ matrix.lane }}" \
+            --tag ogfi-production-auth-db-lifecycle:"$GITHUB_SHA-${{ matrix.lane }}" \
+            .
+          lifecycle_image="$(docker image inspect ogfi-production-auth-db-lifecycle:"$GITHUB_SHA-${{ matrix.lane }}" --format '{{.Id}}')"
+          [[ "$lifecycle_image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          {
+            echo "OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE=$web_image"
+            echo "OGFI_PRODUCTION_AUTH_E2E_CADDY_IMAGE=$caddy_image"
+            echo "OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE=$lifecycle_image"
+            echo "OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_COMMIT=$GITHUB_SHA"
+          } >> "$GITHUB_ENV"
+      - run: pnpm --dir apps/web exec playwright install --with-deps chromium
+      - name: Configure per-run TLS, application secrets, and private exchange
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libnss3-tools
+          lane="${{ matrix.lane }}"
+          run_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${lane}"
+          tls_dir="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-tls.XXXXXX")"
+          exchange_root="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-db.XXXXXX")"
+          secret_root="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-db-secrets.XXXXXX")"
+          chmod 755 "$tls_dir"
+          chmod 700 "$exchange_root" "$secret_root"
+          openssl genrsa -out "$tls_dir/ca.key" 3072
+          openssl req -x509 -new -sha256 -key "$tls_dir/ca.key" -days 1 -subj "/CN=OGFI CI Production Auth CA" -out "$tls_dir/ca.crt"
+          openssl genrsa -out "$tls_dir/tls.key" 2048
+          chmod 600 "$tls_dir/ca.key" "$tls_dir/tls.key"
+          openssl req -new -sha256 -key "$tls_dir/tls.key" -subj "/CN=127.0.0.1" -out "$tls_dir/tls.csr"
+          printf '%s\n' 'subjectAltName=IP:127.0.0.1' 'basicConstraints=CA:FALSE' 'keyUsage=digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > "$tls_dir/tls.ext"
+          openssl x509 -req -in "$tls_dir/tls.csr" -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$tls_dir/tls.crt" -days 1 -sha256 -extfile "$tls_dir/tls.ext"
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 -subj "/CN=OGFI CI Wrong CA" -keyout "$tls_dir/wrong-ca.key" -out "$tls_dir/wrong-ca.crt"
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password || true
+          certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n "ogfi-production-auth-e2e-$lane" -i "$tls_dir/ca.crt"
+          database_password="$(openssl rand -hex 32)"
+          auth_secret="$(openssl rand -hex 32)"
+          throttle_hmac_key="$(openssl rand -hex 32)"
+          encryption_key="$(openssl rand -base64 32)"
+          probe_token="$(openssl rand -hex 32)"
+          stop_token="$(openssl rand -hex 32)"
+          smtp_password="$(openssl rand -hex 32)"
+          password_file="$secret_root/database-password"
+          admin_url_file="$secret_root/database-admin-url"
+          artifact_scan_needles="$secret_root/artifact-scan-needles"
+          printf '%s\n' "$database_password" > "$password_file"
+          printf 'postgresql://ogfi_disposable_admin:%s@127.0.0.1:5432/postgres\n' "$database_password" > "$admin_url_file"
+          printf '%s\n' \
+            "$auth_secret" \
+            "$throttle_hmac_key" \
+            "$encryption_key" \
+            "$probe_token" \
+            "$stop_token" \
+            "$smtp_password" \
+            > "$artifact_scan_needles"
+          cat "$tls_dir/ca.key" "$tls_dir/tls.key" "$tls_dir/wrong-ca.key" >> "$artifact_scan_needles"
+          chmod 600 "$password_file" "$admin_url_file" "$artifact_scan_needles"
+          if [[ "$lane" == "bounded-uat" ]]; then
+            app_env=uat
+            hardened=true
+            bounded=true
+          else
+            app_env=production
+            hardened=false
+            bounded=false
+          fi
+          {
+            echo "AUTHORIZATION_TEST_RUN_ID=$run_id"
+            echo "APP_ENV=$app_env"
+            echo "AUTH_HARDENED_UAT_RUNTIME_ENABLED=$hardened"
+            echo "BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED=$bounded"
+            echo "APPROVAL_ROUTING_V1_ENABLED=false"
+            printf '%s=%s\n' AUTH_SECRET "$auth_secret"
+            echo "AUTH_THROTTLE_HMAC_KEY=$throttle_hmac_key"
+            printf '%s=%s\n' APP_ENCRYPTION_KEY "$encryption_key"
+            echo "APP_ENCRYPTION_KEY_VERSION=1"
+            echo "OGFI_PRODUCTION_AUTH_E2E_PROBE_TOKEN=$probe_token"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN=$stop_token"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT=$exchange_root"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_SECRET_ROOT=$secret_root"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_PASSWORD_FILE=$password_file"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_URL_FILE=$admin_url_file"
+            echo "OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_SCAN_NEEDLES=$artifact_scan_needles"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME=ogfi-private-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${lane}"
+            echo "OGFI_PRODUCTION_AUTH_E2E_HOST_UID=$(id -u)"
+            echo "OGFI_PRODUCTION_AUTH_E2E_HOST_GID=$(id -g)"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_DIR=$tls_dir"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CA_FILE=$tls_dir/ca.crt"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_WRONG_CA_FILE=$tls_dir/wrong-ca.crt"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_CERT_FILE=$tls_dir/tls.crt"
+            echo "OGFI_PRODUCTION_AUTH_E2E_TLS_KEY_FILE=$tls_dir/tls.key"
+            echo "OGFI_PRODUCTION_AUTH_E2E_FIXTURE_FILE=$exchange_root/run-$run_id/browser-fixture.json"
+            echo "OGFI_PRODUCTION_AUTH_E2E_FIXTURE_PREPROVISIONED=true"
+            echo "OGFI_PRODUCTION_AUTH_E2E_REPORT_FILE=$tls_dir/report-$lane.json"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=465"
+            echo "SMTP_USERNAME=ci-production-auth"
+            echo "SMTP_PASSWORD=$smtp_password"
+            echo "SMTP_FROM=ci-production-auth@example.test"
+            echo "SMTP_SECURITY=implicit"
+          } >> "$GITHUB_ENV"
+      - run: pnpm test:production-authenticated-e2e-proxy
+      - name: Start isolated disposable database lifecycle
+        run: |
+          compose_file=infra/ci/production-authenticated-e2e/compose.database-lifecycle.yaml
+          project="ogfi-private-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.lane }}"
+          # Compose validates all service interpolation even for a targeted
+          # service. Placeholders are replaced with inspected immutable IDs
+          # before the lifecycle service is admitted.
+          export OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID="$(printf '0%.0s' {1..64})"
+          export OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_ID="$(printf '0%.0s' {1..64})"
+          docker pull "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_IMAGE"
+          docker compose -f "$compose_file" --project-name "$project" up -d postgres
+          database_id="$(docker compose -f "$compose_file" --project-name "$project" ps -q postgres)"
+          network_id="$(docker network inspect "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME" --format '{{.Id}}')"
+          [[ "$database_id" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$network_id" =~ ^[a-f0-9]{64}$ ]]
+          {
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID=$database_id"
+            echo "OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_ID=$network_id"
+          } >> "$GITHUB_ENV"
+          export OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID="$database_id"
+          export OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_ID="$network_id"
+          docker compose -f "$compose_file" --project-name "$project" up -d lifecycle
+          lifecycle_id="$(docker compose -f "$compose_file" --project-name "$project" ps -q lifecycle)"
+          [[ "$lifecycle_id" =~ ^[a-f0-9]{64}$ ]]
+          echo "OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_CONTAINER_ID=$lifecycle_id" >> "$GITHUB_ENV"
+          state_file="$OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT/run-$AUTHORIZATION_TEST_RUN_ID/state.json"
+          for _ in $(seq 1 900); do
+            if [[ -f "$state_file" ]] && jq -e '.state == "HOLDING" and .sequence == 3' "$state_file" >/dev/null; then
+              exchange="$(dirname "$state_file")"
+              node scripts/production-auth-e2e-artifact-secret-scan.mjs \
+                capture-private-database \
+                "$OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_SCAN_NEEDLES" \
+                "$exchange/browser-fixture.json" \
+                "$exchange/runtime.env"
+              rm -f -- \
+                "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_PASSWORD_FILE" \
+                "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_URL_FILE"
+              if [[ -e "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_PASSWORD_FILE" ]] || \
+                 [[ -e "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_URL_FILE" ]]; then
+                echo "Lifecycle-only host database authority was not unlinked" >&2
+                exit 1
+              fi
+              exit 0
+            fi
+            if ! docker compose -f "$compose_file" --project-name "$project" ps --status running lifecycle | grep -q lifecycle; then
+              docker compose -f "$compose_file" --project-name "$project" logs lifecycle
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Private database lifecycle did not reach HOLDING" >&2
+          exit 1
+      - name: Production-authenticated browser lane (${{ matrix.lane }})
+        run: pnpm test:e2e:production-authenticated:execute
+      - name: Scan completed browser artifacts before cleanup and upload
+        if: always()
+        run: |
+          lane="${{ matrix.lane }}"
+          exchange="$OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT/run-$AUTHORIZATION_TEST_RUN_ID"
+          if node scripts/production-auth-e2e-artifact-secret-scan.mjs scan \
+            "$OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_SCAN_NEEDLES" \
+            "release-evidence/production-authenticated/$lane" \
+            "apps/web/test-results/production-auth-$lane-artifacts" \
+            "apps/web/test-results/production-auth-$lane-html" \
+            "apps/web/test-results/production-auth-$lane-junit.xml" \
+            "$OGFI_PRODUCTION_AUTH_E2E_REPORT_FILE" \
+            "$exchange/manifest.json" \
+            "$exchange/state.json" \
+            "$exchange/teardown-receipt.json"; then
+            echo "OGFI_PRODUCTION_AUTH_E2E_POST_BROWSER_SCAN_PASSED=true" >> "$GITHUB_ENV"
+          else
+            echo "OGFI_PRODUCTION_AUTH_E2E_POST_BROWSER_SCAN_PASSED=false" >> "$GITHUB_ENV"
+            exit 1
+          fi
+      - name: Verify teardown and remove private runtime
+        if: always()
+        run: |
+          cleanup_status=0
+          compose_file=infra/ci/production-authenticated-e2e/compose.database-lifecycle.yaml
+          project="ogfi-private-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.lane }}"
+          exchange="$OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT/run-$AUTHORIZATION_TEST_RUN_ID"
+          lifecycle_id="${OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_CONTAINER_ID:-$(docker compose -f "$compose_file" --project-name "$project" ps -a -q lifecycle 2>/dev/null || true)}"
+          if [[ -f "$exchange/state.json" ]] && jq -e '.state == "HOLDING"' "$exchange/state.json" >/dev/null; then
+            node scripts/production-auth-e2e-private-db-lifecycle.mjs stop "$exchange" || cleanup_status=1
+          fi
+          teardown_complete=false
+          for _ in $(seq 1 120); do
+            if [[ -f "$exchange/state.json" ]] && jq -e '.state == "TEARDOWN_COMPLETE"' "$exchange/state.json" >/dev/null; then
+              teardown_complete=true
+              break
+            fi
+            if [[ -f "$exchange/state.json" ]] && jq -e '.state == "FAILED"' "$exchange/state.json" >/dev/null; then
+              echo "Private database lifecycle reported FAILED" >&2
+              break
+            fi
+            if [[ -z "$lifecycle_id" ]] || [[ "$(docker inspect --format '{{.State.Running}}' "$lifecycle_id" 2>/dev/null || true)" != "true" ]]; then
+              echo "Private database lifecycle exited before a teardown receipt was available" >&2
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$teardown_complete" != "true" ]]; then
+            cleanup_status=1
+          fi
+          node scripts/production-auth-e2e-private-db-lifecycle.mjs verify-teardown "$exchange" || cleanup_status=1
+          mkdir -p "release-evidence/production-authenticated/${{ matrix.lane }}"
+          for evidence_file in manifest.json state.json teardown-receipt.json; do
+            if [[ -f "$exchange/$evidence_file" ]]; then
+              cp "$exchange/$evidence_file" "release-evidence/production-authenticated/${{ matrix.lane }}/"
+            else
+              cleanup_status=1
+            fi
+          done
+          find "${OGFI_PRODUCTION_AUTH_E2E_TLS_DIR:-/nonexistent}" -maxdepth 1 -type f -name 'report-*.json' -exec cp {} "release-evidence/production-authenticated/${{ matrix.lane }}/" \; 2>/dev/null || true
+          docker compose -f "$compose_file" --project-name "$project" down --volumes --remove-orphans || cleanup_status=1
+          if docker inspect "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID" >/dev/null 2>&1; then
+            echo "Private database container teardown incomplete" >&2
+            cleanup_status=1
+          fi
+          if [[ -n "$lifecycle_id" ]] && docker inspect "$lifecycle_id" >/dev/null 2>&1; then
+            echo "Private lifecycle container teardown incomplete" >&2
+            cleanup_status=1
+          fi
+          if docker network inspect "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME" >/dev/null 2>&1; then
+            echo "Private database network teardown incomplete" >&2
+            cleanup_status=1
+          fi
+          certutil -d "sql:$HOME/.pki/nssdb" -D -n "ogfi-production-auth-e2e-${{ matrix.lane }}" || true
+          if certutil -d "sql:$HOME/.pki/nssdb" -L -n "ogfi-production-auth-e2e-${{ matrix.lane }}" >/dev/null 2>&1; then
+            echo "Per-run Chromium trust was not removed" >&2
+            cleanup_status=1
+          fi
+          case "${OGFI_PRODUCTION_AUTH_E2E_TLS_DIR:-}" in
+            "$RUNNER_TEMP"/*) rm -rf -- "$OGFI_PRODUCTION_AUTH_E2E_TLS_DIR" ;;
+            *) echo "Unexpected production-authenticated TLS cleanup path" >&2; cleanup_status=1 ;;
+          esac
+          case "${OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT:-}" in
+            "$RUNNER_TEMP"/*) rm -rf -- "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT" ;;
+            *) echo "Unexpected private database cleanup path" >&2; cleanup_status=1 ;;
+          esac
+          if [[ -e "${OGFI_PRODUCTION_AUTH_E2E_TLS_DIR:-/nonexistent}" ]] || [[ -e "${OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT:-/nonexistent}" ]]; then
+            echo "TLS or exchange cleanup is incomplete" >&2
+            cleanup_status=1
+          fi
+          if [[ "${OGFI_PRODUCTION_AUTH_E2E_POST_BROWSER_SCAN_PASSED:-false}" != "true" ]]; then
+            cleanup_status=1
+          fi
+          if ! node scripts/production-auth-e2e-artifact-secret-scan.mjs scan \
+            "$OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_SCAN_NEEDLES" \
+            "release-evidence/production-authenticated/${{ matrix.lane }}" \
+            "apps/web/test-results/production-auth-${{ matrix.lane }}-artifacts" \
+            "apps/web/test-results/production-auth-${{ matrix.lane }}-html" \
+            "apps/web/test-results/production-auth-${{ matrix.lane }}-junit.xml"; then
+            cleanup_status=1
+          fi
+          if rg -l 'postgresql://|PASSWORD=|TOKEN=|PRIVATE KEY|AUTH_SECRET|APP_ENCRYPTION_KEY' \
+            "release-evidence/production-authenticated/${{ matrix.lane }}" \
+            "apps/web/test-results/production-auth-${{ matrix.lane }}-html" \
+            "apps/web/test-results/production-auth-${{ matrix.lane }}-junit.xml" 2>/dev/null; then
+            echo "Retained production-authenticated evidence contains secret-shaped material" >&2
+            cleanup_status=1
+          fi
+          case "${OGFI_PRODUCTION_AUTH_E2E_DATABASE_SECRET_ROOT:-}" in
+            "$RUNNER_TEMP"/*) rm -rf -- "$OGFI_PRODUCTION_AUTH_E2E_DATABASE_SECRET_ROOT" ;;
+            *) echo "Unexpected private database secret cleanup path" >&2; cleanup_status=1 ;;
+          esac
+          if [[ -e "${OGFI_PRODUCTION_AUTH_E2E_DATABASE_SECRET_ROOT:-/nonexistent}" ]]; then
+            echo "Private database secret cleanup is incomplete" >&2
+            cleanup_status=1
+          fi
+          if [[ "$cleanup_status" -eq 0 ]]; then
+            jq -n \
+              --arg lane "${{ matrix.lane }}" \
+              --arg candidate "$GITHUB_SHA" \
+              '{outcome:"VERIFIED",lane:$lane,candidateCommit:$candidate,databaseContainer:"VERIFIED_REMOVED",lifecycleContainer:"VERIFIED_REMOVED",privateNetwork:"VERIFIED_REMOVED",exchangeSecrets:"VERIFIED_REMOVED",artifactSecretScan:"VERIFIED_CLEAN"}' \
+              > "release-evidence/production-authenticated/${{ matrix.lane }}/topology-teardown.json"
+            echo "OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_UPLOAD_ALLOWED=true" >> "$GITHUB_ENV"
+          else
+            jq -n \
+              --arg lane "${{ matrix.lane }}" \
+              --arg candidate "$GITHUB_SHA" \
+              '{outcome:"FAILED",lane:$lane,candidateCommit:$candidate,teardown:"UNVERIFIED",artifactUpload:"BLOCKED"}' \
+              > "release-evidence/production-authenticated/${{ matrix.lane }}/topology-teardown.json"
+            echo "OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_UPLOAD_ALLOWED=false" >> "$GITHUB_ENV"
+          fi
+          exit "$cleanup_status"
+      - name: Upload production-authenticated evidence
+        if: always() && env.OGFI_PRODUCTION_AUTH_E2E_ARTIFACT_UPLOAD_ALLOWED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-authenticated-${{ matrix.lane }}-${{ github.run_id }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release-evidence/production-authenticated/${{ matrix.lane }}/
+            apps/web/test-results/production-auth-${{ matrix.lane }}-html/
+            apps/web/test-results/production-auth-${{ matrix.lane }}-junit.xml

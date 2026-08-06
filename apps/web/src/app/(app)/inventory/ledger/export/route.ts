@@ -15,6 +15,7 @@ import {
   listInventoryMovements,
   type InventoryMovementFilters
 } from "@/server/services/inventory";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -38,20 +39,30 @@ export async function GET(request: Request) {
     query: url.searchParams.get("q") ?? undefined,
     movementType: url.searchParams.get("movementType") ?? undefined
   };
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    searchApplied: Boolean(filters.query),
+    movementTypeFilterApplied: Boolean(filters.movementType)
+  };
 
   let movements: Awaited<ReturnType<typeof listInventoryMovements>>;
   try {
     await logOperationalExportAudit({
       session,
       reportId: "movement-ledger",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
-    movements = await listInventoryMovements(session, filters);
+    movements = await listInventoryMovements(session, filters, {
+      maxRows: exportPolicy.maxRows
+    });
   } catch (error) {
     await logOperationalExportFailure({
       session,
       reportId: "movement-ledger",
-      error
+      error,
+      metadata: auditMetadata
     });
     const response = exportErrorResponse(error);
     if (response) {
@@ -102,13 +113,15 @@ export async function GET(request: Request) {
     session,
     reportId: "movement-ledger",
     eventType: "report.export_completed",
-    rowCount: movements.length
+    rowCount: movements.length,
+    metadata: auditMetadata
   });
 
   return csvExportResponse(rows, "inventory-ledger.csv", {
     metadata: await buildReportCsvMetadata({
       session,
-      reportId: "movement-ledger"
+      reportId: "movement-ledger",
+      extra: [["Maximum Rows", exportPolicy.maxRows]]
     })
   });
 }

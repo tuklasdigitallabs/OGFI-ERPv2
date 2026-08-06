@@ -36,7 +36,7 @@ Use this article when a supplier delivery does not perfectly match the issued Pu
 10. Enter an evidence reference, such as a photo filename, document ID, delivery note, or incident reference.
 11. Add lot or expiry data when required.
 12. Select `Create Draft Receipt` at the bottom of the task page. This saves a draft only; it does not post inventory.
-13. Review the draft and select `Post Receipt`.
+13. Review the draft and select `Post Receipt`. The action changes to `Posting Receipt…` and disables while the request is pending; wait for the server result instead of clicking again.
 
 [Screenshot placeholder: Receiving form showing delivered, accepted, rejected, damaged, discrepancy reason, and evidence reference fields.]
 
@@ -55,7 +55,7 @@ Posted receipts are not edited. If a posted receipt is materially wrong:
 1. Open the receiving detail page.
 2. Confirm the original receipt and discrepancy evidence.
 3. Enter a reversal reason.
-4. Select `Reverse Receipt`.
+4. Select `Reverse Receipt`. Confirm the warning; while the reversal is processing, the action changes to `Reversing Receipt…` and is disabled. The server remains the authority for exactly-once reversal and PO restoration.
 
 The system writes linked `REVERSAL` inventory movements for accepted quantity, restores PO received quantity/status, preserves the original receipt, and records who reversed it and why.
 

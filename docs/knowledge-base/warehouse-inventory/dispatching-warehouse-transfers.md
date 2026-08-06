@@ -29,7 +29,7 @@ Use this article when the source location is ready to send stock for a submitted
 3. Open the requested transfer.
 4. Confirm the source and destination locations.
 5. Review requested item lines and quantities.
-6. Select `Dispatch Stock`.
+6. Select `Dispatch Stock` and wait for the action to finish. The server rechecks the live actor, session, dispatch permission, source-location scope, source/destination endpoint mapping, and privileged MFA after the transfer is locked. If the action reports a stale authority or scope conflict, refresh the transfer and retry only from its current detail page.
 
 [Screenshot placeholder: Transfer detail page showing a requested transfer and the Dispatch Stock action.]
 
@@ -47,6 +47,7 @@ Use this article when the source location is ready to send stock for a submitted
 - A destination user must still receive the transfer.
 - The same user who dispatched the transfer cannot receive that transfer at the destination.
 - Dispatch is idempotent; repeated posting must not create duplicate source movements.
+- The post-lock authority and MFA fence is server-side; a visible button never grants dispatch authority. Do not retry repeatedly after an authority or MFA denial.
 - A transfer can be cancelled only while it is still `DRAFT` or `REQUESTED`.
 
 ## What happens next

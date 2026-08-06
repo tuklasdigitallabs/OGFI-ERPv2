@@ -74,7 +74,9 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(page).toContain("!profile && canCreateAdjustments");
     expect(page).toContain("workspacePage?.items");
     expect(page).toContain("read-only profile does not grant adjustment or inventory actions");
-    expect(route).toContain("listStockAdjustments(session, profile ?? undefined)");
+    expect(route).toContain("listStockAdjustments(session, profile ?? undefined, {");
+    expect(route).toContain("maxRows: exportPolicy.maxRows");
+    expect(route).toContain("exportErrorResponse(error)");
     expect(route).toContain("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED");
   });
 
@@ -132,6 +134,8 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(action.indexOf("FOR UPDATE OF adjustment")).toBeLessThan(
       action.indexOf("lockInventoryLocationsForPosting")
     );
+    expect(action).toContain("assertFreshStockAdjustmentInventoryAuthority");
+    expect(action).toContain('{ transaction: tx }');
   });
 
   test("reversal is manual-only, MFA-gated, and source/line locked", () => {
@@ -142,9 +146,19 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(action).toContain('action: "stock_adjustment.reverse"');
     expect(action).toContain("lockStockAdjustmentSourceForReversal");
     expect(action).toContain("FOR UPDATE OF line");
-    expect(action).toContain("FOR UPDATE OF movement");
+    expect(action).toContain("pg_advisory_xact_lock");
+    expect(action).toContain("assertFreshStockAdjustmentInventoryAuthority");
     expect(action).toContain('sourceEventKey: `stock_adjustment_line:${line.id}:reverse`');
     expect(action).not.toContain('"OPENING_BALANCE_IN"].includes');
+  });
+
+  test("submission is non-posting and does not require posting MFA", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const start = source.indexOf("export async function submitStockAdjustment");
+    const end = source.indexOf("\nexport async function cancelStockAdjustment", start);
+    const action = source.slice(start, end);
+    expect(action).not.toContain("assertPrivilegedMfaForAction");
+    expect(action).toContain("permissions.stockAdjustmentSubmit");
   });
 
   test("My Tasks returns only authorized unposted approved adjustments with exact count and cursor", async () => {

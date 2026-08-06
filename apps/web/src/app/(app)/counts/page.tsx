@@ -176,7 +176,7 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
                       Freeze movement window
                     </label>
                   </div>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                  <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                     Schedule Count
                   </button>
                 </form>
@@ -198,7 +198,7 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
               {canExportCounts ? (
                 <ButtonLink
                   href="/counts/export"
-                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                  className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
                 </ButtonLink>

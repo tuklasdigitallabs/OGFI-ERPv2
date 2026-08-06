@@ -37,6 +37,8 @@ type Props = {
   approvalInstanceId: string;
   presentation: ApprovalDecisionPresentation;
   action: ApprovalDecisionAction;
+  reviewToken?: string;
+  reloadCurrentReviewHref?: string;
 };
 
 function decisionButtonClass(decision: string) {
@@ -52,7 +54,9 @@ function decisionButtonClass(decision: string) {
 export function ApprovalDecisionComposer({
   approvalInstanceId,
   presentation,
-  action
+  action,
+  reviewToken,
+  reloadCurrentReviewHref,
 }: Props) {
   const [state, formAction, pending] = useActionState(action, { status: "idle" });
   const [remarks, setRemarks] = useState("");
@@ -66,6 +70,8 @@ export function ApprovalDecisionComposer({
   const evidenceErrorId = `${reasonPrefix}-evidence-error`;
   const decisionErrorId = `${reasonPrefix}-decision-error`;
   const supportedDecisions = presentation.decisions.filter((entry) => entry.supported);
+  const staleReview =
+    state.status === "error" && state.code === "APPROVAL_REVIEW_STALE";
 
   useEffect(() => {
     if (!pending) submitLockRef.current = false;
@@ -103,7 +109,7 @@ export function ApprovalDecisionComposer({
 
       <div className="mt-4 grid gap-3">
         <input name="approvalInstanceId" type="hidden" value={approvalInstanceId} readOnly />
-        <input name="approvalKind" type="hidden" value={presentation.family} readOnly />
+        {reviewToken ? <input name="reviewToken" type="hidden" value={reviewToken} readOnly /> : null}
         <label className="grid gap-1 text-sm font-medium text-slate-700">
           Decision remarks
           <textarea
@@ -165,7 +171,7 @@ export function ApprovalDecisionComposer({
 
         <div aria-describedby={state.status === "error" && state.fieldErrors?.decision ? decisionErrorId : undefined} className={`grid gap-2 ${supportedDecisions.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           {supportedDecisions.map((entry) => {
-            const disabled = pending || !entry.available;
+            const disabled = pending || staleReview || !entry.available;
             const reasonId = !entry.available && entry.disabledReason
               ? `${reasonPrefix}-${entry.decision.toLowerCase()}-reason`
               : undefined;
@@ -196,6 +202,19 @@ export function ApprovalDecisionComposer({
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950" ref={errorSummaryRef} role="alert" tabIndex={-1}>
               <p className="font-bold">Decision not completed</p>
               <p className="mt-1">{state.message} Your remarks and evidence draft remain available.</p>
+              {staleReview && reloadCurrentReviewHref ? (
+                <>
+                  <p className="mt-2 font-medium">
+                    Decisions are disabled because this reviewed snapshot is no longer current.
+                  </p>
+                  <a
+                    className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-rose-300 bg-white px-4 font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+                    href={reloadCurrentReviewHref}
+                  >
+                    Reload current review
+                  </a>
+                </>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -273,6 +273,10 @@ Inventory Value
 
 Roles may hide/show secondary columns; required operational fields remain visible.
 
+### 6.4 URL-owned selection in administration registers
+
+When an administration register uses a selected-record panel, the selected record, active tab, filters, and page belong in the URL. Changing the tab, filters, or page clears the selection so a prior record is not shown in a different register context. The detail panel is read-only and must load through the server-authorized read boundary; missing, malformed, or no-longer-authorized URLs show one safe unavailable state without disclosing record existence. Short edit forms may open contextually from the selected panel and must follow the short-mutation feedback standard.
+
 ---
 
 ## 7. Record detail standard
@@ -371,6 +375,7 @@ The UI can offer a clear `Request Stock` action. The backend determines whether 
 ### 9.2 Mobile rules
 
 - minimum 44 × 44px interactive touch targets;
+- pagination and inline navigation controls must use non-wrapping labels, remain shrink-resistant, and stack or wrap as a control group before text becomes cramped inside narrow workspace panels;
 - one primary action per decision point;
 - bottom-fixed action bar for approval, receiving, count, and submission actions where helpful;
 - camera/photo upload designed for real-world evidence capture;
@@ -423,6 +428,12 @@ Not:
 ```text
 Inventory operation failed.
 ```
+
+### Short mutation feedback standard
+
+For a short, focused create, edit/update, activation, deactivation, or archive action, a successful request closes its modal or drawer, refreshes the authoritative register/detail state, and shows a dismissible success toast. A failed request leaves the form open, restores its controls, and shows a user-safe error toast so the user can correct or retry it.
+
+Do not apply this rule mechanically to posting, approval, dispatch, receipt, reversal, count closure, or other multi-step controlled workflows. Those actions must also return the user to, or refresh, the authoritative record state that shows the resulting status, audit history, and next allowed action. Authentication and security forms retain accessible field-level validation; a transient toast alone is insufficient.
 
 ---
 

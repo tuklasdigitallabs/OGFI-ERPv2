@@ -8,7 +8,9 @@ import { getSessionContext } from "@/server/services/context";
 import {
   approveAuthRecovery, getAuthRecoveryRequest, listAuthRecoveryRequestPage,
   listAuthRecoveryTargetCatalog, rejectAuthRecovery, requestAuthRecovery,
+  issueTemporaryPassword,
 } from "@/server/services/authenticationAdmin";
+import { TemporaryPasswordPanel } from "./TemporaryPasswordPanel";
 import { assertTrustedServerActionOrigin } from "@/server/services/authentication";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +46,14 @@ async function manageRecovery(formData: FormData) {
   redirect(`/admin/authentication?${params}`);
 }
 
+async function issueManualPassword(_: { password?: string; expiresAt?: string; error?: string }, formData: FormData) {
+  "use server";
+  await assertTrustedServerActionOrigin();
+  const session = await getSessionContext();
+  if (!session) return { error: "Sign in again before issuing a password." };
+  try { return await issueTemporaryPassword(session, formData); } catch { return { error: "Temporary password could not be issued for this account." }; }
+}
+
 export default async function AuthenticationAdminPage({ searchParams }: Props) {
   const session = await getSessionContext();
   if (!session) redirect("/sign-in");
@@ -68,6 +78,7 @@ export default async function AuthenticationAdminPage({ searchParams }: Props) {
   const actionError = value(params, "error");
   return <AppShell session={session} title="Authentication" subtitle="Controlled account recovery and audit-safe access restoration" activeNav="admin-authentication">
     <div className="mb-5"><span className="inline-flex min-h-11 items-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white">Recovery</span><span className="ml-2 text-sm text-slate-500">Account readiness and activation delivery remain separate follow-up sections.</span></div>
+    <TemporaryPasswordPanel users={requestUsers.map((user) => ({ id: user.id, label: user.displayName || user.email }))} action={issueManualPassword} />
     {actionError ? <Panel className="mb-5 border-red-200 bg-red-50"><p className="text-sm text-red-800">{actionError === "mfa" ? "Refresh MFA assurance under Account security, then retry." : actionError === "duplicate" ? "Another pending recovery request already exists for this account." : actionError === "scope" ? "The target is outside the current company scope." : actionError === "identity" ? "The target has no active local identity. Use the separate Activation workflow." : actionError === "separation" ? "A requester or target cannot review this recovery; choose an independent administrator." : actionError === "conflict" ? "Another reviewer already handled this request. Refresh the queue." : actionError === "invalid" ? "The requested recovery action is not valid." : "Recovery could not be completed. Check the selected record and required evidence."}</p></Panel> : null}
     <Panel className="ogfi-detail-card">
       <h2 className="text-lg font-semibold text-slate-950">Controlled recovery</h2>

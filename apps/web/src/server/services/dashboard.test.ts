@@ -1285,7 +1285,7 @@ describe("operational dashboard model", () => {
     expect(dashboardPageSource).not.toContain("Incidents and Maintenance");
   });
 
-  it("uses an explicit Approval Inbox state instead of a misleading empty approval preview", () => {
+  it("uses an explicit unavailable state unless the bounded UAT worklist is active", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       approvalPreviewUnavailable: true,
     });
@@ -1309,6 +1309,8 @@ describe("operational dashboard model", () => {
       "utf8",
     );
     expect(dashboardServiceSource).not.toContain("listPendingApprovals");
+    expect(dashboardServiceSource).toContain("listBoundedInventoryUatApprovalWorklistPage");
+    expect(dashboardServiceSource).toContain("approvalPreviewPartial: true");
     expect(dashboardPageSource).toContain("Approval preview and queue are unavailable");
     expect(dashboardPageSource).toContain(
       'dashboard.approvalQueueContract.availability !== "UNAVAILABLE"',
@@ -1318,7 +1320,7 @@ describe("operational dashboard model", () => {
     );
     expect(dashboardPageSource).toContain('source.id === "approvals"');
     expect(dashboardPageSource).toContain("Queue unavailable");
-    expect(dashboardPageSource).not.toContain('actionLabel="Open Approval Inbox"');
+    expect(dashboardPageSource).toContain('href="/approvals"');
   });
 
   it("uses the bounded Branch Operations read instead of the full checklist workspace read", () => {

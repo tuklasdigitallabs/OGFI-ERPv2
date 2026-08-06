@@ -49,6 +49,9 @@ describe.skipIf(!databaseEnabled)(
     };
 
     beforeAll(async () => {
+      // This race explicitly revokes the external privileged-MFA enrollment;
+      // run it in the non-local evidence mode so that revocation is observable.
+      vi.stubEnv("AUTH_MODE", "demo");
       const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
         process.env,
       );
@@ -290,6 +293,7 @@ describe.skipIf(!databaseEnabled)(
     });
 
     afterAll(async () => {
+      vi.unstubAllEnvs();
       await prisma?.$disconnect();
     });
 

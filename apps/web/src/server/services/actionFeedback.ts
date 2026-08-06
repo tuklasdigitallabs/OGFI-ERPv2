@@ -6,6 +6,68 @@ export type ActionFeedback = {
 };
 
 const actionSuccessMessages: Record<string, string> = {
+  APPROVAL_DECISION_APPROVED:
+    "The approval decision was recorded. The queue and authoritative source status were refreshed.",
+  APPROVAL_DECISION_RETURNED:
+    "The record was returned for revision. The queue and authoritative source status were refreshed.",
+  APPROVAL_DECISION_REJECTED:
+    "The record was rejected. The queue and authoritative source status were refreshed.",
+  INVENTORY_PILOT_CONFIGURATION_DRAFT_CREATED:
+    "Inventory pilot configuration draft was created. It has no activation or stock effect.",
+  INVENTORY_PILOT_CONFIGURATION_DRAFT_UPDATED:
+    "Inventory pilot configuration draft was updated and the change was recorded in the audit trail.",
+  INVENTORY_PILOT_CONFIGURATION_DRAFT_ABANDONED:
+    "Inventory pilot configuration draft was abandoned. Its history remains available.",
+  INVENTORY_PILOT_CONFIGURATION_SUCCESSOR_DRAFT_CREATED:
+    "A successor draft was created from the latest sealed revision without changing existing cohorts.",
+  INVENTORY_PILOT_CONFIGURATION_READINESS_EVALUATED:
+    "Readiness was evaluated from current evidence. Live workflow authority remains authoritative.",
+  INVENTORY_PILOT_CONFIGURATION_REVISION_SEALED:
+    "Inventory pilot configuration revision was sealed. No workflow was activated and no stock was posted.",
+  CORE_ADMIN_COMPANY_CREATED:
+    "Company was created and is available in the selected organization register.",
+  CORE_ADMIN_BRAND_CREATED:
+    "Brand was created and is available in the selected organization register.",
+  CORE_ADMIN_DEPARTMENT_CREATED:
+    "Department was created and is available in the selected organization register.",
+  CORE_ADMIN_LOCATION_CREATED:
+    "Location was created and is available in the selected organization register.",
+  CORE_ADMIN_COMPANY_UPDATED:
+    "Company details were saved. The change and its reason are available in the audit trail.",
+  CORE_ADMIN_BRAND_UPDATED:
+    "Brand details were saved. The change and its reason are available in the audit trail.",
+  CORE_ADMIN_DEPARTMENT_UPDATED:
+    "Department details were saved. The change and its reason are available in the audit trail.",
+  CORE_ADMIN_LOCATION_UPDATED:
+    "Location details were saved. The change and its reason are available in the audit trail.",
+  LOCATION_CONTEXT_SWITCHED:
+    "Your operating location was switched. The current workspace has been refreshed for that scope.",
+  OPERATIONAL_REASON_CODE_CREATED:
+    "Reason code was created and is available to its configured workflow.",
+  OPERATIONAL_REASON_CODE_UPDATED:
+    "Reason code applicability was updated and recorded in the audit trail.",
+  OPERATIONAL_REASON_CODE_DEACTIVATED:
+    "Reason code was deactivated. Its history is retained and it is unavailable for new entries.",
+  ITEM_CATEGORY_CREATED:
+    "Category was created and is available in the item master register.",
+  UOM_CREATED:
+    "Unit of measure was created and is available in the item master register.",
+  ITEM_CATEGORY_UPDATED:
+    "Category changes were saved and recorded in the audit trail.",
+  ITEM_CATEGORY_DEACTIVATED:
+    "Category was deactivated. Its history is retained and it is unavailable for new items.",
+  UOM_UPDATED:
+    "Unit of measure changes were saved and recorded in the audit trail.",
+  UOM_DEACTIVATED:
+    "Unit of measure was deactivated. Its history is retained and it is unavailable for new items.",
+  UOM_CONVERSION_UPDATED:
+    "Unit conversion changes were saved and recorded in the audit trail.",
+  SUPPLIER_CREATED:
+    "Supplier was created and is available in the supplier register.",
+  SUPPLIER_ACCREDITATION_UPDATED:
+    "Supplier accreditation was updated and recorded in the audit trail.",
+  SUPPLIER_DEACTIVATED:
+    "Supplier was deactivated. Its history is retained and it is unavailable for new sourcing.",
   SUPPLIER_ITEM_LINK_CREATED:
     "The supplier-item link was created and is now available in the selected supplier catalog.",
   SUPPLIER_ITEM_LINK_DEACTIVATED:
@@ -13,8 +75,34 @@ const actionSuccessMessages: Record<string, string> = {
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  INVENTORY_PILOT_CONFIGURATION_NOT_FOUND:
+    "This inventory pilot configuration record is unavailable in the selected company.",
+  INVENTORY_PILOT_CONFIGURATION_PERMISSION_DENIED:
+    "You do not have the required inventory pilot configuration permission.",
+  INVENTORY_PILOT_CONFIGURATION_COMPANY_MANAGE_REQUIRED:
+    "Exact Company Manage scope is required for inventory pilot configuration.",
+  INVENTORY_PILOT_CONFIGURATION_AUTHORITY_STALE:
+    "Your session or live authority changed. Sign in again or refresh before retrying.",
+  INVENTORY_PILOT_CONFIGURATION_STATE_CONFLICT:
+    "The configuration changed while you were working. Refresh and review the latest version.",
+  INVENTORY_PILOT_CONFIGURATION_IDEMPOTENCY_CONFLICT:
+    "This seal request key was already used for different request details.",
+  INVENTORY_PILOT_CONFIGURATION_SELECTION_INVALID:
+    "A selected endpoint, item, actor, role assignment, or approval route is invalid for this company.",
+  INVENTORY_PILOT_CONFIGURATION_READINESS_BLOCKED:
+    "Resolve every blocking readiness item before sealing this revision.",
+  INVENTORY_PILOT_CONFIGURATION_EDITOR_CANNOT_SEAL:
+    "The draft creator or editor cannot seal the same revision. A separate authorized administrator must seal it.",
+  INVENTORY_PILOT_CONFIGURATION_MFA_REQUIRED:
+    "Fresh multi-factor verification is required before sealing this inventory pilot configuration.",
   OPENING_INVENTORY_CONFIGURATION_NOT_SEALED:
     "The selected configuration is not sealed. Refresh and use a sealed opening-inventory configuration.",
+  OPENING_INVENTORY_CONFIGURATION_NOT_LATEST:
+    "A newer sealed inventory pilot configuration governs new opening cohorts. Refresh and select the latest eligible revision.",
+  OPENING_INVENTORY_CONFIGURATION_EVIDENCE_INVALID:
+    "The latest sealed inventory pilot configuration has invalid or incomplete immutable readiness evidence.",
+  OPENING_INVENTORY_CONFIGURATION_LIVE_READINESS_BLOCKED:
+    "The latest sealed inventory pilot configuration is no longer live-ready. Review its current participant and approval-route blockers.",
   OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED:
     "Your current authorized scope does not allow this opening-inventory action.",
   OPENING_INVENTORY_ITEM_SCOPE_DENIED:
@@ -505,6 +593,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "This approval step is not assigned to your role or user.",
   APPROVAL_AUTHORITY_STALE:
     "Your approval authority changed. Refresh the approval and try again.",
+  APPROVAL_REVIEW_STALE:
+    "This approval changed or the review expired. Reload it and review the current details before deciding.",
   APPROVAL_DOCUMENT_NOT_FOUND:
     "The source document for this approval is no longer available.",
   APPROVAL_NOT_ACTIONABLE:
@@ -521,6 +611,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "This approval is not ready for the current routing workflow. Contact an administrator.",
   APPROVAL_ROUTING_V1_DISABLED:
     "This approval cannot continue with the retired routing workflow. Contact an administrator.",
+  APPROVAL_WORKLIST_ITEM_UNAVAILABLE:
+    "This approval is not available in the current controlled worklist. Refresh and try again.",
   APPROVAL_RULE_NOT_CONFIGURED:
     "No approval rule is configured for this action yet.",
   APPROVAL_RULE_STEP_NOT_CONFIGURED:
@@ -1130,6 +1222,34 @@ const actionFeedbackMessages: Record<string, string> = {
     "Only reviewed counts can generate a variance adjustment.",
   STOCK_COUNT_RECOUNT_DISABLED:
     "Recount is temporarily unavailable while immutable attempt recovery is being completed. No count evidence was changed.",
+  STOCK_COUNT_RECOUNT_STALE_VERSION:
+    "This count changed before recovery could start. Refresh and review the current attempt before retrying.",
+  STOCK_COUNT_RECOUNT_IDEMPOTENCY_CONFLICT:
+    "This recovery key was already used for different recount details. Start a fresh authorized request.",
+  STOCK_COUNT_RECOUNT_SOURCE_NOT_REVIEWED:
+    "A protected recount can begin only from the current reviewed attempt.",
+  STOCK_COUNT_RECOVERY_CANCEL_ADJUSTMENT_FIRST:
+    "Cancel the linked unposted variance adjustment through its normal workflow before requesting a recount.",
+  STOCK_COUNT_RECOVERY_REVERSE_ADJUSTMENT_FIRST:
+    "Reverse the linked posted variance adjustment in full before requesting a recount.",
+  STOCK_COUNT_RECOVERY_ADJUSTMENT_IN_PROGRESS:
+    "The linked adjustment is changing. Wait for its final status, refresh, and retry.",
+  STOCK_COUNT_RECOVERY_ACTOR_SEGREGATION_REQUIRED:
+    "A different authorized recovery user is required because this user participated in the protected count or adjustment decision.",
+  STOCK_COUNT_RECOUNT_ASSIGNEE_SEGREGATION_REQUIRED:
+    "Choose an eligible recount counter who did not participate in the protected source count or recovery decision.",
+  STOCK_COUNT_RECOUNT_ASSIGNEE_NOT_ELIGIBLE:
+    "The selected recount counter no longer has the required active permission and location scope.",
+  STOCK_COUNT_RECOUNT_REVIEW_APPROVAL_REQUIRED:
+    "Recount submission requires the controlled Stock Count review approval route.",
+  CONTROLLED_EVIDENCE_POLICY_UNCONFIRMED:
+    "Protected recount recovery is unavailable until the approved controlled-evidence policy and action adapter are active.",
+  STOCK_COUNT_RECOUNT_REVIEW_AUTHORITY_STALE:
+    "The protected Stock Count review authority changed. Refresh and retry after the active configuration is verified.",
+  STOCK_COUNT_RECOVERY_NOTIFICATION_CONFLICT:
+    "Recovery obligations changed before the protected outcome could be recorded. Refresh and retry.",
+  STOCK_COUNT_RECOVERY_ADJUSTMENT_APPROVAL_NOT_TERMINAL:
+    "The linked adjustment approval route is not terminal. Complete or reconcile that route before recovery.",
   STOCK_COUNT_HAS_NO_VARIANCE_LINES:
     "This reviewed count has no variance lines to adjust.",
   STOCK_COUNT_NOT_OPEN_FOR_ENTRY:
@@ -1262,6 +1382,27 @@ export function actionErrorRedirectPath(pathname: string, error: unknown) {
   return `${pathname}${separator}${params.toString()}`;
 }
 
+export function actionSuccessRedirectPath(pathname: string, code: string) {
+  if (!safeActionCodePattern.test(code) || !actionSuccessMessages[code]) {
+    throw new Error("ACTION_SUCCESS_CODE_INVALID");
+  }
+  const params = new URLSearchParams({ success: code });
+  const separator = pathname.includes("?") ? "&" : "?";
+  return `${pathname}${separator}${params.toString()}`;
+}
+
+export function getActionSuccessFeedback(code: string): ActionFeedback {
+  if (!safeActionCodePattern.test(code) || !actionSuccessMessages[code]) {
+    throw new Error("ACTION_SUCCESS_CODE_INVALID");
+  }
+  return {
+    code,
+    message: actionSuccessMessages[code],
+    title: "Action completed",
+    tone: "success"
+  };
+}
+
 export function getActionErrorFeedback(error: unknown): ActionFeedback {
   const code = getActionErrorCode(error);
   return {
@@ -1285,10 +1426,5 @@ export function getActionFeedback(
   const rawSuccessCode = searchParams.success;
   const successCode = Array.isArray(rawSuccessCode) ? rawSuccessCode[0] : rawSuccessCode;
   if (!successCode || !safeActionCodePattern.test(successCode) || !actionSuccessMessages[successCode]) return null;
-  return {
-    code: successCode,
-    message: actionSuccessMessages[successCode],
-    title: "Action completed",
-    tone: "success"
-  };
+  return getActionSuccessFeedback(successCode);
 }

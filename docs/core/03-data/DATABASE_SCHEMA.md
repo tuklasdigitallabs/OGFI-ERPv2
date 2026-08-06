@@ -253,7 +253,7 @@ REVERSAL
 | `InventoryTransferReceipt` | inventory_transfer_id, received_by_user_id, status, received_at, idempotency_key nullable, idempotency_request_hash nullable, posted_at nullable, reversed_by_user_id nullable, reversed_at nullable, reversal_reason nullable, discrepancy_flag, discrepancy_summary nullable, notes nullable |
 | `InventoryTransferReceiptLine` | transfer_receipt_id, inventory_transfer_id, inventory_transfer_line_id, item_id, uom_id, line_number, dispatched_qty_snapshot, accepted_qty, rejected_qty, damaged_qty, discrepancy_qty, outstanding_qty, discrepancy_type nullable, discrepancy_reason nullable, evidence_reference nullable, posted_movement_id nullable |
 
-Current implementation note: transfer requests support source dispatch plus event-backed destination receipt from the current authorized action location. Dispatch moves `REQUESTED` to `DISPATCHED`, creates deterministic immutable `TRANSFER_OUT` movements, updates source balances, and records audit history in the same transaction. Receipt events can be posted from `DISPATCHED`, `PARTIALLY_RECEIVED`, or `DISPUTED`, create deterministic immutable `TRANSFER_IN` movements only for accepted quantities, update transfer line rollups, and block the dispatching user from receiving the same transfer. Damaged, rejected, and short/discrepant quantities are recorded on receipt lines and do not increase destination stock. Posted receipt events can be reversed as full events by a separate authorized user; reversal writes linked `REVERSAL` movements for accepted quantities, decrements receipt rollups, recalculates transfer status, and keeps the original receipt event. Disputed transfers can be moved to `DISCREPANCY_SETTLED` through a non-posting, permissioned settlement action with reason, evidence reference, settlement type, segregation checks, and audit metadata. Creating, submitting, cancelling, and discrepancy settlement do not update stock. Dispatch reversal, replacement transfers, adjustment/wastage linkage, and finance effects remain future controlled decisions.
+Current implementation note: transfer requests support source dispatch plus event-backed destination receipt from the current authorized action location. Dispatch moves `REQUESTED` to `DISPATCHED`, creates deterministic immutable `TRANSFER_OUT` movements, updates source balances, and records audit history in the same transaction. Receipt events can be posted from `DISPATCHED`, `PARTIALLY_RECEIVED`, or `DISPUTED`, create deterministic immutable `TRANSFER_IN` movements only for accepted quantities, update transfer line rollups, and block the dispatching user from receiving the same transfer. Damaged, rejected, and short/discrepant quantities are recorded on receipt lines and do not increase destination stock. Posted receipt events can be reversed as full events by a separate authorized user; reversal writes linked `REVERSAL` movements for accepted quantities, decrements receipt rollups, recalculates transfer status, and keeps the original receipt event. A legacy discrepancy-settlement path is retained for compatibility but is dormant and fail-closed under DEC-0265 until finality and reopen/reversal semantics are confirmed; `DISCREPANCY_SETTLED` is not an available or final operational state. Creating, submitting, cancelling, and discrepancy follow-up do not update stock. Dispatch reversal, replacement transfers, adjustment/wastage linkage, and finance effects remain future controlled decisions.
 The additive migration `20260728100000_inventory_transfer_receipt_idempotency_coherence` preserves legacy `NULL`/`NULL` receipt identity and rejects one-sided or malformed key/hash pairs with the named PostgreSQL check `InventoryTransferReceipt_idempotency_pair_check`; it performs no backfill or automatic repair. PostgreSQL rehearsal and populated-restore evidence remain required before deployment.
 
 ### 7.5 Physical count
@@ -274,13 +274,59 @@ Current implementation note: physical counts support scheduling, starting with a
 | `wastage_reports` | id, tenant_id, company_id, public_reference, inventory_location_id, reported_by_user_id, reported_at, reason_code, status, total_estimated_cost, policy_flags, policy_snapshot, evidence_required, evidence_satisfied, notes |
 | `wastage_lines` | wastage_report_id, item_id, lot_id nullable, quantity, uom_id, estimated_unit_cost, estimated_total_cost, reason_code, photo_required, notes |
 | `wastage_policies` | tenant_id, company_id, optional inventory_location_id, optional wastage_type, optional reason_code, minimum_estimated_cost, evidence requirement, repeat window/count thresholds, active status | Configurable policy rows for evidence thresholds and factual repeat/high-value flags. |
-| `operational_reason_codes` | tenant_id, company_id, workflow, code, label, applies_to nullable, requires_evidence, status, sort_order | Company-scoped controlled dropdown values for wastage, stock adjustments, and future exception workflows. |
+| `operational_reason_codes` | tenant_id, company_id, workflow, code, label, wastage_types, inventory_classes, requires_evidence, status, sort_order | Company-scoped controlled dropdown values for wastage, stock adjustments, and future exception workflows. Under `DEC-0268`, `wastage_types` and `inventory_classes` are independent wastage eligibility dimensions; legacy overloaded `applies_to` remains for historical/non-wastage reference and is not authoritative for new wastage eligibility. The conservative F&B seed maps `SPOILAGE_EXPIRY` → `SPOILAGE_EXPIRY` / `FOOD`, `PREP_TRIM_LOSS` and `KITCHEN_ERROR` → `PREPARATION_LOSS` / `FOOD`, and `DAMAGED_PACKAGING` → `DAMAGE` / `FOOD, PACKAGING`; each company must review/configure its own rows, and remaining legacy codes require explicit mapping. |
 | `stock_adjustments` | id, tenant_id, company_id, public_reference, inventory_location_id, requested_by_user_id, adjustment_type, reason_code, status, source_document_type nullable, source_document_id nullable, source_stock_count_session_id nullable, total_value_impact, posted_by_user_id nullable, reversed_by_user_id nullable, posted_at nullable, reversed_at nullable, reversal_reason nullable, notes |
 | `stock_adjustment_lines` | stock_adjustment_id, item_id, lot_id nullable, quantity_delta, uom_id, unit_cost, value_impact, reason_code, source_stock_count_line_id nullable, posted_movement_id nullable, notes |
 
 Current implementation note: `WastageReport` and `WastageLine` support scoped wastage capture, controlled reason-code selection from active `operational_reason_codes`, configurable evidence/repeat policy flag snapshots, approval-engine submission, approve/return/reject decisions, legacy review, cancellation, audit history, estimated cost, CSV export, separate posting after approval, and full-document posted reversal. Posting creates source-linked `WASTAGE_OUT` movement rows through the inventory posting service, links `WastageLine.postedMovementId`, sets report `postedAt` and `postedByUserId`, and marks the report `POSTED`. Reversal creates linked `REVERSAL` movement rows, sets `reversedAt`, `reversedByUserId`, and `reversalReason`, and marks the report `REVERSED`.
 
 `StockAdjustment` and `StockAdjustmentLine` support scoped manual `INCREASE` / `DECREASE` / `OPENING_BALANCE` capture and count-generated `COUNT_VARIANCE` adjustments, controlled reason-code selection from active `operational_reason_codes`, approval-engine submission, approve/return/reject decisions, cancellation before approval completion, audit history, CSV export, separate posting after approval, and full-document posted reversal. Posting creates source-linked `ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, or opening-balance movements through the inventory posting service, links `StockAdjustmentLine.postedMovementId`, sets `postedAt` and `postedByUserId`, and marks the adjustment `POSTED`. Count-generated adjustments carry unique source links to one Stock Count Session and its non-zero variance lines. Reversal creates linked `REVERSAL` movement rows, sets `reversedAt`, `reversedByUserId`, and `reversalReason`, and marks the adjustment `REVERSED`. Backdating, reclassification, and finance/accounting entries remain future controlled transitions.
+
+### 7.7 Inventory Pilot configuration draft and seal
+
+| Table | Key fields | Integrity role |
+|---|---|---|
+| `InventoryPilotConfigurationDraft` | tenant/company, schema_version=2, status, version, exact predecessor revision/number/digest, creator, latest editor, terminal sealed revision or abandonment metadata | Mutable only while `DRAFT`; optimistic concurrency; no hard delete or terminal reopen. |
+| `InventoryPilotDraftEndpointMembership` | draft, exact InventoryLocation/Location, capability, included flag | Normalized exact `TRANSFER_SOURCE`, `TRANSFER_DESTINATION`, `COUNT_LOCATION`, and `OPENING_STOCK_LOCATION` selection. |
+| `InventoryPilotDraftItemMembership` | draft, exact Item, included flag | Explicit selected high-risk Item-ID set; category or UI filtering is not membership. |
+| `InventoryPilotDraftParticipant` | draft, responsibility, user, exact role assignment and role, included flag | Exactly one candidate for each of five opening responsibilities; all five users must be distinct at seal. |
+| `InventoryPilotDraftRouteReadiness` | draft, exact family, Approval Rule key/identity/lineage/version, raw canonical definition/digest, optional resolver-evidence canonical JSON/digest, checked time | One captured route per exact readiness family; always-enabled validation rejects raw-rule drift. Resolver evidence is required only for `PurchaseRequest` and is validated against its bounded production-resolver result. |
+| `InventoryPilotConfigurationSealOperation` | draft, expected version, idempotency key/request hash, sealed revision identity/digest, sealer, evidence cutoff | Append-only one-to-one atomic compilation and exact replay record. |
+| `InventoryPilotParticipantMembership` | sealed revision identity/digest, responsibility, user/assignment/role, evidence cutoff | Immutable, digest-covered seal-time readiness evidence; not an authority grant. |
+| `InventoryPilotRouteReadinessMembership` | sealed revision identity/digest, exact family, rule key/identity/lineage/version and raw canonical definition/digest, optional resolver-evidence canonical JSON/digest, evidence cutoff | Immutable, digest-covered seal-time route evidence for exactly eight families; only `PurchaseRequest` carries resolver evidence and live routing remains authoritative. |
+
+`InventoryPilotConfigurationRevision` now supports schema versions 1 and 2.
+Schema-v1 rows preserve their historic canonical representation, cannot acquire
+predecessor lineage, and remain pinned to existing cohorts/intents. Every new
+Setup Center seal is schema v2 and points to the exact latest predecessor; a
+unique predecessor constraint permits only one successor. The configuration
+digest for schema v2 covers predecessor lineage, endpoints, exact Item IDs, five
+participant snapshots, eight route snapshots, sealer/time, and evidence cutoff.
+Deferred always-enabled constraint triggers verify canonical/digest integrity,
+draft-to-sealed parity, terminal draft/seal coherence, and the exact five/eight
+cardinalities before commit.
+
+For the single `PurchaseRequest` readiness record, resolver context is fixed to
+the ordinary pilot scenario: stable resolver ID
+`purchase_request_approval_rule_v1` invokes shared production
+`resolvePurchaseRequestApprovalRule` with `isEmergency=false`. The raw Approval
+Rule definition/digest remains independently verifiable. A separate
+resolver-evidence canonical payload/digest must select the exact active/sealed
+`DEFAULT` rule, report
+`routeType=normal`, and report `fallbackUsed=false`. A valid `PR_EMERGENCY` rule
+may coexist but is outside the certified snapshot. Live eligibility rederives
+the same resolver result and fails closed on missing `DEFAULT`, fallback,
+substitution, or resolver drift; no emergency-route UAT evidence follows.
+
+The application service serializes sealing with a tenant/company advisory lock,
+locks the exact draft, uses serializable isolation, and rechecks live permission,
+active assignment/session, exact Company `MANAGE`, fresh MFA, editor/sealer
+separation, and readiness. It then creates the revision, normalized memberships,
+seal operation, terminal draft update, and audit event atomically. The seal has
+no family-activation, approval, opening-command, ledger, balance, custody, or
+financial effect. Only the latest unsuperseded schema-v2 revision may qualify a
+new Opening Inventory cohort after current readiness is re-evaluated; prior
+cohorts stay pinned to their original revision/digest.
 
 ---
 

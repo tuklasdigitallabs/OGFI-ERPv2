@@ -129,13 +129,17 @@ Phase II recipe and menu-costing permission boundary:
 - Broad ingredient add/remove editing and bulk maintenance permissions remain staged until their implementation slice is explicitly approved.
 - Recipe workflow permissions must be separate from confidential costing view/export permissions, and cost-impacting approvals must enforce no self-approval.
 | `inventory.transfer.receive` | Receive a dispatched transfer into the user's current authorized destination location, creating immutable `TRANSFER_IN` movements. This does not grant source dispatch authority. |
-| `inventory.transfer.discrepancy.settle` | Settle a disputed transfer at the authorized destination location with reason and evidence reference. This is a non-posting audit closure and does not grant dispatch, receipt, reversal, adjustment, wastage, or finance authority. |
+| `inventory.transfer.discrepancy.settle` | Reserved permission for a future disputed-transfer settlement policy. The action is currently fail-closed while settlement finality and reopen/reversal semantics remain unresolved under DEC-0265; it grants no current settlement authority. |
 | `inventory.stock_count.view` | View scoped physical count sessions for the user's current authorized location. This is read-only and does not grant count entry, review, or variance posting authority. |
 | `inventory.stock_count.create` | Schedule scoped physical count sessions and define count type, blind-count flag, and cutoff/freeze intent. This does not post stock variance. |
 | `inventory.stock_count.enter` | Start and enter a first-pass scoped count only when the user is its recorded assigned counter. Blind protected facts remain hidden from the assigned counter even when that user also holds review permission. This does not post variance. |
 | `inventory.stock_count.submit` | Submit a non-empty, fully counted first-pass session only when the user is its recorded assigned counter, locking ordinary count entry. This does not approve or post variance. |
 | `inventory.stock_count.review` | Review submitted count variances and mark reviewed or request recount. This does not post `COUNT_VARIANCE_*` movements or create a stock adjustment by itself. |
 | `inventory.stock_count.cancel` | Cancel an unreviewed count session with reason while preserving audit history. |
+| `inventory.stock_count.recovery` | Dedicated, sensitive authority for the default-off immutable recount recovery command. It does not grant count review, adjustment approval/posting/reversal, or activation; no default role receives it while the Count Variance actor-segregation policy remains open. |
+| `inventory.pilot_configuration.view` | View the selected company's Inventory Pilot draft queue, immutable revisions, exact endpoint/item cohort, named readiness actors, route snapshots, and bounded activity. This is evidence visibility only and grants no draft, seal, approval, activation, opening-command, or inventory-posting authority. |
+| `inventory.pilot_configuration.draft` | Create, revise, evaluate, abandon, or prepare a successor for a company-scoped mutable pilot configuration draft. Every action also requires a current active role assignment carrying this permission and exact Company `MANAGE`; it does not grant sealing or operational authority. |
+| `inventory.pilot_configuration.seal` | Compile a ready draft atomically into an immutable schema-v2 revision. Every seal also requires a current active role assignment carrying this permission, exact Company `MANAGE`, fresh MFA, a reason, and a sealer who is neither the creator nor latest editor. It grants no activation, approval, command, ledger, or posting authority. |
 | `inventory.wastage.view` | View scoped wastage reports for the user's current authorized inventory location. This is read-only and does not grant approval or stock posting authority. |
 | `inventory.wastage.create` | Create scoped draft wastage reports with item, quantity, reason, evidence reference, lot/expiry context, and estimated value. This does not post `WASTAGE_OUT` movements. |
 | `inventory.wastage.submit` | Submit scoped draft or returned wastage reports into the approval engine. This creates an approval instance but does not post stock. |
@@ -173,6 +177,17 @@ Phase II recipe and menu-costing permission boundary:
 | `restaurant.maintenance.create` | Create scoped equipment or facility maintenance tickets with asset, priority, description, downtime estimate, due date, corrective action, and evidence reference. This does not resolve incidents or post stock impact automatically. |
 | `restaurant.maintenance.complete` | Complete scoped maintenance tickets with completion date, downtime, corrective action, and evidence. This does not resolve linked incidents or mutate source operational records automatically. |
 | `restaurant.maintenance.correct` | Request or approve controlled corrections to maintenance ticket records with reason, evidence where required, and audit history. |
+
+Inventory Pilot configuration baseline grants are limited to the configured ERP
+Administrator (`CONFIGURED_ADMIN`) and System Super User
+(`CONFIGURED_SUPER_USER`) roles. This baseline is not a role-name bypass: each
+request revalidates the user's active/effective role assignment, the exact
+permission for the requested action, active session/privilege epoch, and exact
+selected-company `MANAGE` scope. Seal additionally revalidates fresh MFA and
+creator/latest-editor separation. Named preparer, submitter, Operations reviewer,
+Accounting reviewer, and command requester records are seal-time readiness
+evidence only; they do not grant permissions, scopes, routing eligibility, or
+opening execution authority. The executor remains deployment-controlled.
 
 Phase III finance permission boundary:
 
@@ -311,7 +326,7 @@ Phase I covers the platform foundation, approvals, supplier master data, purchas
 
 **Control note:** Supplier banking/payment details, confidential cost fields, and approval matrix configuration must be separately permissioned under `View Confidential` and `Configure` privileges.
 
-Implementation note (`DEC-0242`): Supplier Master `V`, `C`, `E`, or `M` in the
+Implementation note (`DEC-0242`, `DEC-0272`): Supplier Master `V`, `C`, `E`, or `M` in the
 matrix does not include confidential commercial clearance. The separately
 sensitive `purchasing.supplier_confidential.view` permission is additional to the
 ordinary Supplier workspace permission and selected-company scope. It is not a
@@ -319,8 +334,13 @@ default or recommended `CONFIGURED_ADMIN` grant. Only the existing superuser all
 permission seed behavior includes it automatically. Without clearance, Supplier
 payment terms and latest Supplier Item reference-price/currency/effective metadata
 are omitted at query/projection level and shown as `Restricted`. A nonblank write
-to those fields requires the clearance plus existing `core.administer` and company
-`MANAGE`; the confidential permission alone never grants a Supplier read or write.
+to those fields requires the clearance plus the applicable granular Supplier
+permission and company `MANAGE`; the confidential permission alone never grants a
+Supplier read or write. `DEC-0272` maps ordinary Supplier and Item Master access
+to `master_data.supplier.*` and `master_data.item.*`; read permits active
+selected-company, Brand, or Location scope, while create/edit/manage requires
+Company `MANAGE`. Item material lifecycle remains governed and is not granted by
+Item create/edit.
 This is the confirmed `DEC-0242` contract; its implementation evidence remains
 pending until the checkpoint is validated.
 

@@ -14,6 +14,7 @@ Use the dedicated Opening Inventory workspace to prepare, review, reconcile, and
 - This workflow is implemented locally and remains default-off. It is not enabled for UAT, staging, VPS deployment, production, or operational activation.
 - Use your own active account with the required opening-inventory permission and the assigned company and location scope. Visibility of the workspace does not grant an action.
 - Confirm that the selected location, sealed pilot configuration, reviewed `OPENING` stock-count attempt, and selected items are the intended ones.
+- A new cohort may use only the latest sealed revision that passes the separate eligibility checks. A successor revision does not change an existing cohort: older cohorts remain pinned to their original revision and digest.
 - Prepare a complete count for every selected item at each included location. A recorded zero quantity is still required evidence of count coverage, although it is omitted from the opening movements and derived balance rows.
 - Have at least one clean, available controlled-evidence attachment and the valuation lines ready. Positive counted quantities require a unit cost; an explicit zero line uses zero cost.
 - Confirm that separate eligible Operations and Accounting reviewers are available for every location batch. The requester and source-count custody actors cannot approve the cutover.
@@ -28,7 +29,7 @@ The `Opening Inventory` navigation item appears only when you have the scoped vi
 ## Steps
 
 1. Verify the company, location, and scope shown in the queue header. Opening cohorts are company-level and are not brand-bound. Open `Inventory → Opening Inventory`.
-2. Find an existing location batch with server-side search, status filters, and page controls, or—if you have preparation permission—select `Create opening cohort`, choose the sealed pilot configuration, and enter the effective cutover time. This creates a `DRAFT` cohort only; it does not freeze, post, or change stock.
+2. Find an existing location batch with server-side search, status filters, and page controls, or—if you have preparation permission—select `Create opening cohort`, choose the latest eligible sealed pilot configuration offered by the server, and enter the effective cutover time. This creates a `DRAFT` cohort pinned to that revision and digest only; it does not freeze, post, or change stock.
 3. Select the focused `Prepare Opening Inventory` task. Add clean controlled cohort evidence, select the reviewed `OPENING` count attempt, and enter the valuation unit cost for every positive-count line.
 4. Use search or `Show incomplete lines` to resolve all positive-count lines without a cost. A zero-count source line is retained as coverage evidence and uses zero cost; it will not produce an opening movement or balance row.
 5. Select evidence as needed across the evidence pages. Your selections and valuation entries are retained only in a browser-session draft for that exact user, cohort, and count attempt. They are cleared after a successful preparation and are not a substitute for submitting the immutable batch.
@@ -54,6 +55,7 @@ If a batch detail link is unavailable or outside your current authorized scope, 
 - Do not use `Inventory → Adjustments` or an `OPENING_BALANCE` adjustment as an opening-stock cutover substitute.
 - Do not edit inventory balances directly. Balances are derived from posted immutable inventory movements.
 - A stock-count line, evidence file, valuation, scope, or approval cannot be changed in place after the relevant immutable step. Follow the controlled recovery path instead.
+- A higher sealed pilot configuration revision can be eligible for a new cohort only. It does not migrate, rewrite, or repin an existing cohort.
 - Before release, an authorized requester can request pre-release supersession only for a reconciled unreleased location batch. The old batch remains as reversed history and a successor cohort is created. No inventory reversal is posted because staging never created stock.
 - After release, do not edit, delete, or reverse the opening batch. Correct a verified error only through a separately approved delta Stock Adjustment, with the required reason, evidence, approval, posting, and audit history.
 - Every command is re-authorized by the server, uses the current record version, and requires the dedicated permission. A disabled action or absent action means it is not currently valid for your scope, role, status, or policy.
@@ -70,6 +72,7 @@ The pilot release owner coordinates the evidence pack, recovery rehearsal, UAT r
 
 ## Related articles
 
+- [Preparing And Sealing An Inventory Pilot Configuration](../administration/preparing-and-sealing-an-inventory-pilot-configuration.md)
 - [Understanding The Inventory Control Pilot](../getting-started/understanding-the-inventory-control-pilot.md)
 - [Running Stock Counts](running-stock-counts.md)
 - [Understanding Stock Adjustments](understanding-stock-adjustments.md)

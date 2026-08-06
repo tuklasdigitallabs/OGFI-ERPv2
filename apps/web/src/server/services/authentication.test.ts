@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUTHENTICATION_DENIAL_AUDIT_WINDOW_MINUTES,
   assertProductionAuthConfiguration,
+  assertProductionAuthRuntimeConfiguration,
   assertAuthIdentityOwnership,
   assertTrustedServerActionOrigin,
+  authenticationSessionCookiePolicy,
   constantTimeEqual,
   decryptSensitiveValue,
   encryptSensitiveValue,
@@ -14,6 +16,7 @@ import {
   getTrustedRequestFingerprint,
   hashPassword,
   isMfaAssuranceFresh,
+  isHardenedAuthenticationRuntime,
   isSessionSecurityStateValid,
   isTrustedMutationOrigin,
   signInternalServerValue,
@@ -82,6 +85,50 @@ describe("production authentication primitives", () => {
     expect(getAuthMode()).toBe("demo");
   });
 
+  it("hardens only the explicitly admitted production-built UAT evidence runtime", () => {
+    vi.stubEnv("APP_ENV", "uat");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_MODE", "demo");
+    vi.stubEnv("AUTH_HARDENED_UAT_RUNTIME_ENABLED", "true");
+
+    expect(isHardenedAuthenticationRuntime()).toBe(true);
+    expect(() => getAuthMode()).toThrow("PRODUCTION_DEMO_AUTH_FORBIDDEN");
+    expect(authenticationSessionCookiePolicy()).toMatchObject({
+      name: "__Host-ogfi_session",
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    });
+  });
+
+  it("requires hardened UAT runtime controls without requiring SMTP delivery", () => {
+    stubCompleteProductionAuthEnvironment();
+    vi.stubEnv("APP_ENV", "uat");
+    vi.stubEnv("AUTH_HARDENED_UAT_RUNTIME_ENABLED", "true");
+    vi.stubEnv("SMTP_HOST", "");
+
+    expect(() => assertProductionAuthRuntimeConfiguration()).not.toThrow();
+    expect(() => assertProductionAuthConfiguration()).not.toThrow();
+
+    vi.stubEnv("AUTH_TRUSTED_PROXY_MODE", "untrusted");
+    expect(() => assertProductionAuthRuntimeConfiguration()).toThrow(
+      "AUTH_TRUSTED_PROXY_MODE_INVALID",
+    );
+  });
+
+  it.each([
+    ["", "AUTH_APP_URL_INVALID"],
+    ["not-a-url", "AUTH_APP_URL_INVALID"],
+    ["http://127.0.0.1:3443", "AUTH_APP_URL_HTTPS_REQUIRED"],
+  ])("rejects hardened UAT APP_URL %s", (appUrl, errorCode) => {
+    stubCompleteProductionAuthEnvironment();
+    vi.stubEnv("APP_ENV", "uat");
+    vi.stubEnv("AUTH_HARDENED_UAT_RUNTIME_ENABLED", "true");
+    vi.stubEnv("APP_URL", appUrl);
+    expect(() => assertProductionAuthRuntimeConfiguration()).toThrow(errorCode);
+  });
+
   it("requires production auth and encryption secrets", () => {
     vi.stubEnv("APP_ENV", "production");
     vi.stubEnv("NODE_ENV", "production");
@@ -115,6 +162,13 @@ describe("production authentication primitives", () => {
     expect(() => assertProductionAuthConfiguration()).toThrow(
       "AUTH_ACTIVATION_DELIVERY_CONFIGURATION_INVALID",
     );
+  });
+
+  it("keeps local runtime authentication independent of SMTP while link activation remains fail-closed", () => {
+    stubCompleteProductionAuthEnvironment();
+    vi.stubEnv("SMTP_HOST", "");
+    expect(() => assertProductionAuthRuntimeConfiguration()).not.toThrow();
+    expect(() => assertProductionAuthConfiguration()).toThrow("AUTH_ACTIVATION_DELIVERY_CONFIGURATION_INVALID");
   });
 
   it("accepts only implicit TLS or required STARTTLS SMTP policy", () => {
@@ -514,6 +568,8 @@ describe("authentication integration contracts", () => {
     );
     expect(signOutRoute).toContain('error: "ORIGIN_DENIED"');
     expect(signOutRoute).toContain("status: 405");
+    expect(signOutRoute).toContain("process.env.APP_URL");
+    expect(signOutRoute).toContain(", 303);");
     const instrumentation = readFileSync(
       path.resolve(__dirname, "../../instrumentation.ts"),
       "utf8",

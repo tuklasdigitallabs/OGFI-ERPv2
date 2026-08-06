@@ -12,6 +12,7 @@ import {
 import { requireSessionContext, type SessionContext } from "./context";
 import { readEvidenceStorageConfig } from "./evidenceStorageConfig";
 import { getControlledEvidenceStoragePolicy } from "./policySettings";
+import { assertApprovalReviewEvidenceSourceMutable } from "./approvalReviewAggregateFence";
 import { findAuthorizedProject } from "./projects";
 import {
   assertWorkforceEvidenceSourceBatchAccess,
@@ -45,7 +46,9 @@ export const evidenceAttachmentSourceTypes = [
   "PETTY_CASH_LIQUIDATION_LINE",
   "FINANCE_CLOSE_RUN",
   "FINANCE_CLOSE_ITEM",
+  "PURCHASE_REQUEST",
   "SUPPLIER_QUOTATION",
+  "PURCHASE_ORDER",
   "WORKFORCE_EMPLOYEE",
   "WORKFORCE_ASSIGNMENT",
   "WORKFORCE_LEAVE",
@@ -561,8 +564,16 @@ function requiredViewPermissionsForSourceType(
     case "FINANCE_CLOSE_RUN":
     case "FINANCE_CLOSE_ITEM":
       return [permissions.financePeriodCloseManage];
+    case "PURCHASE_REQUEST":
+      return [
+        permissions.purchaseRequestCreate,
+        permissions.purchaseRequestSubmit,
+        permissions.purchaseRequestApprove,
+      ];
     case "SUPPLIER_QUOTATION":
       return [permissions.quoteManage];
+    case "PURCHASE_ORDER":
+      return [permissions.purchaseOrderView];
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
     case "WORKFORCE_LEAVE":
@@ -613,8 +624,12 @@ function requiredWritePermissionsForSourceType(
     case "FINANCE_CLOSE_RUN":
     case "FINANCE_CLOSE_ITEM":
       return [permissions.financePeriodCloseManage];
+    case "PURCHASE_REQUEST":
+      return [permissions.purchaseRequestCreate, permissions.purchaseRequestSubmit];
     case "SUPPLIER_QUOTATION":
       return [permissions.quoteManage];
+    case "PURCHASE_ORDER":
+      return [permissions.purchaseOrderCreate, permissions.purchaseOrderAmend];
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
       return [permissions.workforceManage, permissions.coreAdminister];
@@ -736,8 +751,12 @@ function evidenceSourceScopeQuery(sourceType: EvidenceAttachmentSourceType) {
       return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseRun" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "FINANCE_CLOSE_ITEM":
       return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseChecklistItem" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "PURCHASE_REQUEST":
+      return `SELECT "tenantId", "companyId", "brandId", "requestLocationId" AS "locationId", "departmentId", NULL::uuid AS "projectId" FROM "PurchaseRequest" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "SUPPLIER_QUOTATION":
       return `SELECT q."tenantId", q."companyId", NULL::uuid AS "brandId", pr."requestLocationId" AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "SupplierQuotation" q JOIN "QuotationRequest" qr ON qr.id = q."quotationRequestId" JOIN "PurchaseRequest" pr ON pr.id = qr."purchaseRequestId" WHERE q.id = $1 AND q."tenantId" = $2 AND q."companyId" = $3`;
+    case "PURCHASE_ORDER":
+      return `SELECT "tenantId", "companyId", "brandId", "deliveryLocationId" AS "locationId", "departmentId", NULL::uuid AS "projectId" FROM "PurchaseOrder" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "WORKFORCE_EMPLOYEE":
       return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "homeLocationId" AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "Employee" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "WORKFORCE_ASSIGNMENT":
@@ -1294,6 +1313,7 @@ export async function linkControlledEvidenceAttachment(
   }
 
   const link = await prisma.$transaction(async (tx) => {
+    await assertApprovalReviewEvidenceSourceMutable(tx, values);
     const existing = await tx.controlledEvidenceAttachment.findFirst({
       where: {
         tenantId: values.tenantId,
@@ -1458,6 +1478,7 @@ export async function createControlledEvidenceAttachmentMetadataLink(
   const values = validation.normalized;
   const attachmentValues = metadata.normalized;
   const link = await prisma.$transaction(async (tx) => {
+    await assertApprovalReviewEvidenceSourceMutable(tx, values);
     const attachment = await tx.attachment.create({
       data: {
         id: attachmentId,
@@ -1641,6 +1662,7 @@ export async function createControlledEvidenceAttachmentUploadLink(
   try {
     const values = validation.normalized;
     const link = await prisma.$transaction(async (tx) => {
+      await assertApprovalReviewEvidenceSourceMutable(tx, values);
       const attachment = await tx.attachment.create({
         data: {
           id: attachmentId,
@@ -1837,6 +1859,12 @@ export async function archiveControlledEvidenceAttachment(
   }
 
   const archived = await prisma.$transaction(async (tx) => {
+    await assertApprovalReviewEvidenceSourceMutable(tx, {
+      tenantId: link.tenantId,
+      companyId: link.companyId,
+      sourceType: link.sourceType,
+      sourceRecordId: link.sourceRecordId,
+    });
     await tx.$queryRaw`
       SELECT "id"
       FROM "Attachment"

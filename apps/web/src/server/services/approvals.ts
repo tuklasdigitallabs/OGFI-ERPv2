@@ -36,8 +36,10 @@ import {
   assertApprovalRoutingRuntimeReady,
   listEligibleApprovalStepPage,
   lockNormalizedApprovalLifecycleGraph,
+  normalizeApprovalRoutingPage,
   normalizedApprovalRoutingEnabled,
   prepareNormalizedApprovalDecisionPreflight,
+  type EligibleApprovalStep,
   type LockedNormalizedPettyCashApprovalSource,
   type NormalizedApprovalDecisionPreflight,
   type NormalizedApprovalDecisionPreflightInput
@@ -69,6 +71,35 @@ import {
   classifyStockCountAttemptForPilotApproval,
   INVENTORY_PILOT_APPROVAL_ERRORS
 } from "./inventoryPilotApprovalPolicy";
+import {
+  assertBoundedInventoryUatApprovalCommand,
+  boundedInventoryUatApprovalWorklistEnabled,
+  boundedInventoryUatApprovalFamilies,
+  isBoundedInventoryUatApprovalFamily,
+} from "./boundedApprovalWorklist";
+import { verifyApprovalReviewToken } from "./approvalReviewToken";
+import { assertBoundedApprovalReviewMatchesLockedState } from "./boundedApprovalReview";
+import { acquireApprovalReviewDecisionAggregateFences } from "./approvalReviewAggregateFence";
+
+function runReviewedApprovalTransaction<T>(
+  operation: (tx: TransactionClient) => Promise<T>,
+) {
+  return prisma.$transaction(operation, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  });
+}
+
+function isApprovalReviewSerializationFailure(error: unknown) {
+  const candidate = error as
+    | { code?: unknown; meta?: { code?: unknown } }
+    | undefined;
+  return Boolean(
+    candidate &&
+      (candidate.code === "P2034" ||
+        candidate.code === "40001" ||
+        candidate.meta?.code === "40001"),
+  );
+}
 
 type LockedPurchaseRequestApprovalSource = {
   id: string;
@@ -117,6 +148,7 @@ export type ApprovalQueueItem = {
   requesterName: string;
   locationName: string;
   requiredDate: string;
+  sourceRequiredDate?: string;
   status: string;
   currentStepOrder: number | null;
   lineDescription: string;
@@ -126,6 +158,10 @@ export type ApprovalQueueItem = {
   slaStatus?: PurchaseRequestSlaStatus;
   slaLabel?: string;
 };
+
+const boundedDetailEligibilityProof = Symbol(
+  "bounded-detail-eligibility-proof",
+);
 
 export async function listNormalizedApprovalInboxPage(
   session: SessionContext,
@@ -147,12 +183,523 @@ export async function listNormalizedApprovalInboxPage(
   return listEligibleApprovalStepPage(session, input);
 }
 
+/**
+ * DEC-0270's non-production worklist.  It deliberately bypasses global
+ * cutover readiness, but never bypasses the normalized eligible-step query.
+ * That query remains the authority for active role, permission, scope, SOD,
+ * and current-step eligibility.
+ */
+export async function listBoundedInventoryUatApprovalWorklistPage(
+  session: SessionContext,
+  input: {
+    page?: number;
+    pageSize?: number;
+    view?: "ASSIGNED" | "DUE_SOON";
+    dueBefore?: Date;
+  } = {},
+) {
+  assertBoundedInventoryUatApprovalCommand(session, "PurchaseRequest");
+  return listEligibleApprovalStepPage(session, {
+    ...input,
+    documentTypes: boundedInventoryUatApprovalFamilies,
+  });
+}
+
+/**
+ * Queue-only projection for DEC-0270. The normalized eligibility query remains
+ * the authority; source records are loaded once per represented family rather
+ * than resolving the full approval detail (including audit history) per row.
+ */
+export async function listBoundedInventoryUatApprovalQueuePage(
+  session: SessionContext,
+  input: {
+    page?: number;
+    pageSize?: number;
+    view?: "ASSIGNED" | "DUE_SOON";
+    dueBefore?: Date;
+  } = {},
+) {
+  const requestedPage = normalizeApprovalRoutingPage(input);
+  const eligiblePage = await listBoundedInventoryUatApprovalWorklistPage(
+    session,
+    { ...input, page: 1, pageSize: 100 },
+  );
+  if (eligiblePage.totalItems !== eligiblePage.items.length) {
+    // This evidence-only lane is intentionally capped. It must never show a
+    // total that was not validated against its authoritative source rows.
+    throw new Error("APPROVAL_WORKLIST_SOURCE_NOT_READY");
+  }
+  const idsByFamily = new Map<string, string[]>();
+  for (const item of eligiblePage.items) {
+    const ids = idsByFamily.get(item.documentType) ?? [];
+    ids.push(item.documentId);
+    idsByFamily.set(item.documentType, ids);
+  }
+  const idsFor = (family: string) => idsByFamily.get(family) ?? [];
+  const tenantCompanyWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+  };
+
+  const [
+    purchaseRequests,
+    recommendations,
+    purchaseOrders,
+    transfers,
+    stockCountAttempts,
+    stockCountLineConflicts,
+    wastageReports,
+    stockAdjustments,
+  ] = await Promise.all([
+    idsFor("PurchaseRequest").length > 0
+      ? prisma.purchaseRequest.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("PurchaseRequest") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            requester: true,
+            requestLocation: true,
+            lines: { orderBy: { lineNumber: "asc" as const }, take: 1 },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("QuotationRecommendation").length > 0
+      ? prisma.quotationRecommendation.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("QuotationRecommendation") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            preparedBy: true,
+            selectedSupplierQuotation: { include: { supplier: true } },
+            quotationRequest: {
+              include: {
+                purchaseRequest: { include: { requestLocation: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("PurchaseOrder").length > 0
+      ? prisma.purchaseOrder.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("PurchaseOrder") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            createdBy: true,
+            supplier: true,
+            deliveryLocation: true,
+            purchaseRequest: true,
+            quotationRecommendation: true,
+            _count: { select: { lines: true } },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("InventoryTransfer").length > 0
+      ? prisma.inventoryTransfer.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("InventoryTransfer") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            requestedBy: true,
+            sourceLocation: true,
+            destinationLocation: true,
+            _count: { select: { lines: true } },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("StockCountAttemptReview").length > 0
+      ? prisma.stockCountAttempt.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("StockCountAttemptReview") },
+            status: "SUBMITTED",
+          },
+          include: {
+            createdBy: true,
+            stockCountSession: true,
+            inventoryLocation: { include: { location: true } },
+            _count: { select: { lines: true } },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("StockCountAttemptReview").length > 0
+      ? prisma.stockCountAttemptLine.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            stockCountAttemptId: {
+              in: idsFor("StockCountAttemptReview"),
+            },
+            countedByUserId: session.user.id,
+          },
+          select: { stockCountAttemptId: true },
+          distinct: ["stockCountAttemptId"],
+        })
+      : Promise.resolve([]),
+    idsFor("WastageReport").length > 0
+      ? prisma.wastageReport.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("WastageReport") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            inventoryLocation: { include: { location: true } },
+            reportedBy: true,
+            _count: { select: { lines: true } },
+          },
+        })
+      : Promise.resolve([]),
+    idsFor("StockAdjustment").length > 0
+      ? prisma.stockAdjustment.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: idsFor("StockAdjustment") },
+            status: "PENDING_APPROVAL",
+          },
+          include: {
+            inventoryLocation: { include: { location: true } },
+            requestedBy: true,
+            _count: { select: { lines: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const sourceLocationIds = [
+    ...purchaseRequests.map((request) => request.requestLocationId),
+    ...recommendations.map(
+      (recommendation) =>
+        recommendation.quotationRequest.purchaseRequest.requestLocationId,
+    ),
+    ...purchaseOrders.map((order) => order.deliveryLocationId),
+    ...transfers.flatMap((transfer) => [
+      transfer.sourceLocationId,
+      transfer.destinationLocationId,
+    ]),
+    ...stockCountAttempts.map(
+      (attempt) => attempt.inventoryLocation.locationId,
+    ),
+    ...wastageReports.map((report) => report.inventoryLocation.locationId),
+    ...stockAdjustments.map(
+      (adjustment) => adjustment.inventoryLocation.locationId,
+    ),
+  ].filter((id, index, ids) => ids.indexOf(id) === index);
+  const now = new Date();
+  const [sourceLocations, activeScopeAssignments] = await Promise.all([
+    sourceLocationIds.length > 0
+      ? prisma.location.findMany({
+          where: {
+            ...tenantCompanyWhere,
+            id: { in: sourceLocationIds },
+            status: "ACTIVE",
+          },
+          select: { id: true, companyId: true, brandId: true },
+        })
+      : Promise.resolve([]),
+    sourceLocationIds.length > 0
+      ? prisma.userScopeAssignment.findMany({
+          where: {
+            userId: session.user.id,
+            status: "ACTIVE",
+            startsAt: { lte: now },
+            AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],
+            accessLevel: { in: ["APPROVE", "MANAGE"] },
+          },
+          select: { scopeType: true, scopeId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const authorizedSourceLocationIds = new Set(
+    sourceLocations
+      .filter((location) =>
+        activeScopeAssignments.some(
+          (assignment) =>
+            (assignment.scopeType === "LOCATION" &&
+              assignment.scopeId === location.id) ||
+            (assignment.scopeType === "COMPANY" &&
+              assignment.scopeId === location.companyId) ||
+            (assignment.scopeType === "BRAND" &&
+              location.brandId !== null &&
+              assignment.scopeId === location.brandId),
+        ),
+      )
+      .map((location) => location.id),
+  );
+
+  const projected = new Map<string, ApprovalQueueItem>();
+  const stockCountConflictAttemptIds = new Set(
+    stockCountLineConflicts.map((line) => line.stockCountAttemptId),
+  );
+  const eligibleByDocument = new Map<string, EligibleApprovalStep>();
+  for (const eligible of eligiblePage.items) {
+    eligibleByDocument.set(`${eligible.documentType}:${eligible.documentId}`, eligible);
+  }
+  const eligibleFor = (family: string, documentId: string) =>
+    eligibleByDocument.get(`${family}:${documentId}`);
+
+  for (const request of purchaseRequests) {
+    const eligible = eligibleFor("PurchaseRequest", request.id);
+    if (
+      !eligible ||
+      request.requesterUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(request.requestLocationId)
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: request.id,
+        publicReference: request.publicReference,
+        requesterName: request.requester.displayName,
+        locationName: request.requestLocation.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: request.requiredDate,
+        status: request.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: request.lines[0]?.description ?? "No line",
+        isEmergency: isEmergencyPurchaseUrgency(request.urgency),
+      }),
+    );
+  }
+
+  for (const recommendation of recommendations) {
+    const eligible = eligibleFor("QuotationRecommendation", recommendation.id);
+    const request = recommendation.quotationRequest.purchaseRequest;
+    if (
+      !eligible ||
+      recommendation.preparedByUserId === session.user.id ||
+      request.requesterUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(request.requestLocationId)
+    ) continue;
+    const supplier = recommendation.selectedSupplierQuotation.supplier;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: recommendation.id,
+        publicReference: request.publicReference,
+        requesterName: recommendation.preparedBy.displayName,
+        locationName: request.requestLocation.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: request.requiredDate,
+        status: recommendation.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `Supplier recommendation: ${supplier.tradingName ?? supplier.legalName} / ${recommendation.selectedSupplierQuotation.quoteReference}`,
+      }),
+    );
+  }
+
+  for (const order of purchaseOrders) {
+    const eligible = eligibleFor("PurchaseOrder", order.id);
+    if (
+      !eligible ||
+      order.createdByUserId === session.user.id ||
+      order.purchaseRequest.requesterUserId === session.user.id ||
+      order.quotationRecommendation.preparedByUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(order.deliveryLocationId)
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: order.id,
+        publicReference: order.publicReference,
+        requesterName: order.createdBy.displayName,
+        locationName: order.deliveryLocation.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: order.expectedDeliveryDate,
+        status: order.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `Purchase Order: ${order.supplier.tradingName ?? order.supplier.legalName} / ${order._count.lines} line${order._count.lines === 1 ? "" : "s"}`,
+      }),
+    );
+  }
+
+  for (const transfer of transfers) {
+    const eligible = eligibleFor("InventoryTransfer", transfer.id);
+    if (
+      !eligible ||
+      transfer.requestedByUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(transfer.sourceLocationId) ||
+      !authorizedSourceLocationIds.has(transfer.destinationLocationId)
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: transfer.id,
+        publicReference: transfer.publicReference,
+        requesterName: transfer.requestedBy.displayName,
+        locationName: `${transfer.sourceLocation.name} → ${transfer.destinationLocation.name}`,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: transfer.requiredByDate ?? transfer.createdAt,
+        status: transfer.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `${transfer._count.lines} transfer line${transfer._count.lines === 1 ? "" : "s"}`,
+      }),
+    );
+  }
+
+  for (const attempt of stockCountAttempts) {
+    const eligible = eligibleFor("StockCountAttemptReview", attempt.id);
+    const prohibitedActors = new Set([
+      attempt.createdByUserId,
+      attempt.assignedToUserId,
+      attempt.stockCountSession.createdByUserId,
+      attempt.stockCountSession.assignedToUserId,
+    ]);
+    if (
+      !eligible ||
+      prohibitedActors.has(session.user.id) ||
+      stockCountConflictAttemptIds.has(attempt.id) ||
+      !authorizedSourceLocationIds.has(attempt.inventoryLocation.locationId)
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: attempt.id,
+        publicReference: attempt.stockCountSession.publicReference,
+        requesterName: attempt.createdBy.displayName,
+        locationName: attempt.inventoryLocation.location.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: attempt.submittedAt ?? attempt.createdAt,
+        status: attempt.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `Attempt ${attempt.attemptNumber} / ${attempt._count.lines} count line${attempt._count.lines === 1 ? "" : "s"}`,
+      }),
+    );
+  }
+
+  for (const report of wastageReports) {
+    const eligible = eligibleFor("WastageReport", report.id);
+    if (
+      !eligible ||
+      report.reportedByUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(report.inventoryLocation.locationId)
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: report.id,
+        publicReference: report.publicReference,
+        requesterName: report.reportedBy.displayName,
+        locationName: report.inventoryLocation.location.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: report.submittedAt ?? report.createdAt,
+        status: report.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `Wastage: ${report.wastageType.replaceAll("_", " ")} / ${report._count.lines} line${report._count.lines === 1 ? "" : "s"}`,
+        policyFlagLabels: formatWastagePolicyFlags(report.policyFlags),
+        evidenceStatus: report.evidenceRequired
+          ? report.evidenceSatisfied
+            ? "Required and satisfied"
+            : "Required and missing"
+          : "Not required",
+      }),
+    );
+  }
+
+  for (const adjustment of stockAdjustments) {
+    const eligible = eligibleFor("StockAdjustment", adjustment.id);
+    if (
+      !eligible ||
+      adjustment.requestedByUserId === session.user.id ||
+      !authorizedSourceLocationIds.has(
+        adjustment.inventoryLocation.locationId,
+      )
+    ) continue;
+    projected.set(
+      eligible.approvalInstanceId,
+      toQueueItem({
+        approvalInstanceId: eligible.approvalInstanceId,
+        documentType: eligible.documentType,
+        documentId: adjustment.id,
+        publicReference: adjustment.publicReference,
+        requesterName: adjustment.requestedBy.displayName,
+        locationName: adjustment.inventoryLocation.location.name,
+        requiredDate: eligible.dueAt ?? "Not scheduled",
+        sourceRequiredDate: adjustment.submittedAt ?? adjustment.createdAt,
+        status: adjustment.status,
+        currentStepOrder: eligible.stepOrder,
+        lineDescription: `Stock adjustment: ${adjustment.adjustmentType.toLowerCase()} / ${adjustment._count.lines} line${adjustment._count.lines === 1 ? "" : "s"}`,
+      }),
+    );
+  }
+
+  const items = eligiblePage.items.flatMap((eligible) => {
+    const item = projected.get(eligible.approvalInstanceId);
+    return item ? [item] : [];
+  });
+  if (items.length !== eligiblePage.items.length) {
+    throw new Error("APPROVAL_WORKLIST_SOURCE_NOT_READY");
+  }
+  return {
+    ...eligiblePage,
+    page: requestedPage.page,
+    pageSize: requestedPage.pageSize,
+    items: items.slice(
+      requestedPage.offset,
+      requestedPage.offset + requestedPage.pageSize,
+    ),
+  };
+}
+
+export async function getBoundedInventoryUatApprovalWorklistDetail(
+  session: SessionContext,
+  approvalInstanceId: string,
+) {
+  assertBoundedInventoryUatApprovalCommand(session, "PurchaseRequest");
+  if (!z.string().uuid().safeParse(approvalInstanceId).success) return null;
+  const eligiblePage = await listEligibleApprovalStepPage(session, {
+    page: 1,
+    pageSize: 1,
+    approvalInstanceId,
+    documentTypes: boundedInventoryUatApprovalFamilies,
+  });
+  if (
+    eligiblePage.totalItems !== 1 ||
+    eligiblePage.items[0]?.approvalInstanceId !== approvalInstanceId
+  ) return null;
+  try {
+    return await getApprovalDetail(session, approvalInstanceId, {
+      documentTypes: boundedInventoryUatApprovalFamilies,
+      eligibilityProof: boundedDetailEligibilityProof,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      ["APPROVAL_SCOPE_DENIED", "APPROVAL_AUTHORITY_STALE"].includes(
+        error.message,
+      )
+    ) return null;
+    throw error;
+  }
+}
+
 export type ApprovalDetail = ApprovalQueueItem & {
   approvalTitle: string;
   approvalKind:
     | "PurchaseRequest"
     | "QuotationRecommendation"
     | "PurchaseOrder"
+    | "InventoryTransfer"
+    | "StockCountAttemptReview"
     | "PurchaseOrderAmendment"
     | "PurchaseOrderBalanceClosure"
     | "WastageReport"
@@ -225,6 +772,8 @@ const approvalPermissionByDocumentType: Record<string, string> = {
   PurchaseRequest: permissions.purchaseRequestApprove,
   QuotationRecommendation: permissions.quoteApprove,
   PurchaseOrder: permissions.purchaseOrderApprove,
+  InventoryTransfer: permissions.transferApprove,
+  StockCountAttemptReview: permissions.stockCountReview,
   PurchaseOrderAmendment: permissions.purchaseOrderApprove,
   PurchaseOrderBalanceClosure: permissions.purchaseOrderApprove,
   WastageReport: permissions.wastageApprove,
@@ -291,7 +840,8 @@ function decimalInputToNumber(value: unknown) {
 const decisionSchema = z.object({
   approvalInstanceId: z.string().uuid(),
   remarks: z.string().max(1000).optional(),
-  evidenceReference: z.string().max(1000).optional()
+  evidenceReference: z.string().max(1000).optional(),
+  reviewToken: z.string().min(1).max(16_384).optional(),
 });
 
 const pettyCashDecisionSchema = decisionSchema.extend({
@@ -360,32 +910,171 @@ export function buildPettyCashApprovalStepIntent(
 }
 
 export async function executeCanonicalApprovalDecision(input: unknown) {
-  const command = parseCanonicalApprovalDecisionCommand(input);
   const session = await requireSessionContext();
+  const globalRoutingEnabled = normalizedApprovalRoutingEnabled();
+  if (!globalRoutingEnabled) {
+    const raw = input && typeof input === "object" && !Array.isArray(input)
+      ? input as Record<string, unknown>
+      : {};
+    const rawFamily = typeof raw.family === "string" ? raw.family : "";
+    const rawApprovalInstanceId =
+      typeof raw.approvalInstanceId === "string"
+        ? raw.approvalInstanceId
+        : "";
+    // Validate the closed lane and family before any record probe so callers
+    // cannot distinguish missing, adjacent-scope, or non-allowlisted work.
+    assertBoundedInventoryUatApprovalCommand(session, rawFamily);
+    if (!z.string().uuid().safeParse(rawApprovalInstanceId).success) {
+      throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+    }
+  }
+  const command = parseCanonicalApprovalDecisionCommand(input);
+  if (!globalRoutingEnabled) {
+    assertNormalizedApprovalDecisionAvailable(command.family, command.decision);
+    const eligiblePage = await listEligibleApprovalStepPage(session, {
+      page: 1,
+      pageSize: 1,
+      approvalInstanceId: command.approvalInstanceId,
+      documentTypes: [command.family],
+    });
+    if (
+      eligiblePage.totalItems !== 1 ||
+      eligiblePage.items[0]?.approvalInstanceId !== command.approvalInstanceId
+    ) {
+      throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+    }
+  }
   const approval = await prisma.approvalInstance.findFirst({
     where: {
       id: command.approvalInstanceId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "PENDING"
+      status: "PENDING",
+      ...(!globalRoutingEnabled ? { documentType: command.family } : {}),
     },
-    select: { documentType: true }
+    select: {
+      id: true,
+      documentType: true,
+    }
   });
-  if (!approval) throw new Error("APPROVAL_NOT_ACTIONABLE");
-  if (approval.documentType !== command.family) {
-    throw new Error("APPROVAL_COMMAND_FAMILY_MISMATCH");
-  }
-  if (normalizedApprovalRoutingEnabled()) {
+  if (globalRoutingEnabled) {
+    if (!approval) throw new Error("APPROVAL_NOT_ACTIONABLE");
+    if (approval.documentType !== command.family) {
+      throw new Error("APPROVAL_COMMAND_FAMILY_MISMATCH");
+    }
     assertNormalizedApprovalDecisionAvailable(command.family, command.decision);
+  } else {
+    if (!approval) {
+      throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+    }
   }
   const formData = approvalDecisionCommandToFormData(command);
-  if (command.decision === "APPROVE") {
-    return approveApproval(formData);
+  try {
+    if (command.decision === "APPROVE") {
+      return await approveApproval(formData);
+    }
+    if (command.decision === "RETURN") {
+      return await returnApproval(formData);
+    }
+    return await rejectApproval(formData);
+  } catch (error) {
+    if (!globalRoutingEnabled && isApprovalReviewSerializationFailure(error)) {
+      throw new Error("APPROVAL_REVIEW_STALE");
+    }
+    throw error;
   }
-  if (command.decision === "RETURN") {
-    return returnApproval(formData);
+}
+
+/**
+ * Browser-facing approval entrypoint. The client submits only the approval ID
+ * and requested outcome; the normalized eligible-step query owns the family.
+ * This prevents a hidden form field from selecting a dispatcher or probing an
+ * adjacent approval family.
+ */
+export async function executeEligibleApprovalDecision(input: unknown) {
+  const raw = input && typeof input === "object" && !Array.isArray(input)
+    ? input as Record<string, unknown>
+    : {};
+  const approvalInstanceId = typeof raw.approvalInstanceId === "string"
+    ? raw.approvalInstanceId
+    : "";
+  const decision = typeof raw.decision === "string"
+    ? raw.decision.toUpperCase()
+    : "";
+  const remarks = typeof raw.remarks === "string" ? raw.remarks : undefined;
+  const evidenceReference = typeof raw.evidenceReference === "string"
+    ? raw.evidenceReference
+    : undefined;
+  const reviewToken = typeof raw.reviewToken === "string"
+    ? raw.reviewToken
+    : undefined;
+  const session = await requireSessionContext();
+  const globalRoutingEnabled = normalizedApprovalRoutingEnabled();
+
+  if (!z.string().uuid().safeParse(approvalInstanceId).success) {
+    throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
   }
-  return rejectApproval(formData);
+  if (!globalRoutingEnabled) {
+    // Establish the exact evidence-lane identity before any record probe.
+    assertBoundedInventoryUatApprovalCommand(session, "PurchaseRequest");
+  } else {
+    await assertApprovalRoutingRuntimeReady(
+      session.context.tenantId,
+      session.context.companyId,
+      prisma,
+    );
+  }
+  const reviewClaims = !globalRoutingEnabled
+    ? verifyApprovalReviewToken(
+        session,
+        reviewToken ?? "",
+        { approvalId: approvalInstanceId },
+      )
+    : null;
+
+  const eligiblePage = await listEligibleApprovalStepPage(session, {
+    page: 1,
+    pageSize: 1,
+    approvalInstanceId,
+    ...(!globalRoutingEnabled && reviewClaims
+      ? {
+          approvalInstanceStepId: reviewClaims.stepId,
+          documentTypes: [reviewClaims.family],
+        }
+      : {}),
+  });
+  const eligible = eligiblePage.items[0];
+  if (
+    eligiblePage.totalItems !== 1 ||
+    !eligible ||
+    eligible.approvalInstanceId !== approvalInstanceId
+  ) {
+    throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+  }
+  if (
+    !globalRoutingEnabled &&
+    (!reviewClaims ||
+      !isBoundedInventoryUatApprovalFamily(eligible.documentType) ||
+      eligible.documentType !== reviewClaims.family ||
+      eligible.documentId !== reviewClaims.documentId ||
+      eligible.approvalInstanceStepId !== reviewClaims.stepId ||
+      eligible.stepOrder !== reviewClaims.stepOrder ||
+      eligible.assignedUserId !== reviewClaims.assignedUserId ||
+      eligible.assignedRoleId !== reviewClaims.assignedRoleId ||
+      eligible.requiredPermissionCode !== reviewClaims.requiredPermissionCode ||
+      eligible.activatedAt.toISOString() !== reviewClaims.activatedAt)
+  ) {
+    throw new Error("APPROVAL_REVIEW_STALE");
+  }
+
+  return executeCanonicalApprovalDecision({
+    approvalInstanceId,
+    family: eligible.documentType,
+    decision,
+    ...(remarks !== undefined ? { remarks } : {}),
+    ...(evidenceReference !== undefined ? { evidenceReference } : {}),
+    ...(reviewToken !== undefined ? { reviewToken } : {}),
+  });
 }
 
 export type { CanonicalApprovalDecisionCommand };
@@ -403,6 +1092,7 @@ type ApprovalStepAdvanceInput = {
   requiredPermissionCode: string;
   locationId: string;
   remarks: string | undefined;
+  reviewToken?: string | undefined;
   prohibitedApproverUserIds?: string[];
   notification: {
     recipientUserIds: string[];
@@ -689,7 +1379,13 @@ async function prepareApprovalDecisionAuthority(
   input: ApprovalStepAdvanceInput,
   includeNextStep: boolean
 ) {
-  if (normalizedApprovalRoutingEnabled()) {
+  if (
+    await normalizedDecisionAuthorityRequired(
+      tx,
+      session,
+      input.approvalId,
+    )
+  ) {
     return prepareNormalizedApprovalDecisionPreflight(tx, session, {
       approvalInstanceId: input.approvalId,
       currentStepId: input.stepId,
@@ -843,8 +1539,35 @@ async function prepareSpecializedApprovalDecisionAuthority(
   session: SessionContext,
   input: NormalizedApprovalDecisionPreflightInput
 ) {
-  if (!normalizedApprovalRoutingEnabled()) return null;
+  if (
+    !(await normalizedDecisionAuthorityRequired(
+      tx,
+      session,
+      input.approvalInstanceId,
+    ))
+  ) return null;
   return prepareNormalizedApprovalDecisionPreflight(tx, session, input);
+}
+
+async function normalizedDecisionAuthorityRequired(
+  tx: TransactionClient,
+  session: SessionContext,
+  approvalInstanceId: string,
+) {
+  if (normalizedApprovalRoutingEnabled()) return true;
+  if (!boundedInventoryUatApprovalWorklistEnabled()) return false;
+  const approval = await tx.approvalInstance.findFirst({
+    where: {
+      id: approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING",
+    },
+    select: { documentType: true },
+  });
+  return Boolean(
+    approval && isBoundedInventoryUatApprovalFamily(approval.documentType),
+  );
 }
 
 async function _lockAndRevalidateBudgetRevisionApprovalSource(
@@ -1452,6 +2175,54 @@ async function transitionSpecializedApprovalInstance(
   }
 }
 
+async function recordApprovalReviewSnapshotVerification(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    claims: ReturnType<typeof verifyApprovalReviewToken>;
+    decision: "APPROVE" | "RETURNED" | "REJECTED";
+    actedAt: Date;
+  },
+) {
+  await tx.auditEvent.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      actorUserId: session.user.id,
+      eventType: "approval.review_snapshot_verified",
+      entityType: "ApprovalInstance",
+      entityId: input.claims.approvalId,
+      beforeData: {
+        approvalInstanceStepId: input.claims.stepId,
+        stepOrder: input.claims.stepOrder,
+        status: "PENDING",
+      },
+      afterData: {
+        decision: input.decision,
+        actedAt: input.actedAt.toISOString(),
+      },
+      metadata: {
+        approvalReviewSchemaVersion: input.claims.version,
+        approvalReviewIssuedAt: new Date(input.claims.issuedAt).toISOString(),
+        approvalReviewExpiresAt: new Date(input.claims.expiresAt).toISOString(),
+        approvalReviewFamily: input.claims.family,
+        approvalReviewDocumentId: input.claims.documentId,
+        approvalReviewAssignedUserId: input.claims.assignedUserId,
+        approvalReviewAssignedRoleId: input.claims.assignedRoleId,
+        approvalReviewRequiredPermissionCode:
+          input.claims.requiredPermissionCode,
+        approvalReviewRoutingFingerprint: input.claims.routingFingerprint,
+        approvalReviewRoutingSchemaVersion:
+          input.claims.routingSchemaVersion,
+        approvalReviewActivatedAt: input.claims.activatedAt,
+        approvalReviewSourceRevision: input.claims.sourceRevision,
+        approvalReviewDigest: input.claims.reviewDigest,
+        reviewTokenPersisted: false,
+      },
+    },
+  });
+}
+
 async function approveCurrentStepAndAdvance(
   tx: TransactionClient,
   session: SessionContext,
@@ -1466,6 +2237,19 @@ async function approveCurrentStepAndAdvance(
     input,
     true
   );
+  let reviewClaims: ReturnType<typeof verifyApprovalReviewToken> | undefined;
+  if (boundedInventoryUatApprovalWorklistEnabled()) {
+    if (!input.reviewToken) throw new Error("APPROVAL_REVIEW_STALE");
+    const claims = verifyApprovalReviewToken(session, input.reviewToken, {
+      approvalId: input.approvalId,
+    });
+    reviewClaims = await assertBoundedApprovalReviewMatchesLockedState(
+      tx,
+      session,
+      input.reviewToken,
+      { approvalInstanceId: input.approvalId, family: claims.family },
+    );
+  }
   const actedAt = new Date();
   const actedStep = await tx.approvalInstanceStep.updateMany({
     where: {
@@ -1511,6 +2295,14 @@ async function approveCurrentStepAndAdvance(
       throw new Error("APPROVAL_NOT_ACTIONABLE");
     }
 
+    if (reviewClaims) {
+      await recordApprovalReviewSnapshotVerification(tx, session, {
+        claims: reviewClaims,
+        decision: "APPROVE",
+        actedAt,
+      });
+    }
+
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1532,6 +2324,14 @@ async function approveCurrentStepAndAdvance(
           activationScopeType: "LOCATION_CONTEXT",
           activationScopeId: input.locationId,
           remarks: input.remarks ?? null,
+          ...(reviewClaims
+            ? {
+                approvalReviewSchemaVersion: reviewClaims.version,
+                approvalReviewIssuedAt: new Date(reviewClaims.issuedAt).toISOString(),
+                approvalReviewSourceRevision: reviewClaims.sourceRevision,
+                approvalReviewDigest: reviewClaims.reviewDigest,
+              }
+            : {}),
           ...input.audit.metadata
         }
       }
@@ -1584,6 +2384,14 @@ async function approveCurrentStepAndAdvance(
     throw new Error("APPROVAL_NOT_ACTIONABLE");
   }
 
+  if (reviewClaims) {
+    await recordApprovalReviewSnapshotVerification(tx, session, {
+      claims: reviewClaims,
+      decision: "APPROVE",
+      actedAt,
+    });
+  }
+
   await recordApprovalOutcomeNotification(tx, session, input, "APPROVED");
 
   return { isFinalStep: true as const, actedAt, nextStepOrder: null };
@@ -1598,6 +2406,19 @@ async function closeCurrentApprovalDecision(
 ) {
   // The shared preparation primitive runs assertLiveApprovalAuthority first.
   await prepareApprovalDecisionAuthority(tx, session, input, false);
+  let reviewClaims: ReturnType<typeof verifyApprovalReviewToken> | undefined;
+  if (boundedInventoryUatApprovalWorklistEnabled()) {
+    if (!input.reviewToken) throw new Error("APPROVAL_REVIEW_STALE");
+    const claims = verifyApprovalReviewToken(session, input.reviewToken, {
+      approvalId: input.approvalId,
+    });
+    reviewClaims = await assertBoundedApprovalReviewMatchesLockedState(
+      tx,
+      session,
+      input.reviewToken,
+      { approvalInstanceId: input.approvalId, family: claims.family },
+    );
+  }
   const actedAt = new Date();
   const actedStep = await tx.approvalInstanceStep.updateMany({
     where: {
@@ -1635,6 +2456,13 @@ async function closeCurrentApprovalDecision(
     }
   });
   if (closed.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  if (reviewClaims) {
+    await recordApprovalReviewSnapshotVerification(tx, session, {
+      claims: reviewClaims,
+      decision: input.decisionStatus,
+      actedAt,
+    });
+  }
   await recordApprovalOutcomeNotification(tx, session, input, input.decisionStatus);
   return { actedAt };
 }
@@ -3671,7 +4499,8 @@ function toQueueItem(record: {
   publicReference: string;
   requesterName: string;
   locationName: string;
-  requiredDate: Date;
+  requiredDate: Date | string;
+  sourceRequiredDate?: Date | string;
   status: string;
   currentStepOrder: number | null;
   lineDescription: string;
@@ -3681,9 +4510,21 @@ function toQueueItem(record: {
   slaStatus?: PurchaseRequestSlaStatus;
   slaLabel?: string;
 }): ApprovalQueueItem {
+  const { requiredDate, sourceRequiredDate, ...queueRecord } = record;
   return {
-    ...record,
-    requiredDate: record.requiredDate.toISOString().slice(0, 10)
+    ...queueRecord,
+    requiredDate:
+      requiredDate instanceof Date
+        ? requiredDate.toISOString().slice(0, 10)
+        : requiredDate,
+    ...(sourceRequiredDate
+      ? {
+          sourceRequiredDate:
+            sourceRequiredDate instanceof Date
+              ? sourceRequiredDate.toISOString().slice(0, 10)
+              : sourceRequiredDate,
+        }
+      : {}),
   };
 }
 
@@ -4898,7 +5739,11 @@ export async function runApprovalReminderScan(
 
 export async function getApprovalDetail(
   session: SessionContext,
-  approvalInstanceId: string
+  approvalInstanceId: string,
+  options: {
+    documentTypes?: readonly string[];
+    eligibilityProof?: typeof boundedDetailEligibilityProof;
+  } = {},
 ): Promise<ApprovalDetail | null> {
   const permissionCodes = await getGrantedPermissionCodes(session);
   if (!canUseApprovals(permissionCodes)) {
@@ -4910,7 +5755,10 @@ export async function getApprovalDetail(
       id: approvalInstanceId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "PENDING"
+      status: "PENDING",
+      ...(options.documentTypes
+        ? { documentType: { in: [...options.documentTypes] } }
+        : {}),
     }
   });
 
@@ -4923,7 +5771,34 @@ export async function getApprovalDetail(
     return null;
   }
 
-  if (!(await isAssignedToCurrentApprovalStep(session, approval.id))) {
+  if (
+    options.eligibilityProof !== boundedDetailEligibilityProof &&
+    (options.documentTypes || normalizedApprovalRoutingEnabled())
+  ) {
+    const currentStep = await prisma.approvalInstanceStep.findFirst({
+      where: {
+        approvalInstanceId: approval.id,
+        stepOrder: approval.currentStepOrder ?? -1,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+    if (!currentStep) return null;
+    const eligiblePage = await listEligibleApprovalStepPage(session, {
+      page: 1,
+      pageSize: 1,
+      approvalInstanceStepId: currentStep.id,
+      ...(options.documentTypes
+        ? { documentTypes: options.documentTypes }
+        : {}),
+    });
+    if (
+      eligiblePage.totalItems !== 1 ||
+      eligiblePage.items[0]?.approvalInstanceId !== approval.id
+    ) {
+      return null;
+    }
+  } else if (!(await isAssignedToCurrentApprovalStep(session, approval.id))) {
     return null;
   }
 
@@ -5116,6 +5991,145 @@ export async function getApprovalDetail(
         eventType: event.eventType,
         occurredAt: event.occurredAt.toISOString()
       }))
+    };
+  }
+
+  if (approval.documentType === "InventoryTransfer") {
+    const transfer = await prisma.inventoryTransfer.findFirst({
+      where: {
+        id: approval.documentId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING_APPROVAL",
+      },
+      include: {
+        requestedBy: true,
+        sourceLocation: true,
+        destinationLocation: true,
+        lines: {
+          orderBy: { lineNumber: "asc" },
+          include: { item: true, uom: true },
+        },
+      },
+    });
+    if (!transfer) return null;
+    await assertApprovalScope(session, transfer.sourceLocationId);
+    await assertApprovalScope(session, transfer.destinationLocationId);
+    if (transfer.requestedByUserId === session.user.id) return null;
+
+    const auditEvents = await prisma.auditEvent.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        entityType: "InventoryTransfer",
+        entityId: transfer.id,
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+    const quantity = transfer.lines.reduce(
+      (total, line) => total + Number(line.requestedQty),
+      0,
+    );
+    return {
+      ...toQueueItem({
+        approvalInstanceId: approval.id,
+        documentType: approval.documentType,
+        documentId: transfer.id,
+        publicReference: transfer.publicReference,
+        requesterName: transfer.requestedBy.displayName,
+        locationName: `${transfer.sourceLocation.name} → ${transfer.destinationLocation.name}`,
+        requiredDate: transfer.requiredByDate ?? transfer.createdAt,
+        status: transfer.status,
+        currentStepOrder: approval.currentStepOrder,
+        lineDescription: `${transfer.lines.length} transfer line${transfer.lines.length === 1 ? "" : "s"}`,
+      }),
+      approvalTitle: "Inventory Transfer Approval",
+      approvalKind: "InventoryTransfer",
+      justification: transfer.purpose,
+      quantity,
+      uomCode: transfer.lines.length === 1 ? transfer.lines[0]?.uom.uomCode ?? "unit" : "units",
+      amountLabel: null,
+      selectedSupplierName: null,
+      selectedQuoteReference: null,
+      selectionReason: null,
+      nonLowestJustification: null,
+      singleSourceJustification: null,
+      comments: [],
+      auditEvents: auditEvents.map((event) => ({
+        id: event.id,
+        eventType: event.eventType,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+    };
+  }
+
+  if (approval.documentType === "StockCountAttemptReview") {
+    const attempt = await prisma.stockCountAttempt.findFirst({
+      where: {
+        id: approval.documentId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "SUBMITTED",
+      },
+      include: {
+        createdBy: true,
+        assignedTo: true,
+        stockCountSession: { include: { createdBy: true, assignedTo: true } },
+        inventoryLocation: { include: { location: true } },
+        lines: { select: { countedByUserId: true } },
+      },
+    });
+    if (!attempt) return null;
+    const location = attempt.inventoryLocation.location;
+    await assertApprovalScope(session, location.id);
+    const prohibitedActorIds = new Set([
+      attempt.createdByUserId,
+      attempt.assignedToUserId,
+      attempt.stockCountSession.createdByUserId,
+      attempt.stockCountSession.assignedToUserId,
+      ...attempt.lines.map((line) => line.countedByUserId),
+    ]);
+    if (prohibitedActorIds.has(session.user.id)) return null;
+
+    const auditEvents = await prisma.auditEvent.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        entityType: "StockCountAttempt",
+        entityId: attempt.id,
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+    return {
+      ...toQueueItem({
+        approvalInstanceId: approval.id,
+        documentType: approval.documentType,
+        documentId: attempt.id,
+        publicReference: attempt.stockCountSession.publicReference,
+        requesterName: attempt.createdBy.displayName,
+        locationName: location.name,
+        requiredDate: attempt.submittedAt ?? attempt.createdAt,
+        status: attempt.status,
+        currentStepOrder: approval.currentStepOrder,
+        lineDescription: `Attempt ${attempt.attemptNumber} / ${attempt.lines.length} count line${attempt.lines.length === 1 ? "" : "s"}`,
+      }),
+      approvalTitle: "Stock Count Review",
+      approvalKind: "StockCountAttemptReview",
+      justification: attempt.reason ?? attempt.reviewNotes ?? "Review submitted stock-count attempt.",
+      quantity: attempt.lines.length,
+      uomCode: "count lines",
+      amountLabel: null,
+      selectedSupplierName: null,
+      selectedQuoteReference: null,
+      selectionReason: null,
+      nonLowestJustification: null,
+      singleSourceJustification: null,
+      comments: [],
+      auditEvents: auditEvents.map((event) => ({
+        id: event.id,
+        eventType: event.eventType,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
     };
   }
 
@@ -6555,7 +7569,13 @@ export async function approvePurchaseRequest(formData: FormData) {
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "PurchaseRequest",
+      documentId: request.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -6572,6 +7592,7 @@ export async function approvePurchaseRequest(formData: FormData) {
       requiredPermissionCode: permissions.purchaseRequestApprove,
       locationId: source.requestLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       prohibitedApproverUserIds: [source.requesterUserId],
       notification: {
         recipientUserIds: [source.requesterUserId],
@@ -6656,7 +7677,13 @@ export async function approveWastageReport(formData: FormData) {
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "WastageReport",
+      documentId: report.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -6666,6 +7693,14 @@ export async function approveWastageReport(formData: FormData) {
       id: report.id,
       expectedUpdatedAt: report.updatedAt,
     });
+    await assertPrivilegedMfaForAction(session, {
+      action: "wastage_report.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.wastageApprove,
+      entityType: "WastageReport",
+      entityId: report.id,
+      reason: "Approving a wastage report requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     const lockedApprovalRows = await tx.$queryRaw<Array<{
       id: string;
       documentType: string;
@@ -6697,6 +7732,7 @@ export async function approveWastageReport(formData: FormData) {
       requiredPermissionCode: permissions.wastageApprove,
       locationId: report.inventoryLocation.locationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       prohibitedApproverUserIds: [report.reportedByUserId],
       notification: {
         recipientUserIds: [report.reportedByUserId],
@@ -6770,7 +7806,13 @@ export async function approveStockAdjustment(formData: FormData) {
       values.approvalInstanceId
     );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "StockAdjustment",
+      documentId: adjustment.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -6780,6 +7822,14 @@ export async function approveStockAdjustment(formData: FormData) {
       id: adjustment.id,
       expectedUpdatedAt: adjustment.updatedAt,
     });
+    await assertPrivilegedMfaForAction(session, {
+      action: "stock_adjustment.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.stockAdjustmentApprove,
+      entityType: "StockAdjustment",
+      entityId: adjustment.id,
+      reason: "Approving a stock adjustment requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     const lockedLineRows = await tx.$queryRaw<Array<{
       id: string;
       inventoryLocationId: string;
@@ -6829,6 +7879,7 @@ export async function approveStockAdjustment(formData: FormData) {
       requiredPermissionCode: permissions.stockAdjustmentApprove,
       locationId: adjustment.inventoryLocation.locationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       prohibitedApproverUserIds: [adjustment.requestedByUserId],
       notification: {
         recipientUserIds: [adjustment.requestedByUserId],
@@ -9219,7 +10270,13 @@ export async function approvePurchaseOrder(formData: FormData) {
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "PurchaseOrder",
+      documentId: order.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -9260,6 +10317,7 @@ export async function approvePurchaseOrder(formData: FormData) {
       requiredPermissionCode: permissions.purchaseOrderApprove,
       locationId: order.deliveryLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       prohibitedApproverUserIds: [
         order.createdByUserId,
         order.purchaseRequest.requesterUserId,
@@ -9341,7 +10399,13 @@ export async function approveQuotationRecommendation(formData: FormData) {
       values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "QuotationRecommendation",
+      documentId: recommendation.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -9384,6 +10448,7 @@ export async function approveQuotationRecommendation(formData: FormData) {
       requiredPermissionCode: permissions.quoteApprove,
       locationId: purchaseRequest.requestLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       prohibitedApproverUserIds: [
         recommendation.preparedByUserId,
         purchaseRequest.requesterUserId
@@ -11247,7 +12312,13 @@ async function closeWithDecision(
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "PurchaseRequest",
+      documentId: request.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -11264,6 +12335,7 @@ async function closeWithDecision(
       requiredPermissionCode: permissions.purchaseRequestApprove,
       locationId: source.requestLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       notification: {
         recipientUserIds: [source.requesterUserId],
         publicReference: source.publicReference,
@@ -11328,7 +12400,13 @@ async function closeQuotationRecommendationWithDecision(
       values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "QuotationRecommendation",
+      documentId: recommendation.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -11371,6 +12449,7 @@ async function closeQuotationRecommendationWithDecision(
       requiredPermissionCode: permissions.quoteApprove,
       locationId: purchaseRequest.requestLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       notification: {
         recipientUserIds: [
           recommendation.preparedByUserId,
@@ -11521,7 +12600,13 @@ async function closePurchaseOrderWithDecision(
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "PurchaseOrder",
+      documentId: order.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -11562,6 +12647,7 @@ async function closePurchaseOrderWithDecision(
       requiredPermissionCode: permissions.purchaseOrderApprove,
       locationId: order.deliveryLocationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       notification: {
         recipientUserIds: [
           order.createdByUserId,
@@ -11962,7 +13048,13 @@ async function closeWastageReportWithDecision(
     values.approvalInstanceId
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "WastageReport",
+      documentId: report.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -11972,6 +13064,14 @@ async function closeWastageReportWithDecision(
       id: report.id,
       expectedUpdatedAt: report.updatedAt,
     });
+    await assertPrivilegedMfaForAction(session, {
+      action: "wastage_report.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.wastageApprove,
+      entityType: "WastageReport",
+      entityId: report.id,
+      reason: "Reviewing a wastage report decision requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     const lockedApprovalRows = await tx.$queryRaw<Array<{
       id: string;
       documentType: string;
@@ -12003,6 +13103,7 @@ async function closeWastageReportWithDecision(
       requiredPermissionCode: permissions.wastageApprove,
       locationId: report.inventoryLocation.locationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       notification: {
         recipientUserIds: [report.reportedByUserId],
         publicReference: report.publicReference,
@@ -12069,7 +13170,13 @@ async function closeStockAdjustmentWithDecision(
       values.approvalInstanceId
     );
 
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "StockAdjustment",
+      documentId: adjustment.id,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -12079,6 +13186,14 @@ async function closeStockAdjustmentWithDecision(
       id: adjustment.id,
       expectedUpdatedAt: adjustment.updatedAt,
     });
+    await assertPrivilegedMfaForAction(session, {
+      action: "stock_adjustment.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.stockAdjustmentApprove,
+      entityType: "StockAdjustment",
+      entityId: adjustment.id,
+      reason: "Reviewing a stock adjustment decision requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     const lockedApprovalRows = await tx.$queryRaw<Array<{
       id: string;
       documentType: string;
@@ -12110,6 +13225,7 @@ async function closeStockAdjustmentWithDecision(
       requiredPermissionCode: permissions.stockAdjustmentApprove,
       locationId: adjustment.inventoryLocation.locationId,
       remarks: values.remarks,
+      reviewToken: values.reviewToken,
       decisionStatus: status,
       notification: {
         recipientUserIds: [adjustment.requestedByUserId],
@@ -12196,17 +13312,11 @@ async function findActionableTerminalApproval(
 }
 
 function requireNormalizedTerminalApprovalAuthority(
+  session: SessionContext,
   family: "InventoryTransfer" | "StockCountAttemptReview"
 ) {
-  // These DEC-0260 producers are normalized-v1 only. A disabled routing
-  // runtime must fail closed rather than quietly consulting legacy authority.
-  if (!normalizedApprovalRoutingEnabled()) {
-    throw new Error(
-      family === "InventoryTransfer"
-        ? "INVENTORY_TRANSFER_APPROVAL_ROUTING_V1_REQUIRED"
-        : "STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_ROUTING_V1_REQUIRED"
-    );
-  }
+  if (normalizedApprovalRoutingEnabled()) return;
+  assertBoundedInventoryUatApprovalCommand(session, family);
 }
 
 async function assertExactTerminalApprovalScopeGroups(
@@ -12488,19 +13598,33 @@ async function assertInventoryTransferTerminalIntentLineage(
 
 async function approveInventoryTransferApproval(formData: FormData) {
   const session = await requireSessionContext();
-  requireNormalizedTerminalApprovalAuthority("InventoryTransfer");
+  requireNormalizedTerminalApprovalAuthority(session, "InventoryTransfer");
   await requirePermission(session, permissions.transferApprove);
   const values = decisionSchema.parse(Object.fromEntries(formData));
   const { approval, step } = await findActionableTerminalApproval(
     session, values.approvalInstanceId, "InventoryTransfer"
   );
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "InventoryTransfer",
+      documentId: approval.documentId,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId, companyId: session.context.companyId,
       documentType: "InventoryTransfer"
     });
     const { transfer, lines, sourceLocationName } = await lockInventoryTransferTerminalApprovalSource(tx, session, approval.documentId);
     await requirePermission(session, permissions.transferApprove);
+    await assertPrivilegedMfaForAction(session, {
+      action: "inventory_transfer.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.transferApprove,
+      entityType: "InventoryTransfer",
+      entityId: transfer.id,
+      reason: "Approving an inventory transfer changes its controlled custody state and requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     assertNotSelfApproval(transfer.requestedByUserId, session.user.id);
     await assertInventoryTransferTerminalIntentLineage(tx, session, {
       approval,
@@ -12521,7 +13645,8 @@ async function approveInventoryTransferApproval(formData: FormData) {
     const decision = await approveCurrentStepAndAdvance(tx, session, {
       approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
       requiredPermissionCode: permissions.transferApprove, locationId: transfer.sourceLocationId,
-      remarks: values.remarks, prohibitedApproverUserIds: [transfer.requestedByUserId],
+      remarks: values.remarks, reviewToken: values.reviewToken,
+      prohibitedApproverUserIds: [transfer.requestedByUserId],
       notification: {
         recipientUserIds: [transfer.requestedByUserId], publicReference: transfer.publicReference,
         locationName: sourceLocationName, entityLabel: "Inventory transfer"
@@ -12557,19 +13682,33 @@ async function closeInventoryTransferApproval(
   eventType: string
 ) {
   const session = await requireSessionContext();
-  requireNormalizedTerminalApprovalAuthority("InventoryTransfer");
+  requireNormalizedTerminalApprovalAuthority(session, "InventoryTransfer");
   await requirePermission(session, permissions.transferApprove);
   const values = remarksRequiredSchema.parse(Object.fromEntries(formData));
   const { approval, step } = await findActionableTerminalApproval(
     session, values.approvalInstanceId, "InventoryTransfer"
   );
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "InventoryTransfer",
+      documentId: approval.documentId,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId, companyId: session.context.companyId,
       documentType: "InventoryTransfer"
     });
     const { transfer, lines, sourceLocationName } = await lockInventoryTransferTerminalApprovalSource(tx, session, approval.documentId);
     await requirePermission(session, permissions.transferApprove);
+    await assertPrivilegedMfaForAction(session, {
+      action: "inventory_transfer.approval_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.transferApprove,
+      entityType: "InventoryTransfer",
+      entityId: transfer.id,
+      reason: "Reviewing an inventory transfer decision requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     assertNotSelfApproval(transfer.requestedByUserId, session.user.id);
     await assertInventoryTransferTerminalIntentLineage(tx, session, {
       approval,
@@ -12590,7 +13729,8 @@ async function closeInventoryTransferApproval(
     const decision = await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
       requiredPermissionCode: permissions.transferApprove, locationId: transfer.sourceLocationId,
-      remarks: values.remarks, prohibitedApproverUserIds: [transfer.requestedByUserId], decisionStatus: status,
+      remarks: values.remarks, reviewToken: values.reviewToken,
+      prohibitedApproverUserIds: [transfer.requestedByUserId], decisionStatus: status,
       notification: {
         recipientUserIds: [transfer.requestedByUserId], publicReference: transfer.publicReference,
         locationName: sourceLocationName, entityLabel: "Inventory transfer"
@@ -12875,19 +14015,33 @@ async function assertStockCountAttemptReviewTerminalIntentLineage(
 
 async function approveStockCountAttemptReviewApproval(formData: FormData) {
   const session = await requireSessionContext();
-  requireNormalizedTerminalApprovalAuthority("StockCountAttemptReview");
+  requireNormalizedTerminalApprovalAuthority(session, "StockCountAttemptReview");
   await requirePermission(session, permissions.stockCountReview);
   const values = decisionSchema.parse(Object.fromEntries(formData));
   const { approval, step } = await findActionableTerminalApproval(
     session, values.approvalInstanceId, "StockCountAttemptReview"
   );
-  await prisma.$transaction(async (tx) => {
+  await runReviewedApprovalTransaction(async (tx) => {
+    await acquireApprovalReviewDecisionAggregateFences(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      family: "StockCountAttemptReview",
+      documentId: approval.documentId,
+    });
     await acquireApprovalProducerBarrierShared(tx, {
       tenantId: session.context.tenantId, companyId: session.context.companyId,
       documentType: "StockCountAttemptReview"
     });
     const { source, lines, prohibitedActorIds } = await lockStockCountAttemptReviewSource(tx, session, approval.documentId);
     await requirePermission(session, permissions.stockCountReview);
+    await assertPrivilegedMfaForAction(session, {
+      action: "stock_count.attempt_review_decision",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.stockCountReview,
+      entityType: "StockCountAttempt",
+      entityId: source.attemptId,
+      reason: "Reviewing a stock count requires privileged MFA evidence.",
+    }, { transaction: tx, forceEnforcement: true });
     await assertStockCountAttemptReviewTerminalIntentLineage(tx, session, {
       approval,
       source,
@@ -12907,7 +14061,8 @@ async function approveStockCountAttemptReviewApproval(formData: FormData) {
     const decision = await approveCurrentStepAndAdvance(tx, session, {
       approvalId: approval.id, stepId: step.id, stepOrder: step.stepOrder,
       requiredPermissionCode: permissions.stockCountReview, locationId: source.locationId,
-      remarks: values.remarks, prohibitedApproverUserIds: prohibitedActorIds,
+      remarks: values.remarks, reviewToken: values.reviewToken,
+      prohibitedApproverUserIds: prohibitedActorIds,
       notification: {
         recipientUserIds: [source.sessionCreatedByUserId, source.attemptCreatedByUserId],
         publicReference: source.publicReference, locationName: source.locationName,

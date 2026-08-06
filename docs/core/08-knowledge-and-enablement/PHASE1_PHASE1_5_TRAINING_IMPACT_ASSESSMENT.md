@@ -1,6 +1,6 @@
 # Phase I And Phase 1.5 Training Impact Assessment
 
-**Status:** Ready for UAT training use; go-live training signoff pending  
+**Status:** Core materials prepared; bounded Approval Worklist handoff, UAT execution, and go-live training signoff pending
 **Created:** 30 June 2026  
 **Applies to:** Phase I Core Operational Control and Phase 1.5 Projects & Implementation Tracker
 
@@ -15,6 +15,7 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 | Branch managers               | Must understand branch context, Purchase Requests, approvals, transfer receipt, wastage, dashboards, and notifications.                            | `docs/training/phase-i-branch-manager-quick-start.md`                                              |
 | Warehouse / storekeeper users | Must understand inventory location context, transfer dispatch/receipt, stock counts, wastage, adjustments, ledger impact, and evidence references. | `docs/training/phase-i-warehouse-storekeeper-quick-start.md`                                       |
 | Purchasing users              | Must understand PR follow-up, quotation/PO lineage, PO statuses, supplier issue/send, receiving variance visibility, and exports.                  | `docs/training/phase-i-purchasing-quick-start.md`                                                  |
+| Bounded Inventory UAT approvers | Must understand the seven admitted families, the fifteen-minute reviewed-state window, complete material review facts, stale-review reload behavior, decision success feedback, and that the partial worklist is not a global approval total. | Dunong approver UAT handoff pending after trusted-TLS named-role verification |
 | Administrators                | Must understand role, permission, scope, approval assignment, audit review, evidence-reference support, export controls, release readiness gates, and external-security proof references. | `docs/training/phase-i-administrator-setup-guide.md`; `docs/knowledge-base/administration/managing-release-readiness-gates.md` |
 | Project users                 | Must understand project/task coordination, blockers, milestones, comments, notifications, reports, and safe source-record links.                   | `docs/training/phase-1-5-project-tracker-quick-start.md`; `docs/knowledge-base/projects/README.md` |
 
@@ -30,12 +31,23 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 ## Known Training Limits
 
 - Training must state that UAT is still execution-pending until evidence pack signoff is complete.
+- The bounded Inventory UAT Approval Worklist must not be taught as generally
+  available yet. Local implementation has passing focused/build evidence and a
+  passing 5/5 Purchase Request plus Quotation Recommendation review/writer
+  concurrency matrix. The seven-family database acceptance suite passes 7/7,
+  but trusted-TLS responsive named-role UAT is still pending and must not be
+  represented as passing evidence.
+- Approver training must explain that a review is valid for at most fifteen
+  minutes, stale review state disables decisions and requires **Reload current
+  review**, and success feedback confirms the authoritative decision outcome.
+  It must not describe the worklist as a global approval total or imply that
+  excluded families have no pending work.
 - Training must point pilot users to the defect intake and support route recorded in `../07-quality/PHASE1_PHASE1_5_PILOT_HYPERCARE_AND_DEFECT_RUNBOOK.md`.
 - Binary upload/download should not be taught as generally available for every Phase I operational workflow.
 - Queueing, automated email delivery, and automated scheduler behavior must not be promised.
 - Project tracker training must emphasize that tasks link to source records but do not mutate operational records.
 - Release-readiness training must explain that ERP security counters do not replace external MFA provider, identity-provider session invalidation, evidence repository, or break-glass review proof references.
-- Deferred workflows must be called out: full PO amendment after issue, backdated correction, partial receiving-line reversal, transfer dispatch reversal, automated replacement/finance settlement, and formal PDF summaries. Transfer discrepancy closure is available only as a non-posting audited settlement action.
+- Deferred workflows must be called out: full PO amendment after issue, backdated correction, partial receiving-line reversal, transfer dispatch reversal, automated replacement/finance settlement, and formal PDF summaries. Transfer discrepancy settlement is dormant and fail-closed until DEC-0265 confirms finality and reopen/reversal semantics; training must describe discrepancy follow-up only, not final closure.
 
 ## Readiness Checklist
 
@@ -44,6 +56,11 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 - [x] Purchasing quick-start created.
 - [x] Administrator setup guide created.
 - [x] Phase I knowledge-base backlog cleared.
+- [ ] Bounded Inventory UAT approver guide/handoff completed by Dunong after the
+      trusted-TLS named-role interface is verified.
+- [x] All seven Approval Worklist families verified in disposable PostgreSQL:
+      family acceptance passes 7/7 and the separate Purchase Request plus
+      Quotation Recommendation writer-concurrency matrix passes 5/5.
 - [x] Release readiness summary created.
 - [x] Phase 1.5 project tracker knowledge-base articles created.
 - [x] Phase 1.5 project tracker quick-start created.
@@ -64,6 +81,7 @@ Use this table during UAT or pilot preparation. Do not mark training complete un
 | Branch managers               | Pending           | Pending | Pending           | Branch manager quick-start; dashboard/tasks/notifications; PR/approval/transfer receipt/wastage flows        | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Warehouse / storekeeper users | Pending           | Pending | Pending           | Warehouse/storekeeper quick-start; receiving, transfers, counts, wastage, adjustments, ledger controls       | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Purchasing users              | Pending           | Pending | Pending           | Purchasing quick-start; quote/PO lineage, supplier issue/send, receiving variance, exports                   | Pending                   | Pending                          | Pending            | Pending    | Pending      |
+| Bounded Inventory UAT approvers | Pending         | Pending | Pending           | Partial seven-family worklist; reviewed-state window; stale reload; typed facts; decision feedback           | Pending                   | Dunong handoff and named-role verification pending | Pending | Pending | Pending |
 | Administrators                | Pending           | Pending | Pending           | Administrator setup guide; users, roles, scopes, approvals, audit, export controls, release readiness (use the dedicated Release Board workspace for decisions), external-security proof references | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Project users                 | Pending           | Pending | Pending           | Project tracker quick-start; tasks, blockers, milestones, source links, reports, redaction, tracker boundary | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 

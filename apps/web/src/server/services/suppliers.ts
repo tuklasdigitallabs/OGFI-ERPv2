@@ -3,9 +3,13 @@ import { z } from "zod";
 import {
   getGrantedPermissionCodes,
   permissions,
+  requireAnyPermission,
   requirePermission
 } from "./authorization";
-import { assertCanManageCompanyScope } from "./coreAdmin";
+import {
+  assertCanManageCompanyMasterDataScope,
+  assertCanViewCompanyMasterDataScope,
+} from "./coreAdmin";
 import { requireSessionContext, type SessionContext } from "./context";
 
 const supplierCodeSchema = z
@@ -162,6 +166,26 @@ async function canViewSupplierConfidential(session: SessionContext) {
   return grantedPermissionCodes.includes(permissions.supplierConfidentialView);
 }
 
+async function assertSupplierMasterView(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.supplierMasterView]);
+  await assertCanViewCompanyMasterDataScope(session, session.context.companyId);
+}
+
+async function assertSupplierMasterCreate(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.supplierMasterCreate]);
+  await assertCanManageCompanyMasterDataScope(session, session.context.companyId);
+}
+
+async function assertSupplierMasterEdit(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.supplierMasterEdit]);
+  await assertCanManageCompanyMasterDataScope(session, session.context.companyId);
+}
+
+async function assertSupplierMasterManage(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.supplierMasterManage]);
+  await assertCanManageCompanyMasterDataScope(session, session.context.companyId);
+}
+
 export function assertNoDuplicateSupplierCode(existingSupplierId?: string) {
   if (existingSupplierId) {
     throw new Error("DUPLICATE_SUPPLIER_CODE");
@@ -178,8 +202,7 @@ export async function listSuppliers(
   session: SessionContext,
   input: z.input<typeof supplierListInputSchema> = {}
 ) {
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterView(session);
   const hasConfidentialAccess = await canViewSupplierConfidential(session);
   const values = supplierListInputSchema.parse(input);
   const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
@@ -302,13 +325,72 @@ export async function listSuppliers(
   };
 }
 
+export async function getSupplierMasterRecord(
+  session: SessionContext,
+  supplierId: string
+) {
+  await assertSupplierMasterView(session);
+  const scopedSupplierId = z.string().uuid().safeParse(supplierId);
+  if (!scopedSupplierId.success) return null;
+  const hasConfidentialAccess = await canViewSupplierConfidential(session);
+
+  const supplier = await prisma.supplier.findFirst({
+    where: {
+      id: scopedSupplierId.data,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId
+    },
+    select: {
+      id: true,
+      supplierCode: true,
+      legalName: true,
+      tradingName: true,
+      taxIdentifier: true,
+      status: true,
+      accreditationStatus: true,
+      paymentTerms: hasConfidentialAccess,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { itemLinks: true } },
+      contacts: {
+        where: { isPrimary: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { name: true, role: true, email: true, phone: true },
+        take: 1
+      }
+    }
+  });
+  if (!supplier) return null;
+
+  return {
+    id: supplier.id,
+    supplierCode: supplier.supplierCode,
+    legalName: supplier.legalName,
+    tradingName: supplier.tradingName,
+    taxIdentifier: supplier.taxIdentifier,
+    status: supplier.status,
+    accreditationStatus: supplier.accreditationStatus,
+    paymentTerms: hasConfidentialAccess ? supplier.paymentTerms : null,
+    createdAt: supplier.createdAt.toISOString(),
+    updatedAt: supplier.updatedAt.toISOString(),
+    itemLinkCount: supplier._count.itemLinks,
+    primaryContact: supplier.contacts[0]
+      ? {
+          name: supplier.contacts[0].name,
+          role: supplier.contacts[0].role,
+          email: supplier.contacts[0].email,
+          phone: supplier.contacts[0].phone
+        }
+      : null
+  };
+}
+
 export async function getSupplierCatalog(
   session: SessionContext,
   supplierId: string,
   filters: z.input<typeof supplierCatalogInputSchema> = {}
 ) {
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterView(session);
   const hasConfidentialAccess = await canViewSupplierConfidential(session);
   const scopedSupplierId = z.string().uuid().safeParse(supplierId);
   if (!scopedSupplierId.success) return null;
@@ -591,8 +673,7 @@ export async function getSupplierItemLinkLookup(
   supplierId: string,
   input: z.input<typeof supplierItemLinkLookupInputSchema> = {}
 ) {
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterEdit(session);
   const values = supplierItemLinkLookupInputSchema.parse(input);
   const supplier = await prisma.supplier.findFirst({
     where: {
@@ -690,8 +771,7 @@ export async function createSupplier(formData: FormData) {
   const session = await requireSessionContext();
   const values = createSupplierSchema.parse(Object.fromEntries(formData));
 
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterCreate(session);
   if (values.paymentTerms !== undefined) {
     await requirePermission(session, permissions.supplierConfidentialView);
   }
@@ -761,8 +841,7 @@ export async function deactivateSupplier(formData: FormData) {
   const session = await requireSessionContext();
   const values = deactivateSupplierSchema.parse(Object.fromEntries(formData));
 
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterManage(session);
 
   await prisma.$transaction(async (tx) => {
     const [supplier] = await tx.$queryRaw<Array<{
@@ -838,8 +917,7 @@ export async function updateSupplierAccreditation(formData: FormData) {
     Object.fromEntries(formData)
   );
 
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterManage(session);
 
   await prisma.$transaction(async (tx) => {
     const [supplier] = await tx.$queryRaw<Array<{
@@ -909,8 +987,7 @@ export async function createSupplierItemLink(formData: FormData) {
   const session = await requireSessionContext();
   const values = createSupplierItemLinkSchema.parse(Object.fromEntries(formData));
 
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterEdit(session);
   if (values.unitPrice !== undefined || values.effectiveFrom !== undefined) {
     await requirePermission(session, permissions.supplierConfidentialView);
   }
@@ -1058,8 +1135,7 @@ export async function deactivateSupplierItemLink(formData: FormData) {
   const session = await requireSessionContext();
   const values = deactivateSupplierItemLinkSchema.parse(Object.fromEntries(formData));
 
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertSupplierMasterManage(session);
 
   await prisma.$transaction(async (tx) => {
     const [activeSupplier] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`

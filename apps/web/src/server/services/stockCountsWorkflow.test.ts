@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     $executeRaw: vi.fn(),
     stockCountSession: { updateMany: vi.fn() },
+    stockCountAttempt: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+    stockCountRecountTransition: { findUnique: vi.fn(), create: vi.fn() },
     stockCountLine: {
       count: vi.fn(),
       findMany: vi.fn(),
@@ -194,6 +196,11 @@ describe("Stock Count workflow integrity", () => {
     mocks.tx.$queryRaw.mockResolvedValue([lockedCount()]);
     mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.stockCountSession.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.stockCountAttempt.findMany.mockResolvedValue([]);
+    mocks.tx.stockCountAttempt.findFirst.mockResolvedValue(null);
+    mocks.tx.stockCountAttempt.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.stockCountRecountTransition.findUnique.mockResolvedValue(null);
+    mocks.tx.stockCountRecountTransition.create.mockResolvedValue({ id: "transition-1" });
     mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue(null);
     mocks.tx.stockCountLine.count.mockResolvedValue(0);
     mocks.tx.stockCountLine.findMany.mockResolvedValue([]);

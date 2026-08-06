@@ -78,7 +78,9 @@ Initial configurable groups:
 | Operational | power interruption, refrigeration issue, branch closure |
 | Other | Requires detailed narrative and stronger approval |
 
-Reason codes, evidence rules, and thresholds are configurable by location, category, value, and wastage type.
+Reason codes, evidence rules, and thresholds are configurable by location, category, value, and wastage type. Under `DEC-0268`, wastage reason-code eligibility has two independent controlled dimensions: eligible wastage event/type and eligible inventory/item class. A selected code must be active and eligible on both dimensions; the former overloaded `appliesTo` value is not an eligibility substitute.
+
+The conservative F&B seed maps `SPOILAGE_EXPIRY` to `SPOILAGE_EXPIRY` / `FOOD`, `PREP_TRIM_LOSS` and `KITCHEN_ERROR` to `PREPARATION_LOSS` / `FOOD`, and `DAMAGED_PACKAGING` to `DAMAGE` / `FOOD, PACKAGING`. Each company must review and may configure these master-data rows; the seed neither fixes business policy nor replaces evidence, approval, or threshold policies.
 
 ---
 
@@ -120,7 +122,7 @@ Validation:
 - Quantity is positive and UOM conversion is valid.
 - Lot / expiry provided for tracked item.
 - Available stock sufficient unless approved negative-stock exception.
-- Reason code valid for selected wastage type.
+- Reason code is active and eligible for both the selected wastage type and the line item's resolved inventory class.
 - Evidence satisfies policy.
 
 ### 6.2 Evidence default
@@ -147,12 +149,14 @@ Approver may approve, return, reject, request more evidence, delegate under poli
 ### 6.4 Post wastage
 
 After final approval:
-1. Revalidate stock and lot / expiry.
-2. Create negative `wastage` movement.
-3. Update balance cache.
-4. Set report to `posted`.
-5. Notify requester and relevant manager.
-6. Preserve full audit history.
+1. Lock the authoritative report, lines, and inventory locations in deterministic order.
+2. Revalidate the live actor, AuthSession/privilege epoch, current role permission, exact inventory-location scope, and privileged MFA evidence inside that transaction. The authority rows (user/session, active role-permission grant, qualifying scope grant, and MFA policy/evidence rows) are held with transaction-scoped share locks so a revocation either wins before the check or waits until the command finishes.
+3. Revalidate stock and lot / expiry.
+4. Create negative `wastage` movement.
+5. Update balance cache.
+6. Set report to `posted`.
+7. Notify requester and relevant manager.
+8. Preserve full audit history.
 
 Posted reports cannot be edited. Correction requires reversal and, if necessary, corrected replacement report.
 
@@ -226,7 +230,7 @@ Baseline:
 - opening stock: governed only by `DEC-0263` (separate Operations and Accounting approval); it is not a Stock Adjustment approval route;
 - backdated correction: Finance plus manager / executive as configured.
 
-Final approval makes a manual or linked count-derived adjustment eligible for posting but does not change inventory. Posting must create `adjustment_in` or `adjustment_out` movement through the inventory ledger service; the database-owned movement trigger then derives the balance cache in the same transaction. The post marks the record `posted`, preserves source movement lineage, and logs all actions. Direct `count_variance` movement types remain future controlled scope.
+Final approval makes a manual or linked count-derived adjustment eligible for posting but does not change inventory. Posting first locks the source, lines, and inventory locations, then revalidates the live actor, AuthSession/privilege epoch, current role permission, exact location scope, and privileged MFA inside the transaction. It must create `adjustment_in` or `adjustment_out` movement through the inventory ledger service; the database-owned movement trigger then derives the balance cache in the same transaction. The post marks the record `posted`, preserves source movement lineage, and logs all actions. Direct `count_variance` movement types remain future controlled scope.
 
 ---
 
@@ -259,7 +263,7 @@ Backdated posting can distort operational and finance reporting. Default rules:
 
 Use reversal when posted wastage or adjustment is wrong.
 
-Stock Adjustment reversal is implemented for posted manual `INCREASE` and `DECREASE` adjustments under `DEC-0023`. It is a full-document reversal that writes opposite `REVERSAL` movements linked to the original adjustment movements.
+Stock Adjustment reversal is implemented for posted manual `INCREASE` and `DECREASE` adjustments under `DEC-0023`. It is a full-document reversal that locks the source and lines, serializes each immutable original movement with a transaction-scoped advisory lock (the runtime role cannot update append-only movement rows), then locks inventory locations; it revalidates the live actor/session/permission/scope/MFA fence with transaction-scoped authority-row locks and writes opposite `REVERSAL` movements linked to the original adjustment movements.
 
 Required:
 - Original document and movement reference

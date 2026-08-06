@@ -137,7 +137,7 @@ Before a workspace is marked visually complete, verify the following:
 
 | Priority | Workspace | Severity | Why First |
 |---:|---|---:|---|
-| 1 | Approvals | High | Normalized routing has real URL-backed tabs, server pagination, and one decision composer, but activation, populated-data migration, responsive-browser evidence, and hosted recovery remain open. The feature-disabled public Inbox fails closed and does not load a legacy queue. |
+| 1 | Approvals | High | Global normalized routing remains disabled. `DEC-0270` authorizes only a clearly labeled, server-paginated partial Inventory Control UAT worklist for seven allowlisted families; it must retain one decision composer, role-scoped visibility, and no legacy/parallel queue. PostgreSQL, responsive-browser, named-role UAT, and hosted recovery evidence remain open. |
 | 2 | Receiving | High | Queue links to a dedicated `/receiving/new` full-page draft task with a responsive line editor and persistent draft action. |
 | 3 | Workforce | Critical | One route contains too many unrelated operational jobs. |
 | 4 | FinanceSubworkspace / AP | Critical | Monolithic shared component stacks AP, GL, bank/cash queues and repeated action forms. |
@@ -183,8 +183,8 @@ Before a workspace is marked visually complete, verify the following:
 
 | Route | Severity | Current Pattern | Problem | Recommended Pattern |
 |---|---:|---|---|---|
-| `/approvals` | High | Feature-disabled Inbox with implemented normalized URL-backed Inbox/Due Soon views. | Activation, populated-data migration, authenticated responsive-browser proof, and hosted recovery remain open. | Keep the disabled state truthful until normalized cutover is accepted; do not restore a legacy or parallel queue. |
-| `/approvals/[id]` | High | One server-contract-driven decision composer behind normalized routing. | Browser interaction, database parity, Payment policy, backfill/drain, and activation evidence remain open. | Retain mutually exclusive actions, accessible unavailability/field reasons, pending lock, and fail-closed flag boundary through cutover. |
+| `/approvals` | High | Globally feature-disabled Inbox; `DEC-0270` authorizes a distinct bounded Inventory Control UAT worklist when its own gate is enabled. | It can be mistaken for a complete approval register unless the partial family scope and unavailable global routing are explicit; PostgreSQL, responsive-browser, named-role UAT, and hosted recovery remain open. | Show only live-eligible rows from the seven allowlisted families with server pagination, clear partial-coverage wording, and a truthful unavailable state otherwise. Do not restore a legacy/parallel queue or show global totals. |
+| `/approvals/[id]` | High | One server-contract-driven decision composer behind normalized routing; bounded UAT use is limited to a selected allowlisted row. | Browser interaction, database parity, sensitive-action MFA, source/version/step lock-CAS, Payment policy, backfill/drain, and global activation evidence remain open. | Retain mutually exclusive permitted actions, accessible unavailable/stale reasons, pending lock, action-time MFA where required, and fail-closed bounded/global gates. |
 
 ### Inventory And Warehouse
 

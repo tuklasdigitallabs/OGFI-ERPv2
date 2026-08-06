@@ -46,13 +46,13 @@ describe("item master-data controls", () => {
     ).not.toThrow();
   });
 
-  test("item setup writes are admin scoped, transactional, and audited", () => {
+  test("item setup separates view, create, edit, and lifecycle authority while retaining audit controls", () => {
     const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
 
-    expect(source).toContain("requirePermission(session, permissions.coreAdminister)");
-    expect(source).toContain(
-      "assertCanManageCompanyScope(session, session.context.companyId)"
-    );
+    expect(source).toContain("assertItemMasterView(session)");
+    expect(source).toContain("assertItemMasterCreate(session)");
+    expect(source).toContain("assertItemMasterEdit(session)");
+    expect(source).toContain("assertAdminCanManageMasterData(session)");
     expect(source).toContain("tenantId: session.context.tenantId");
     expect(source).toContain("companyId: session.context.companyId");
     expect(source).toContain("prisma.$transaction");
@@ -77,9 +77,9 @@ describe("item master-data controls", () => {
       source.indexOf("export async function listItemMasterOptionCatalog"),
       source.indexOf("export async function listItemMasterData"),
     );
-    expect(catalog.indexOf("assertAdminCanManageMasterData(session)")).toBeGreaterThan(-1);
+    expect(catalog.indexOf("assertItemMasterView(session)")).toBeGreaterThan(-1);
     expect(catalog.indexOf("itemMasterOptionCatalogInputSchema.parse(input)")).toBeGreaterThan(-1);
-    expect(catalog.indexOf("assertAdminCanManageMasterData(session)")).toBeLessThan(
+    expect(catalog.indexOf("assertItemMasterView(session)")).toBeLessThan(
       catalog.indexOf("runWithItemOptionCatalogAdmission"),
     );
     expect(catalog.indexOf("itemMasterOptionCatalogInputSchema.parse(input)")).toBeLessThan(
@@ -342,7 +342,8 @@ describe("item master-data controls", () => {
     expect(updateSource).toContain("assertItemCorrectionIsNonMaterial(item, values)");
     expect(updateSource).toContain("data: {\n        itemName: values.itemName\n      }");
 
-    expect(sheet).toContain('title={item.status === "ACTIVE" ? "Correct Item Name"');
+    expect(sheet).toContain('title={item.status === "ACTIVE" && canEdit ? "Correct Item Name"');
+    expect(sheet).toContain("read-only access to this item");
     expect(sheet).toContain('name="expectedUpdatedAt"');
     expect(sheet).toContain('name="itemName"');
     expect(sheet).not.toContain('name="deactivationReason"');
@@ -361,6 +362,7 @@ describe("item master-data controls", () => {
     expect(sheet).toContain('target="_blank"');
     expect(sheet).toContain('rel="noopener noreferrer"');
     expect(page).toContain('item={{ ...selectedItem, updatedAt: selectedItem.updatedAt.toISOString() }}');
+    expect(page).toContain("canEdit={canEditItemMaster}");
     expect(page).toContain('id="item-register-heading"');
     expect(page).not.toContain("itemNotice");
     expect(page).not.toContain("noticeItemId");

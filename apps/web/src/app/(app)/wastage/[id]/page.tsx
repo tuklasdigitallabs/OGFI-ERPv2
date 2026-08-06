@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { PendingActionButton } from "@/components/PendingActionButton";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -322,7 +323,7 @@ export default async function WastageDetailPage({
             {canSubmit && (report.status === "DRAFT" || report.status === "RETURNED") ? (
               <form action={submitReportAction}>
                 <input name="id" type="hidden" value={report.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                   Submit for Approval
                 </button>
               </form>
@@ -330,9 +331,7 @@ export default async function WastageDetailPage({
             {canPost && report.status === "APPROVED" && !report.postedAt ? (
               <form action={postReportAction}>
                 <input name="id" type="hidden" value={report.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
-                  Post Wastage
-                </button>
+                <PendingActionButton label="Post Wastage" pendingLabel="Posting Wastage…" />
               </form>
             ) : null}
           </div>
@@ -412,7 +411,7 @@ export default async function WastageDetailPage({
                       required
                     />
                   </label>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-fit">
+                  <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-fit">
                     Save Review
                   </button>
                 </form>
@@ -466,7 +465,7 @@ export default async function WastageDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 sm:w-fit">
                       Cancel Report
                     </button>
                   </form>
@@ -497,9 +496,7 @@ export default async function WastageDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 sm:w-fit">
-                      Reverse Posted Wastage
-                    </button>
+                    <PendingActionButton label="Reverse Posted Wastage" pendingLabel="Reversing Wastage…" tone="danger" confirmation="Reverse this posted wastage report? This creates linked counter-movements and preserves the original record." />
                   </form>
                 </EntryModal>
               </div>

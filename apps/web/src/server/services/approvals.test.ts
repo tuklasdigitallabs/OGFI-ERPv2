@@ -830,7 +830,9 @@ describe("multi-step approval advancement", () => {
       );
       const finalAuditIndex = handlerSource.indexOf(finalAuditEvent);
 
-      expect(handlerSource).toContain("await prisma.$transaction");
+      expect(handlerSource).toMatch(
+        /await (?:runReviewedApprovalTransaction|prisma\.\$transaction)/,
+      );
       expect(handlerSource).toContain(stepAuditEvent);
       expect(handlerSource).toContain("sourceMutationDeferred: true");
       expect(advanceIndex).toBeGreaterThanOrEqual(0);
@@ -1026,19 +1028,21 @@ describe("multi-step approval advancement", () => {
     expect(scopeSource).toContain('{ endsAt: { gt: now } }');
   });
 
-  test("approval inbox uses normalized server pagination at cutover and exposes no passive tabs", () => {
+  test("approval worklist uses server pagination, an explicit bounded mode, and no passive tabs", () => {
     const pageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/approvals/page.tsx"),
       "utf8"
     );
 
-    expect(pageSource).toContain("normalizedApprovalRoutingEnabled()");
-    expect(pageSource).toContain("listNormalizedApprovalInboxPage(session");
+    expect(pageSource).toContain("approvalWorklistMode()");
+    expect(pageSource).toContain("listNormalizedApprovalInboxPage");
+    expect(pageSource).toContain("listBoundedInventoryUatApprovalQueuePage");
     expect(pageSource).toContain('view: "DUE_SOON"');
-    expect(pageSource).toContain("getApprovalDetail(session, item.approvalInstanceId)");
+    expect(pageSource).toContain("APPROVAL_WORKLIST_SOURCE_NOT_READY");
     expect(pageSource).toContain('redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1")');
     expect(pageSource).toContain("ActionFeedbackBanner");
     expect(pageSource).toContain("Approval Inbox unavailable");
+    expect(pageSource).toContain("Inventory Control UAT Approval Worklist");
     expect(pageSource).toContain('code !== "APPROVAL_ROUTING_BACKFILL_REQUIRED"');
     expect(pageSource).toContain('code !== "APPROVAL_ROUTING_V1_DISABLED"');
     expect(pageSource).not.toContain("listPendingApprovals(session)");
@@ -1046,7 +1050,49 @@ describe("multi-step approval advancement", () => {
     expect(pageSource).not.toContain('label: "Audit"');
   });
 
-  test("approval detail explains read-only comments and empty audit history", () => {
+  test("bounded approval queue batches source projections without hydrating full detail per row", () => {
+    const queueSource = extractFunctionSource(
+      serviceSource,
+      "listBoundedInventoryUatApprovalQueuePage",
+    );
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/approvals/page.tsx"),
+      "utf8",
+    );
+
+    expect(queueSource).toContain("listBoundedInventoryUatApprovalWorklistPage");
+    expect(queueSource).toContain("normalizeApprovalRoutingPage(input)");
+    expect(queueSource).toContain("page: 1, pageSize: 100");
+    expect(queueSource).toContain(
+      "eligiblePage.totalItems !== eligiblePage.items.length",
+    );
+    expect(queueSource).toContain("items.slice(");
+    expect(queueSource).toContain("Promise.all");
+    expect(queueSource).toContain("purchaseRequest.findMany");
+    expect(queueSource).toContain("stockCountAttempt.findMany");
+    expect(queueSource).toContain("stockCountAttemptLine.findMany");
+    expect(queueSource).toContain('distinct: ["stockCountAttemptId"]');
+    expect(queueSource).not.toContain(
+      "lines: { select: { countedByUserId: true } }",
+    );
+    expect(queueSource).toContain(
+      'throw new Error("APPROVAL_WORKLIST_SOURCE_NOT_READY")',
+    );
+    expect(
+      queueSource.match(
+        /requiredDate: eligible\.dueAt \?\? "Not scheduled"/g,
+      ),
+    ).toHaveLength(7);
+    expect(queueSource.match(/sourceRequiredDate:/g)).toHaveLength(7);
+    expect(queueSource).not.toContain("slaStatus");
+    expect(queueSource).not.toContain("hasStaleSource");
+    expect(queueSource).not.toContain("getApprovalDetail");
+    expect(pageSource).not.toContain(
+      "getBoundedInventoryUatApprovalWorklistDetail",
+    );
+  });
+
+  test("approval detail uses the bounded typed review while preserving the global detail", () => {
     const detailSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
       "utf8"
@@ -1055,10 +1101,151 @@ describe("multi-step approval advancement", () => {
     expect(detailSource).toContain("Comments are read-only here for this approval type");
     expect(detailSource).toContain("authoritative source workspace");
     expect(detailSource).toContain("No audit events recorded yet.");
-    expect(detailSource.match(/if \(!normalizedApprovalRoutingEnabled\(\)\)/g)).toHaveLength(2);
+    expect(detailSource).toContain("approvalWorklistMode()");
+    expect(detailSource).toContain("assertTrustedServerActionOrigin()");
+    expect(detailSource).toContain("getBoundedInventoryUatApprovalReview");
+    expect(detailSource).toContain("BoundedApprovalReviewPanel");
+    expect(detailSource).toContain("APPROVAL_DECISION_APPROVED");
+    expect(detailSource).toContain("APPROVAL_DECISION_RETURNED");
+    expect(detailSource).toContain("APPROVAL_DECISION_REJECTED");
+    expect(detailSource).toContain('revalidatePath("/transfers")');
+    expect(detailSource).toContain('revalidatePath("/counts")');
+    expect(detailSource).toContain('revalidatePath("/wastage")');
+    expect(detailSource).not.toContain("addPurchaseRequestComment");
+    expect(detailSource).not.toContain("Add Comment");
+    expect(detailSource).toContain(
+      'redirect("/approvals?error=APPROVAL_WORKLIST_ITEM_UNAVAILABLE&stale=1")',
+    );
     expect(detailSource).toContain(
       'redirect("/approvals?error=APPROVAL_ROUTING_V1_DISABLED")'
     );
+  });
+
+  test("bounded Inventory Control UAT worklist is closed to its seven confirmed families", () => {
+    const boundedSource = readFileSync(
+      path.resolve(__dirname, "boundedApprovalWorklist.ts"),
+      "utf8",
+    );
+    const worklistSource = extractFunctionSource(
+      serviceSource,
+      "listBoundedInventoryUatApprovalWorklistPage",
+    );
+    const browserDecisionSource = extractFunctionSource(
+      serviceSource,
+      "executeEligibleApprovalDecision",
+    );
+
+    expect(boundedSource).toContain("isBoundedUatEvidenceRuntimeRequested");
+    expect(boundedSource).toContain("!normalizedApprovalRoutingEnabled()");
+    for (const family of [
+      "PurchaseRequest",
+      "QuotationRecommendation",
+      "PurchaseOrder",
+      "InventoryTransfer",
+      "StockCountAttemptReview",
+      "WastageReport",
+      "StockAdjustment",
+    ]) {
+      expect(boundedSource).toContain(`"${family}"`);
+    }
+    expect(worklistSource).toContain("documentTypes: boundedInventoryUatApprovalFamilies");
+    expect(browserDecisionSource).toContain("assertBoundedInventoryUatApprovalCommand");
+    expect(browserDecisionSource.indexOf("assertBoundedInventoryUatApprovalCommand")).toBeLessThan(
+      browserDecisionSource.indexOf("listEligibleApprovalStepPage"),
+    );
+    expect(browserDecisionSource).toContain("approvalInstanceId,");
+    expect(browserDecisionSource).toContain("verifyApprovalReviewToken");
+    expect(browserDecisionSource).toContain("documentTypes: [reviewClaims.family]");
+    expect(browserDecisionSource).toContain("family: eligible.documentType");
+    expect(browserDecisionSource).toContain("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
+    expect(serviceSource).toContain(
+      "Prisma.TransactionIsolationLevel.Serializable",
+    );
+    expect(
+      serviceSource.match(/runReviewedApprovalTransaction\(async/g),
+    ).toHaveLength(13);
+    expect(
+      serviceSource.match(/acquireApprovalReviewDecisionAggregateFences\(tx/g),
+    ).toHaveLength(13);
+    for (const reviewedTransaction of serviceSource
+      .split("runReviewedApprovalTransaction(async (tx) => {")
+      .slice(1)) {
+      expect(
+        reviewedTransaction.indexOf(
+          "acquireApprovalReviewDecisionAggregateFences(tx",
+        ),
+      ).toBeLessThan(
+        reviewedTransaction.indexOf("acquireApprovalProducerBarrierShared(tx"),
+      );
+    }
+    expect(serviceSource).toContain("isApprovalReviewSerializationFailure");
+    expect(serviceSource).toContain('candidate.meta?.code === "40001"');
+    expect(serviceSource).toContain('throw new Error("APPROVAL_REVIEW_STALE")');
+    const authoritySource = extractFunctionSource(
+      serviceSource,
+      "normalizedDecisionAuthorityRequired",
+    );
+    expect(authoritySource).toContain("boundedInventoryUatApprovalWorklistEnabled");
+    expect(authoritySource).toContain("isBoundedInventoryUatApprovalFamily");
+    expect(authoritySource).toContain('status: "PENDING"');
+
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
+      "utf8",
+    );
+    const composerSource = readFileSync(
+      path.resolve(__dirname, "../../components/ApprovalDecisionComposer.tsx"),
+      "utf8",
+    );
+    expect(detailPageSource).toContain("executeEligibleApprovalDecision");
+    expect(detailPageSource).not.toContain('formData.get("approvalKind")');
+    expect(composerSource).not.toContain('name="approvalKind"');
+    expect(composerSource).toContain('name="reviewToken"');
+    expect(serviceSource).toContain('eventType: "approval.review_snapshot_verified"');
+    expect(serviceSource).toContain("reviewTokenPersisted: false");
+  });
+
+  test("bounded detail uses the exact normalized eligible-step projection", () => {
+    const boundedDetailSource = extractFunctionSource(
+      serviceSource,
+      "getBoundedInventoryUatApprovalWorklistDetail",
+    );
+    const detailSource = extractFunctionSource(serviceSource, "getApprovalDetail");
+
+    expect(boundedDetailSource).toContain(
+      "documentTypes: boundedInventoryUatApprovalFamilies",
+    );
+    expect(boundedDetailSource).toContain("approvalInstanceId,");
+    expect(boundedDetailSource).toContain(
+      "eligibilityProof: boundedDetailEligibilityProof",
+    );
+    expect(boundedDetailSource).toContain('"APPROVAL_SCOPE_DENIED"');
+    expect(boundedDetailSource).toContain('"APPROVAL_AUTHORITY_STALE"');
+    expect(detailSource).toContain("approvalInstanceStep.findFirst");
+    expect(detailSource).toContain("approvalInstanceStepId: currentStep.id");
+    expect(detailSource).toContain("listEligibleApprovalStepPage");
+    expect(detailSource).toContain("eligiblePage.totalItems !== 1");
+    const routingSource = readFileSync(
+      path.resolve(__dirname, "approvalRouting.ts"),
+      "utf8",
+    );
+    expect(routingSource).toContain("INVENTORY_TRANSFER_APPROVAL_V1_ENABLED");
+    expect(routingSource).toContain("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED");
+    expect(routingSource).toContain("InventoryTransferApprovalSubmissionIntent");
+    expect(routingSource).toContain("StockCountReviewSubmissionIntent");
+    expect(routingSource).toContain('activation.status = intent."activationStatus"');
+  });
+
+  test("transfer and stock-count worklist details enforce scope and privileged MFA", () => {
+    const transferDetail = extractFunctionSource(serviceSource, "getApprovalDetail");
+    const transferDecision = extractFunctionSource(serviceSource, "approveInventoryTransferApproval");
+    const countDecision = extractFunctionSource(serviceSource, "approveStockCountAttemptReviewApproval");
+
+    expect(transferDetail).toContain('approval.documentType === "InventoryTransfer"');
+    expect(transferDetail).toContain('approval.documentType === "StockCountAttemptReview"');
+    expect(transferDetail).toContain("await assertApprovalScope(session, transfer.destinationLocationId)");
+    expect(transferDecision).toContain("assertPrivilegedMfaForAction(session");
+    expect(countDecision).toContain("assertPrivilegedMfaForAction(session");
   });
 
   test("balance closure serializes with receiving and uses quantity CAS", () => {

@@ -1,72 +1,35 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ShortMutationForm } from "@/components/OrganizationEditForm";
+import {
+  SupplierRegisterSelection,
+  SupplierSelectableCard,
+  SupplierSelectableRow
+} from "@/components/SupplierRegisterSelection";
 import { UrlOwnedTaskSheet } from "@/components/UrlOwnedTaskSheet";
 import {
   UrlOwnedActionTaskSheet,
   type UrlOwnedActionState
 } from "@/components/UrlOwnedActionTaskSheet";
-import {
-  actionErrorRedirectPath,
-  getActionErrorCode,
-  getActionFeedback
-} from "@/server/services/actionFeedback";
+import { getActionErrorCode, getActionFeedback } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
-  createSupplier,
   createSupplierItemLink,
-  deactivateSupplier,
   deactivateSupplierItemLink,
   getSupplierCatalog,
   getSupplierItemLinkLookup,
+  getSupplierMasterRecord,
   listSuppliers,
-  updateSupplierAccreditation
 } from "@/server/services/suppliers";
 
 export const dynamic = "force-dynamic";
-
-async function createSupplierAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createSupplier(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/suppliers", error));
-  }
-  revalidatePath("/suppliers");
-  redirect("/suppliers");
-}
-
-async function deactivateSupplierAction(formData: FormData) {
-  "use server";
-
-  try {
-    await deactivateSupplier(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/suppliers", error));
-  }
-  revalidatePath("/suppliers");
-  redirect("/suppliers");
-}
-
-async function updateSupplierAccreditationAction(formData: FormData) {
-  "use server";
-
-  try {
-    await updateSupplierAccreditation(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/suppliers", error));
-  }
-  revalidatePath("/suppliers");
-  const supplierId = formData.get("supplierId");
-  redirect(typeof supplierId === "string" ? `/suppliers?supplier=${supplierId}` : "/suppliers");
-}
 
 async function createSupplierItemLinkAction(
   _previousState: UrlOwnedActionState,
@@ -153,7 +116,15 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   if (!session) {
     redirect("/sign-in");
   }
-  if (!session.permissionCodes.includes(permissions.coreAdminister)) {
+  const canViewSuppliers = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.supplierMasterView);
+  const canCreateSupplier = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.supplierMasterCreate);
+  const canEditSupplierCatalog = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.supplierMasterEdit);
+  const canManageSupplier = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.supplierMasterManage);
+  if (!canViewSuppliers) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
@@ -177,7 +148,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const uomLinkQuery = firstParam(params.uomLinkQuery) ?? "";
   const uomLinkPage = Number(firstParam(params.uomLinkPage) ?? "1");
   const selectedUomId = firstParam(params.selectedUomId);
-  const [supplierData] = await Promise.all([
+  const [supplierData, selectedSupplierRecord] = await Promise.all([
     listSuppliers(session, {
       query: supplierQuery,
       status: supplierStatus === "ACTIVE" || supplierStatus === "INACTIVE" ? supplierStatus : undefined,
@@ -186,7 +157,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         : undefined,
       page: Number.isFinite(supplierPageValue) && supplierPageValue > 0 ? Math.min(supplierPageValue, 10_000) : 1,
       pageSize: 25
-    })
+    }),
+    selectedSupplierId && supplierTab !== "catalog"
+      ? getSupplierMasterRecord(session, selectedSupplierId)
+      : Promise.resolve(null)
   ]);
   const suppliers = supplierData.suppliers;
   const approvedCount = suppliers.filter((supplier) => supplier.accreditationStatus === "APPROVED").length;
@@ -214,17 +188,20 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       })
     : null;
   const selectedSupplier = selectedSupplierCatalog?.supplier
-    ?? supplierData.suppliers.find((supplier) => supplier.id === selectedSupplierId)
+    ?? selectedSupplierRecord
+    ?? null;
+  const selectedSupplierItemLinkCount = selectedSupplierCatalog?.summary.totalCount
+    ?? selectedSupplierRecord?.itemLinkCount
     ?? null;
   const selectedSupplierItemLink = selectedSupplierCatalog?.itemLinks.find(
     (link) => link.id === selectedSupplierItemLinkId
   ) ?? null;
   const selectedLinkAction =
-    selectedSupplier?.status === "ACTIVE" && linkAction === null && selectedSupplierItemLinkId
+    selectedSupplier?.status === "ACTIVE" && canManageSupplier && linkAction === null && selectedSupplierItemLinkId
       ? "deactivate"
       : null;
   const selectedSupplierLinkLookup =
-    selectedSupplier?.status === "ACTIVE" && linkAction === "create"
+    selectedSupplier?.status === "ACTIVE" && canEditSupplierCatalog && linkAction === "create"
       ? await getSupplierItemLinkLookup(session, selectedSupplier.id, {
           itemQuery: itemLinkQuery,
           itemPage: Number.isFinite(itemLinkPage) && itemLinkPage > 0 ? itemLinkPage : 1,
@@ -392,8 +369,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       </div>
 
       <div className={selectedSupplier ? "mb-5 hidden flex-wrap justify-end gap-2 lg:flex" : "mb-5 flex flex-wrap justify-end gap-2"}>
-        <EntryModal title="Create Supplier" triggerLabel="Create Supplier" triggerClassName="min-h-11">
-          <form action={createSupplierAction} className="ogfi-form-shell mt-4 grid gap-3">
+        {canCreateSupplier ? <EntryModal title="Create Supplier" triggerLabel="Create Supplier" triggerClassName="min-h-11">
+          <ShortMutationForm endpoint="/api/suppliers/create" submitLabel="Create Supplier" pendingLabel="Creating Supplier…">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Supplier code
@@ -444,11 +421,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               Creation reason
               <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="reason" required />
             </label>
-            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create Supplier
-            </button>
-          </form>
-        </EntryModal>
+          </ShortMutationForm>
+        </EntryModal> : null}
         {/* Supplier-item creation is available in the selected-supplier composer below. */}
         <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900" role="status">
           Link a supplier item from a selected supplier catalog. The global action is intentionally unavailable while the bounded lookup composer is used.
@@ -486,29 +460,35 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               </p>
             </div>
           ) : (
-            <>
+            <SupplierRegisterSelection
+              initialSupplierId={selectedSupplierId}
+              options={suppliers.map((supplier) => ({
+                id: supplier.id,
+                label: `${supplier.supplierCode} · ${supplier.tradingName ?? supplier.legalName}`
+              }))}
+              registerHref={supplierRegisterHref()}
+            >
               <div className="hidden lg:block">
                 <table className="w-full table-fixed text-left text-sm" data-testid="supplier-desktop-table">
                   <thead className="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase text-slate-500">
-                    <tr><th className="w-[15%] px-4 py-3">Code / terms</th><th className="w-[18%] px-4 py-3">Supplier</th><th className="w-[17%] px-4 py-3">Primary contact</th><th className="w-[22%] px-4 py-3">Catalog summary</th><th className="w-[13%] px-4 py-3">Status</th><th className="w-[15%] px-4 py-3">Control</th></tr>
+                    <tr><th className="w-[7%] px-4 py-3">Selected</th><th className="w-[15%] px-4 py-3">Code / terms</th><th className="w-[19%] px-4 py-3">Supplier</th><th className="w-[18%] px-4 py-3">Primary contact</th><th className="w-[27%] px-4 py-3">Catalog summary</th><th className="w-[14%] px-4 py-3">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {suppliers.map((supplier) => (
-                      <tr key={supplier.id} data-testid="supplier-row" className="align-top hover:bg-slate-50/70">
+                      <SupplierSelectableRow key={supplier.id} label={`${supplier.supplierCode} · ${supplier.tradingName ?? supplier.legalName}`} supplierId={supplier.id}>
                         <td className="break-words px-4 py-4"><p className="font-bold text-slate-950">{supplier.supplierCode}</p><p className="mt-1 text-xs text-slate-500">{supplierData.canViewSupplierConfidential ? supplier.paymentTerms ?? "Not configured" : "Restricted"}</p></td>
                         <td className="break-words px-4 py-4"><p className="font-semibold text-slate-800">{supplier.tradingName ?? supplier.legalName}</p><p className="mt-1 text-xs text-slate-500">{supplier.legalName}</p></td>
                         <td className="break-words px-4 py-4"><p className="font-medium text-slate-700">{supplier.primaryContact?.name ?? "No primary contact"}</p><p className="mt-1 text-xs text-slate-500">{supplier.primaryContact?.email ?? supplier.primaryContact?.phone ?? "Not configured"}</p></td>
-                        <td className="break-words px-4 py-4"><p className="font-semibold text-blue-800">{supplier.itemLinkCount} catalog item{supplier.itemLinkCount === 1 ? "" : "s"}</p><p className="mt-1 text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p><Link className="mt-2 inline-flex min-h-11 items-center gap-1 font-semibold text-blue-700 hover:underline" href={supplierWorkspaceHref(supplier.id, "catalog")}>View catalog<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" /></Link></td>
+                        <td className="break-words px-4 py-4"><p className="font-semibold text-blue-800">{supplier.itemLinkCount} catalog item{supplier.itemLinkCount === 1 ? "" : "s"}</p><p className="mt-1 text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p></td>
                         <td className="px-4 py-4"><div className="flex flex-col items-start gap-2"><Badge tone={accreditationTone(supplier.accreditationStatus)}>{accreditationLabel(supplier.accreditationStatus)}</Badge><Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>{supplier.status === "ACTIVE" ? "Lifecycle active" : "Lifecycle inactive"}</Badge></div></td>
-                        <td className="px-4 py-4">{supplier.status === "ACTIVE" ? <div className="flex flex-col gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" href={supplierActionHref(supplier.id, "accreditation")}>Open controls</Link><Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" href={supplierActionHref(supplier.id, "deactivate")}>Deactivate</Link></div> : <p className="text-xs text-slate-500">Retained read-only history</p>}</td>
-                      </tr>
+                      </SupplierSelectableRow>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="grid gap-3 p-3 sm:grid-cols-2 lg:hidden" data-testid="supplier-responsive-cards">
                 {suppliers.map((supplier) => (
-                  <article key={supplier.id} data-testid="supplier-card" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <SupplierSelectableCard key={supplier.id} label={`${supplier.supplierCode} · ${supplier.tradingName ?? supplier.legalName}`} supplierId={supplier.id}>
                     <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="break-words text-base font-bold text-slate-950">{supplier.tradingName ?? supplier.legalName}</p><p className="mt-1 break-words text-xs text-slate-500">{supplier.supplierCode} · {supplier.legalName}</p></div><Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>{supplier.status}</Badge></div>
                     <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 text-sm">
                       <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Accreditation</dt><dd className="mt-1 break-words text-slate-800">{accreditationLabel(supplier.accreditationStatus)}</dd></div>
@@ -517,11 +497,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                       <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Catalog</dt><dd className="mt-1 text-slate-800">{supplier.itemLinkCount} item{supplier.itemLinkCount === 1 ? "" : "s"}</dd></div>
                     </dl>
                     <p className="mt-4 break-words text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p>
-                    <div className="mt-4 grid gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700" href={supplierWorkspaceHref(supplier.id, "catalog")}>View catalog</Link>{supplier.status === "ACTIVE" ? <div className="grid grid-cols-2 gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700" href={supplierActionHref(supplier.id, "accreditation")}>Open controls</Link><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700" href={supplierActionHref(supplier.id, "deactivate")}>Deactivate</Link></div> : <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">Inactive supplier retained as read-only history.</p>}</div>
-                  </article>
+                  </SupplierSelectableCard>
                 ))}
               </div>
-            </>
+            </SupplierRegisterSelection>
           )}
           {supplierData.suppliersPage.totalSuppliers > 0 ? (
             <PaginationBar
@@ -540,13 +519,22 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
           ) : null}
         </section>
         {selectedSupplier ? (
-          <section className="ogfi-data-surface order-1 lg:order-2" data-testid="selected-supplier-workspace">
+          <UrlOwnedTaskSheet
+            key={selectedSupplier.id}
+            cancelLabel="Close supplier"
+            description={`${session.context.companyName} · ${selectedSupplier.supplierCode} · company-scoped supplier master`}
+            draftStorageKey={`supplier-workspace:${session.user.id}:${selectedSupplier.id}`}
+            focusTargetId="supplier-register-heading"
+            returnHref={supplierRegisterHref()}
+            size="workspace"
+            title={selectedSupplier.tradingName ?? selectedSupplier.legalName}
+          >
+          <section id="selected-supplier-workspace" className="ogfi-data-surface" data-testid="selected-supplier-workspace">
             <div className="ogfi-section-header">
               <div>
-                <h2 className="text-lg font-bold text-slate-950">Selected supplier workspace</h2>
+                <h2 className="text-lg font-bold text-slate-950">Supplier overview</h2>
                 <p className="text-sm text-slate-500">{selectedSupplier.tradingName ?? selectedSupplier.legalName} · {selectedSupplier.supplierCode}</p>
               </div>
-              <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 hover:underline" href={supplierRegisterHref()}>Close supplier</Link>
             </div>
             <div className="grid gap-3 border-b border-slate-100 bg-blue-50/40 px-4 py-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
               <div><p className="text-xs font-bold uppercase text-blue-700">Company</p><p className="mt-1 break-words font-semibold text-slate-950">{session.context.companyName}</p></div>
@@ -560,7 +548,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               items={[
                 { label: "Overview", href: supplierWorkspaceHref(selectedSupplier.id, "overview"), active: supplierTab === "overview" },
                 { label: "Catalog", href: supplierWorkspaceHref(selectedSupplier.id, "catalog"), active: supplierTab === "catalog" },
-                { label: "Accreditation", href: supplierWorkspaceHref(selectedSupplier.id, "accreditation"), active: supplierTab === "accreditation" },
+                { label: "Accreditation & lifecycle", href: supplierWorkspaceHref(selectedSupplier.id, "accreditation"), active: supplierTab === "accreditation" },
                 { label: "Audit", href: supplierWorkspaceHref(selectedSupplier.id, "audit"), active: supplierTab === "audit" }
               ]}
             />
@@ -571,7 +559,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <div><p className="text-xs font-bold uppercase text-slate-400">Next action</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.status === "ACTIVE" ? "Review catalog or accreditation controls" : "Retained history; no new sourcing"}</p></div>
                 <div><p className="text-xs font-bold uppercase text-slate-400">Primary contact</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.primaryContact?.name ?? "Not configured"}</p></div>
                 <div><p className="text-xs font-bold uppercase text-slate-400">Payment terms</p><p className="mt-1 break-words text-sm text-slate-700">{supplierData.canViewSupplierConfidential ? selectedSupplier.paymentTerms ?? "Not configured" : "Restricted"}</p></div>
-                <div><p className="text-xs font-bold uppercase text-slate-400">Catalog links</p><p className="mt-1 font-semibold text-slate-900">{"itemLinkCount" in selectedSupplier ? selectedSupplier.itemLinkCount : "Open Catalog"}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Catalog links</p><p className="mt-1 font-semibold text-slate-900">{selectedSupplierItemLinkCount ?? "Open Catalog"}</p></div>
               </div>
             ) : null}
             {supplierTab === "audit" ? (
@@ -581,16 +569,15 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <Link className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 font-semibold text-blue-700 hover:bg-slate-50" href={`/admin?tab=audit&entityType=Supplier&entityId=${selectedSupplier.id}`}>Open Admin Audit</Link>
               </div>
             ) : null}
-            {supplierTab === "accreditation" && selectedSupplier.status === "ACTIVE" ? (
+            {supplierTab === "accreditation" && selectedSupplier.status === "ACTIVE" && canManageSupplier ? (
               <div className="border-t border-slate-100 bg-blue-50/40 px-5 py-4">
                 <div className="mb-3"><h3 className="font-bold text-slate-950">Update supplier accreditation</h3><p className="text-sm text-slate-600">Only the selected supplier is affected.</p></div>
-                <form action={updateSupplierAccreditationAction} className="grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
+                <ShortMutationForm endpoint="/api/suppliers/accreditation" submitLabel="Save accreditation" pendingLabel="Saving accreditation…" className="md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Accreditation status<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option></select></label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Reason<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required /></label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" /></label>
-                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-bold text-white">Save</button>
-                </form>
+                </ShortMutationForm>
                 <Link className="mt-3 inline-flex text-sm font-semibold text-slate-700 hover:underline" href={supplierActionHref(selectedSupplier.id, "deactivate")}>Open supplier deactivation controls</Link>
               </div>
             ) : null}
@@ -601,9 +588,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               </div>
             ) : null}
           </section>
-        ) : null}
-        {selectedSupplierCatalog && selectedSupplier && supplierTab === "catalog" ? (
-          <section className="ogfi-data-surface order-1 lg:order-2" data-testid="supplier-catalog-workspace">
+        {selectedSupplierCatalog && supplierTab === "catalog" ? (
+          <section className="ogfi-data-surface mt-4" data-testid="supplier-catalog-workspace">
             <div className="ogfi-section-header">
               <div>
                 <h2 id="supplier-catalog-heading" className="text-lg font-bold text-slate-950" tabIndex={-1}>
@@ -613,15 +599,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   Full supplier-item maintenance surface with searchable, paged results
                 </p>
               </div>
-              <Link
-                className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                href={supplierRegisterHref()}
-              >
-                Close catalog
-              </Link>
             </div>
 
-            {selectedSupplierAction === "accreditation" && selectedSupplier.status === "ACTIVE" ? (
+            {selectedSupplierAction === "accreditation" && selectedSupplier.status === "ACTIVE" && canManageSupplier ? (
               <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -630,7 +610,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   </div>
                   <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close controls</Link>
                 </div>
-                <form action={updateSupplierAccreditationAction} className="grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
+                <ShortMutationForm endpoint="/api/suppliers/accreditation" submitLabel="Save accreditation" pendingLabel="Saving accreditation…" className="md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Accreditation status
                     <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required>
@@ -643,11 +623,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference
                     <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" placeholder="Supplier file or review note" />
                   </label>
-                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save</button>
-                </form>
+                </ShortMutationForm>
               </div>
             ) : null}
-            {selectedSupplierAction === "deactivate" && selectedSupplier.status === "ACTIVE" ? (
+            {selectedSupplierAction === "deactivate" && selectedSupplier.status === "ACTIVE" && canManageSupplier ? (
               <div className="border-b border-slate-100 bg-amber-50/60 px-5 py-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -656,17 +635,16 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   </div>
                   <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close controls</Link>
                 </div>
-                <form action={deactivateSupplierAction} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <ShortMutationForm endpoint="/api/suppliers/deactivate" submitLabel="Deactivate supplier" pendingLabel="Deactivating supplier…" className="md:grid-cols-[1fr_auto] md:items-end">
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason
                     <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
                   </label>
-                  <button className="min-h-11 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate supplier</button>
-                </form>
+                </ShortMutationForm>
               </div>
             ) : null}
 
-            {selectedLinkAction === "deactivate" ? (
+            {selectedLinkAction === "deactivate" && canManageSupplier ? (
               selectedSupplierItemLink && selectedSupplierItemLink.status === "ACTIVE" ? (
                 <UrlOwnedActionTaskSheet
                   action={deactivateSupplierItemLinkAction}
@@ -716,7 +694,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               )
             ) : null}
 
-            {selectedSupplier.status === "ACTIVE" && !selectedSupplierLinkLookup ? (
+            {selectedSupplier.status === "ACTIVE" && canEditSupplierCatalog && !selectedSupplierLinkLookup ? (
               <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -1011,7 +989,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                           </Badge>
                         </td>
                         <td className="px-5 py-4">
-                          {selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" ? (
+                          {selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" && canManageSupplier ? (
                             <Link
                               data-focus-key={`supplier-link-control-${link.id}`}
                               className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
@@ -1046,7 +1024,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Lead / rank</dt><dd className="mt-1 break-words text-slate-800">{link.leadTimeDays ?? "No"} lead days / Rank {link.preferredRank ?? "not set"}</dd></div>
                     <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Reference price</dt><dd className="mt-1 break-words text-slate-800">{!selectedSupplierCatalog.canViewSupplierConfidential ? "Restricted" : link.latestPrice ? `${formatCurrency(link.latestPrice.unitPrice, link.latestPrice.currencyCode)} · Effective ${link.latestPrice.effectiveFrom}` : "No reference price"}</dd></div>
                   </dl>
-                  <div className="mt-4">{selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" ? <Link data-focus-key={`supplier-link-control-${link.id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700" href={supplierItemLinkActionHref(selectedSupplier.id, link.id)}>Open controls</Link> : <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">{selectedSupplier.status === "ACTIVE" ? "Inactive link retained as read-only history." : "Supplier and catalog links are retained as read-only history."}</p>}</div>
+                  <div className="mt-4">{selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" && canManageSupplier ? <Link data-focus-key={`supplier-link-control-${link.id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700" href={supplierItemLinkActionHref(selectedSupplier.id, link.id)}>Open controls</Link> : <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">{selectedSupplier.status === "ACTIVE" ? "Read-only catalog access." : "Supplier and catalog links are retained as read-only history."}</p>}</div>
                 </article>
               ))}
             </div>
@@ -1092,6 +1070,23 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               </div>
             ) : null}
           </section>
+        ) : null}
+          </UrlOwnedTaskSheet>
+        ) : null}
+        {selectedSupplierId && !selectedSupplier ? (
+          <UrlOwnedTaskSheet
+            key={`supplier-unavailable:${selectedSupplierId}`}
+            cancelLabel="Return to supplier register"
+            description={`${session.context.companyName} · company-scoped supplier master`}
+            focusTargetId="supplier-register-heading"
+            returnHref={supplierRegisterHref()}
+            title="Supplier unavailable"
+          >
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status">
+              <p className="font-bold">The selected supplier is not available in your current company scope.</p>
+              <p className="mt-1">Return to the register and select an available supplier. No supplier details were disclosed.</p>
+            </div>
+          </UrlOwnedTaskSheet>
         ) : null}
       </div>
     </AppShell>

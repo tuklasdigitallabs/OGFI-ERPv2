@@ -7,13 +7,16 @@ export function PendingActionButton({
   pendingLabel,
   confirmation,
   tone = "primary",
+  pendingOverride,
 }: {
   label: string;
   pendingLabel: string;
   confirmation?: string;
   tone?: "primary" | "danger";
+  pendingOverride?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const { pending: formPending } = useFormStatus();
+  const pending = pendingOverride ?? formPending;
   return (
     <button
       className={tone === "danger"

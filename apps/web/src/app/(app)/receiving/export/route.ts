@@ -15,6 +15,7 @@ import {
   buildReceivingReportExportRows,
   resolveReceivingDashboardProfile
 } from "@/server/services/receiving";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -58,9 +59,21 @@ export async function GET(request: Request) {
       new Error("RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG")
     )!;
   }
-  const auditMetadata = profile
-    ? { dashboardProfile: profile, searchQuery: query?.trim() || null }
-    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, supplierId: supplierId ?? null, purchaseOrderId: purchaseOrderId ?? null, receivedByUserId: receivedByUserId ?? null, receivedTo: receivedTo ?? null };
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    ...(profile
+      ? { dashboardProfile: profile, searchApplied: Boolean(query?.trim()) }
+      : {
+          tab,
+          searchApplied: Boolean(ordinaryQuery?.trim()),
+          statusFilterApplied: Boolean(status),
+          dateRangeApplied: Boolean(receivedFrom || receivedTo),
+          supplierFilterApplied: Boolean(supplierId),
+          purchaseOrderFilterApplied: Boolean(purchaseOrderId),
+          receiverFilterApplied: Boolean(receivedByUserId)
+        })
+  };
 
   try {
     await logOperationalExportAudit({
@@ -74,7 +87,8 @@ export async function GET(request: Request) {
       profile ?? undefined,
       profile ? query : ordinaryQuery,
       profile ? "all" : tab,
-      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) }
+      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) },
+      { maxRows: exportPolicy.maxRows }
     );
     await logOperationalExportAudit({
       session,
@@ -95,10 +109,11 @@ export async function GET(request: Request) {
             ? {
                 extra: [
                   ["Dashboard Profile", profile],
-                  ["Search", query?.trim() || "All follow-up records"]
+                  ["Search", query?.trim() || "All follow-up records"],
+                  ["Maximum Rows", exportPolicy.maxRows]
                 ]
               }
-            : {})
+            : { extra: [["Maximum Rows", exportPolicy.maxRows]] })
         })
       }
     );
@@ -107,8 +122,10 @@ export async function GET(request: Request) {
       session,
       reportId: "receiving-reports",
       error,
-      ...(auditMetadata ? { metadata: auditMetadata } : {})
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

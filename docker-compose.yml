@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.web.example
+      target: ${WEB_BUILD_TARGET:-runner}
       args:
         NODE_VERSION: ${NODE_VERSION:-22}
     env_file:

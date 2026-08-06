@@ -40,6 +40,7 @@ type Props = {
   companyName: string;
   returnHref: string;
   updateAction: SelectedItemAction;
+  canEdit: boolean;
 };
 
 const inputClass =
@@ -49,7 +50,8 @@ export function SelectedItemTaskSheet({
   item,
   companyName,
   returnHref,
-  updateAction
+  updateAction,
+  canEdit,
 }: Props) {
   const router = useRouter();
   const formId = useId();
@@ -100,8 +102,8 @@ export function SelectedItemTaskSheet({
         setOpen(nextOpen);
         if (!nextOpen) returnToRegister();
       }}
-      title={item.status === "ACTIVE" ? "Correct Item Name" : "Item details"}
-      description={item.status === "ACTIVE" ? "Apply a non-material item-name correction. Governed classification, UOM, control, and lifecycle changes are read-only here." : `This ${item.status.toLowerCase()} item is retained as read-only history.`}
+      title={item.status === "ACTIVE" && canEdit ? "Correct Item Name" : "Item details"}
+      description={item.status === "ACTIVE" && canEdit ? "Apply a non-material item-name correction. Governed classification, UOM, control, and lifecycle changes are read-only here." : item.status === "ACTIVE" ? "You have read-only access to this item. Governed classification, UOM, control, and lifecycle changes remain read-only." : `This ${item.status.toLowerCase()} item is retained as read-only history.`}
       size="workspace"
       dirty={dirty}
       onDirtyChange={setDirty}
@@ -118,7 +120,7 @@ export function SelectedItemTaskSheet({
       }
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {item.status !== "ACTIVE" ? (
+          {item.status !== "ACTIVE" || !canEdit ? (
             <button className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700" onClick={discardAndReturn} type="button">Close Item Details</button>
           ) : state.status === "success" ? (
             <button className="min-h-11 rounded-md bg-blue-600 px-5 text-sm font-semibold text-white" onClick={discardAndReturn} type="button">Return to Item Register</button>
@@ -133,11 +135,11 @@ export function SelectedItemTaskSheet({
         </div>
       }
     >
-      {item.status !== "ACTIVE" ? (
+      {item.status !== "ACTIVE" || !canEdit ? (
         <div className="grid gap-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
             <h3 className="font-bold text-slate-950">Read-only {item.status.toLowerCase()} item</h3>
-            <p className="mt-2">This item is not active, so corrections and lifecycle actions are unavailable. It remains visible to preserve historical transaction and audit references. Reactivation is not available from this workspace.</p>
+            <p className="mt-2">{item.status !== "ACTIVE" ? "This item is not active, so corrections and lifecycle actions are unavailable. It remains visible to preserve historical transaction and audit references. Reactivation is not available from this workspace." : "Your current role can view this item but cannot make master-data corrections. Contact a user with Edit item master access for a controlled correction."}</p>
           </div>
           <p className="text-sm text-slate-600">Admin Audit is the authoritative company-scoped history. Its bounded results and sensitive-field redaction rules still apply.</p>
           <a className="inline-flex min-h-11 w-fit items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-blue-700" href={`/admin?tab=audit&entityType=Item&entityId=${item.id}`}>View item audit history</a>

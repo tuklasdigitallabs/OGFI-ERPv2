@@ -12,7 +12,8 @@ const sessionCookieNames = [
 
 async function signOut(request: NextRequest) {
   await signOutCurrentSession();
-  const response = NextResponse.redirect(new URL("/sign-in", request.url));
+  const appUrl = process.env.APP_URL?.replace(/\/$/, "") ?? new URL(request.url).origin;
+  const response = NextResponse.redirect(new URL("/sign-in", `${appUrl}/`), 303);
 
   for (const cookieName of sessionCookieNames) {
     response.cookies.delete(cookieName);

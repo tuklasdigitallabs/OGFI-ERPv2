@@ -30,6 +30,8 @@ type TaskSheetProps = {
   pending?: boolean;
   /** Lets callers explicitly mark a form dirty when changes do not emit input or change events. */
   dirty?: boolean;
+  /** Allows a controlled form boundary to own submit locking. */
+  captureSubmit?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   /** Allows controlled forms to own dirty tracking without capture-triggered caret rerenders. */
   captureDirty?: boolean;
@@ -55,6 +57,7 @@ export function TaskSheet({
   onOpenChange,
   pending = false,
   dirty,
+  captureSubmit = true,
   onDirtyChange,
   captureDirty = true,
   className,
@@ -200,15 +203,19 @@ export function TaskSheet({
             )}
             role="dialog"
             tabIndex={-1}
-            onSubmitCapture={(event) => {
-              if (isPending) {
-                event.preventDefault();
-                return;
-              }
-              setIsSubmitting(true);
-              setIsDirty(false);
-              onDirtyChange?.(false);
-            }}
+            onSubmitCapture={
+              captureSubmit
+                ? (event) => {
+                    if (isPending) {
+                      event.preventDefault();
+                      return;
+                    }
+                    setIsSubmitting(true);
+                    setIsDirty(false);
+                    onDirtyChange?.(false);
+                  }
+                : undefined
+            }
           >
             <header className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 sm:px-6 sm:py-5">
               <div className="min-w-0">

@@ -32,6 +32,13 @@ const ids = {
   evidenceLegalHoldSetPermissionId: "00000000-0000-4000-8000-000000000995",
   evidenceRetentionViewPermissionId: "00000000-0000-4000-8000-000000000996",
   supplierConfidentialViewPermissionId: "00000000-0000-4000-8000-000000000994",
+  supplierMasterViewPermissionId: "00000000-0000-4000-8000-000000000986",
+  supplierMasterCreatePermissionId: "00000000-0000-4000-8000-000000000987",
+  supplierMasterEditPermissionId: "00000000-0000-4000-8000-000000000988",
+  supplierMasterManagePermissionId: "00000000-0000-4000-8000-000000000989",
+  itemMasterViewPermissionId: "00000000-0000-4000-8000-000000000984",
+  itemMasterCreatePermissionId: "00000000-0000-4000-8000-000000000985",
+  itemMasterEditPermissionId: "00000000-0000-4000-8000-000000000983",
   secondaryAdminUserId: "00000000-0000-4000-8000-000000000901",
   superUserId: "00000000-0000-4000-8000-000000000991",
   superRoleId: "00000000-0000-4000-8000-000000000992",
@@ -78,6 +85,7 @@ const ids = {
   stockCountSubmitPermissionId: "00000000-0000-4000-8000-000000000056",
   stockCountReviewPermissionId: "00000000-0000-4000-8000-000000000057",
   stockCountCancelPermissionId: "00000000-0000-4000-8000-000000000058",
+  stockCountRecoveryPermissionId: "00000000-0000-4000-8000-000000000997",
   purchaseOrderCancelPermissionId: "00000000-0000-4000-8000-000000000059",
   wastageViewPermissionId: "00000000-0000-4000-8000-000000000060",
   wastageCreatePermissionId: "00000000-0000-4000-8000-000000000061",
@@ -103,6 +111,12 @@ const ids = {
   stockAdjustmentApprovePermissionId: "00000000-0000-4000-8000-000000000078",
   stockAdjustmentPostPermissionId: "00000000-0000-4000-8000-000000000079",
   stockAdjustmentReversePermissionId: "00000000-0000-4000-8000-000000000080",
+  inventoryPilotConfigurationViewPermissionId:
+    "00000000-0000-4000-8000-000000000973",
+  inventoryPilotConfigurationDraftPermissionId:
+    "00000000-0000-4000-8000-000000000974",
+  inventoryPilotConfigurationSealPermissionId:
+    "00000000-0000-4000-8000-000000000975",
   stockAdjustmentApprovalRuleId: "00000000-0000-4000-8000-000000000081",
   stockAdjustmentApprovalRuleStepId: "00000000-0000-4000-8000-000000000082",
   openingInventoryViewPermissionId: "00000000-0000-4000-8000-000000000178",
@@ -4195,6 +4209,8 @@ async function seedOperationalReasonCodes() {
       code: "OPENING_BALANCE",
       label: "Opening balance cutover",
       appliesTo: "OPENING_BALANCE",
+      wastageTypes: [],
+      inventoryClasses: [],
       requiresEvidence: true,
       sortOrder: 10,
       notes:
@@ -4205,6 +4221,8 @@ async function seedOperationalReasonCodes() {
       code: "COUNT_VARIANCE",
       label: "Approved count variance",
       appliesTo: "INCREASE,DECREASE",
+      wastageTypes: [],
+      inventoryClasses: [],
       requiresEvidence: true,
       sortOrder: 20,
       notes: "Difference confirmed during a stock count review.",
@@ -4214,6 +4232,8 @@ async function seedOperationalReasonCodes() {
       code: "SYSTEM_CORRECTION",
       label: "System correction",
       appliesTo: "INCREASE,DECREASE",
+      wastageTypes: [],
+      inventoryClasses: [],
       requiresEvidence: true,
       sortOrder: 30,
       notes: "Correction for documented encoding or migration issue.",
@@ -4223,6 +4243,8 @@ async function seedOperationalReasonCodes() {
       code: "SUPPLIER_CREDIT_RETURN",
       label: "Supplier credit or return correction",
       appliesTo: "DECREASE",
+      wastageTypes: [],
+      inventoryClasses: [],
       requiresEvidence: true,
       sortOrder: 40,
       notes: "Inventory decrease tied to approved supplier return evidence.",
@@ -4232,6 +4254,8 @@ async function seedOperationalReasonCodes() {
       code: "SPOILAGE_EXPIRY",
       label: "Spoilage or expired item",
       appliesTo: "FOOD",
+      wastageTypes: ["SPOILAGE_EXPIRY"],
+      inventoryClasses: ["FOOD"],
       requiresEvidence: true,
       sortOrder: 10,
       notes: "Expired, spoiled, or quality-failed food item.",
@@ -4241,6 +4265,8 @@ async function seedOperationalReasonCodes() {
       code: "PREP_TRIM_LOSS",
       label: "Preparation trim loss",
       appliesTo: "FOOD",
+      wastageTypes: ["PREPARATION_LOSS"],
+      inventoryClasses: ["FOOD"],
       requiresEvidence: false,
       sortOrder: 20,
       notes: "Normal trim loss from prep with quantity control.",
@@ -4250,6 +4276,8 @@ async function seedOperationalReasonCodes() {
       code: "KITCHEN_ERROR",
       label: "Kitchen preparation error",
       appliesTo: "FOOD",
+      wastageTypes: ["PREPARATION_LOSS"],
+      inventoryClasses: ["FOOD"],
       requiresEvidence: true,
       sortOrder: 30,
       notes: "Batch or station error requiring management review.",
@@ -4259,9 +4287,99 @@ async function seedOperationalReasonCodes() {
       code: "DAMAGED_PACKAGING",
       label: "Damaged packaging or storage handling",
       appliesTo: "FOOD,PACKAGING",
+      wastageTypes: ["DAMAGE"],
+      inventoryClasses: ["FOOD", "PACKAGING"],
       requiresEvidence: true,
       sortOrder: 40,
       notes: "Damaged in storage, handling, or internal movement.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "RECEIVING_QUALITY_REJECT",
+      label: "Receiving quality rejection",
+      appliesTo: null,
+      wastageTypes: ["RECEIVING_QUALITY"],
+      inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
+      requiresEvidence: true,
+      sortOrder: 50,
+      notes: "Rejected at receiving because of quality, temperature, damage, or specification failure.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "COLD_CHAIN_BREAK",
+      label: "Cold-chain break",
+      appliesTo: null,
+      wastageTypes: ["SPOILAGE_EXPIRY"],
+      inventoryClasses: ["FOOD"],
+      requiresEvidence: true,
+      sortOrder: 60,
+      notes: "Temperature-control failure requiring retained evidence and management review.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "CONTAMINATION",
+      label: "Contamination or food-safety disposal",
+      appliesTo: null,
+      wastageTypes: ["SPOILAGE_EXPIRY"],
+      inventoryClasses: ["FOOD"],
+      requiresEvidence: true,
+      sortOrder: 70,
+      notes: "Food disposed because it may be unsafe for service or consumption.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "STORAGE_HANDLING_DAMAGE",
+      label: "Storage or handling damage",
+      appliesTo: null,
+      wastageTypes: ["DAMAGE"],
+      inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
+      requiresEvidence: true,
+      sortOrder: 80,
+      notes: "Damage during storage, internal handling, or movement.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "CUSTOMER_SERVICE_DISPOSAL",
+      label: "Customer-service disposal",
+      appliesTo: null,
+      wastageTypes: ["CUSTOMER_SERVICE"],
+      inventoryClasses: ["FOOD", "PACKAGING"],
+      requiresEvidence: true,
+      sortOrder: 90,
+      notes: "Documented service-recovery disposal; does not replace manager approval where policy requires it.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "AUTHORIZED_TASTING",
+      label: "Authorized tasting or quality check",
+      appliesTo: null,
+      wastageTypes: ["AUTHORIZED_CONSUMPTION"],
+      inventoryClasses: ["FOOD"],
+      requiresEvidence: false,
+      sortOrder: 100,
+      notes: "Controlled tasting, quality verification, or authorized consumption.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "OPERATIONAL_SPILL",
+      label: "Operational spill or accidental loss",
+      appliesTo: null,
+      wastageTypes: ["OPERATIONAL"],
+      inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
+      requiresEvidence: true,
+      sortOrder: 110,
+      notes: "Accidental operational loss requiring a documented incident reference.",
+    },
+    {
+      workflow: "WASTAGE",
+      code: "OTHER_APPROVED_LOSS",
+      label: "Other approved loss",
+      appliesTo: null,
+      wastageTypes: ["OTHER"],
+      inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
+      requiresEvidence: true,
+      sortOrder: 120,
+      notes: "Exception category requiring evidence and the applicable approval route.",
     },
   ];
 
@@ -4282,6 +4400,8 @@ async function seedOperationalReasonCodes() {
       update: {
         label: reason.label,
         appliesTo: reason.appliesTo,
+        wastageTypes: reason.wastageTypes,
+        inventoryClasses: reason.inventoryClasses,
         requiresEvidence: reason.requiresEvidence,
         sortOrder: reason.sortOrder,
         notes: reason.notes,
@@ -7520,6 +7640,23 @@ async function main() {
     update: {},
   });
 
+  for (const permission of [
+    [ids.supplierMasterViewPermissionId, "master_data.supplier.view", "supplier.view", "View company-scoped suppliers and non-confidential catalog links."],
+    [ids.supplierMasterCreatePermissionId, "master_data.supplier.create", "supplier.create", "Create company-scoped supplier master records with an audit reason."],
+    [ids.supplierMasterEditPermissionId, "master_data.supplier.edit", "supplier.edit", "Maintain non-confidential supplier-item catalog links with an audit reason."],
+    [ids.supplierMasterManagePermissionId, "master_data.supplier.manage", "supplier.manage", "Manage supplier accreditation and lifecycle with an audit reason."],
+    [ids.itemMasterViewPermissionId, "master_data.item.view", "item.view", "View company-scoped items, categories, UOMs, and conversions."],
+    [ids.itemMasterCreatePermissionId, "master_data.item.create", "item.create", "Create company-scoped item master records with an audit reason."],
+    [ids.itemMasterEditPermissionId, "master_data.item.edit", "item.edit", "Edit permitted company-scoped item master records with an audit reason."],
+  ] as const) {
+    const [id, code, action, description] = permission;
+    await prisma.permission.upsert({
+      where: { code },
+      create: { id, code, module: "master_data", action, description },
+      update: { module: "master_data", action, description },
+    });
+  }
+
   await prisma.permission.upsert({
     where: { code: "core.tenant_role_administer" },
     create: {
@@ -7900,6 +8037,11 @@ async function main() {
       code: "inventory.stock_count.cancel",
       action: "stock_count.cancel",
     },
+    {
+      id: ids.stockCountRecoveryPermissionId,
+      code: "inventory.stock_count.recovery",
+      action: "stock_count.recovery",
+    },
   ];
   for (const permission of stockCountPermissions) {
     await prisma.permission.upsert({
@@ -8016,6 +8158,44 @@ async function main() {
         action: permission.action,
       },
       update: {},
+    });
+  }
+
+  const inventoryPilotConfigurationPermissions = [
+    {
+      id: ids.inventoryPilotConfigurationViewPermissionId,
+      code: "inventory.pilot_configuration.view",
+      action: "pilot_configuration.view",
+      description: "View company-scoped inventory pilot configuration and readiness evidence.",
+    },
+    {
+      id: ids.inventoryPilotConfigurationDraftPermissionId,
+      code: "inventory.pilot_configuration.draft",
+      action: "pilot_configuration.draft",
+      description: "Create and maintain company-scoped inventory pilot configuration drafts.",
+    },
+    {
+      id: ids.inventoryPilotConfigurationSealPermissionId,
+      code: "inventory.pilot_configuration.seal",
+      action: "pilot_configuration.seal",
+      description: "Seal a ready inventory pilot configuration revision under segregation and MFA controls.",
+    },
+  ];
+  for (const permission of inventoryPilotConfigurationPermissions) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      create: {
+        id: permission.id,
+        code: permission.code,
+        module: "inventory",
+        action: permission.action,
+        description: permission.description,
+      },
+      update: {
+        module: "inventory",
+        action: permission.action,
+        description: permission.description,
+      },
     });
   }
 
@@ -9039,6 +9219,18 @@ async function main() {
       {
         roleId: ids.adminRoleId,
         permissionId: ids.stockAdjustmentCancelPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.inventoryPilotConfigurationViewPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.inventoryPilotConfigurationDraftPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.inventoryPilotConfigurationSealPermissionId,
       },
       {
         roleId: ids.adminRoleId,

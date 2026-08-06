@@ -16,6 +16,16 @@ if (!databaseUrl) {
 
 const psql = requirePostgresTool("psql", "the pilot readiness check");
 
+const readinessProfile = process.env.PILOT_READINESS_PROFILE ?? "combined";
+const allowedReadinessProfiles = new Set(["combined", "inventory_control"]);
+if (!allowedReadinessProfiles.has(readinessProfile)) {
+  console.error(
+    `PILOT_READINESS_PROFILE must be one of: ${[...allowedReadinessProfiles].join(", ")}.`,
+  );
+  process.exit(2);
+}
+const inventoryControlProfile = readinessProfile === "inventory_control";
+
 const timestamp = new Date()
   .toISOString()
   .replace(/[-:]/g, "")
@@ -118,6 +128,9 @@ const sensitivePermissionSql = [
 ]
   .map((code) => `'${code}'`)
   .join(",");
+const sensitivePermissionPredicate = inventoryControlProfile
+  ? `(p."code" like 'core.%' or p."code" like 'purchasing.%' or p."code" like 'inventory.%')`
+  : `(p."code" in (${sensitivePermissionSql}) or p."code" like '%.approve' or p."code" like '%.post' or p."code" like '%.reverse' or p."code" like '%.review' or p."code" like '%.correct')`;
 
 const permissionCodes = [
   "purchasing.purchase_request.create",
@@ -180,6 +193,61 @@ const permissionCodes = [
   "projects.template.configure",
 ];
 
+const profilePermissionCodes = inventoryControlProfile
+  ? permissionCodes.filter((code) => !code.startsWith("projects."))
+  : permissionCodes;
+
+const projectTrackerChecks = inventoryControlProfile
+  ? [deferred("Phase 1.5 Projects & Implementation Tracker readiness")]
+  : [
+      section("Project tracker readiness"),
+      min(
+        "Published project templates",
+        thresholds.projectTemplates,
+        `select count(*) from "ProjectTemplate" where "status" = 'PUBLISHED';`,
+      ),
+      min(
+        "Active projects",
+        thresholds.projects,
+        `select count(*) from "Project" where "archivedAt" is null and "status" = 'ACTIVE';`,
+      ),
+      min(
+        "Restricted projects for visibility denial UAT",
+        thresholds.restrictedProjects,
+        `select count(*) from "Project" where "archivedAt" is null and "isRestricted" = true;`,
+      ),
+      min(
+        "Active project members",
+        thresholds.projectMembers,
+        `select count(*) from "ProjectMember" where "status" = 'ACTIVE' and "removedAt" is null;`,
+      ),
+      min(
+        "Open project tasks",
+        thresholds.projectTasks,
+        `select count(*) from "ProjectTask" where "archivedAt" is null and "status" not in ('COMPLETED','CANCELLED');`,
+      ),
+      min(
+        "Open project blockers",
+        thresholds.projectBlockers,
+        `select count(*) from "ProjectBlocker" where "status" = 'OPEN';`,
+      ),
+      min(
+        "Project milestones",
+        thresholds.projectMilestones,
+        `select count(*) from "ProjectMilestone" where "archivedAt" is null;`,
+      ),
+      min(
+        "Open project risks",
+        thresholds.projectRisks,
+        `select count(*) from "ProjectRisk" where "archivedAt" is null and "status" = 'OPEN';`,
+      ),
+      min(
+        "Active project source-record links",
+        thresholds.projectRecordLinks,
+        `select count(*) from "ProjectRecordLink" where "archivedAt" is null;`,
+      ),
+    ];
+
 const checks = [
   section("Scope and organization"),
   min(
@@ -224,9 +292,9 @@ const checks = [
     `select count(*) from "UserScopeAssignment" where "status" = 'ACTIVE' and ("endsAt" is null or "endsAt" > now());`,
   ),
   equal(
-    "Phase I and Phase 1.5 permission codes",
-    permissionCodes.length,
-    `select count(*) from "Permission" where "code" in (${permissionCodes
+    inventoryControlProfile ? "Phase I permission codes" : "Phase I and Phase 1.5 permission codes",
+    profilePermissionCodes.length,
+    `select count(*) from "Permission" where "code" in (${profilePermissionCodes
       .map((code) => `'${code}'`)
       .join(",")});`,
   ),
@@ -283,52 +351,7 @@ const checks = [
     0,
     `select count(*) from "InventoryBalance" b left join "Item" i on i."id" = b."itemId" where i."id" is null or i."status" <> 'ACTIVE';`,
   ),
-  section("Project tracker readiness"),
-  min(
-    "Published project templates",
-    thresholds.projectTemplates,
-    `select count(*) from "ProjectTemplate" where "status" = 'PUBLISHED';`,
-  ),
-  min(
-    "Active projects",
-    thresholds.projects,
-    `select count(*) from "Project" where "archivedAt" is null and "status" = 'ACTIVE';`,
-  ),
-  min(
-    "Restricted projects for visibility denial UAT",
-    thresholds.restrictedProjects,
-    `select count(*) from "Project" where "archivedAt" is null and "isRestricted" = true;`,
-  ),
-  min(
-    "Active project members",
-    thresholds.projectMembers,
-    `select count(*) from "ProjectMember" where "status" = 'ACTIVE' and "removedAt" is null;`,
-  ),
-  min(
-    "Open project tasks",
-    thresholds.projectTasks,
-    `select count(*) from "ProjectTask" where "archivedAt" is null and "status" not in ('COMPLETED','CANCELLED');`,
-  ),
-  min(
-    "Open project blockers",
-    thresholds.projectBlockers,
-    `select count(*) from "ProjectBlocker" where "status" = 'OPEN';`,
-  ),
-  min(
-    "Project milestones",
-    thresholds.projectMilestones,
-    `select count(*) from "ProjectMilestone" where "archivedAt" is null;`,
-  ),
-  min(
-    "Open project risks",
-    thresholds.projectRisks,
-    `select count(*) from "ProjectRisk" where "archivedAt" is null and "status" = 'OPEN';`,
-  ),
-  min(
-    "Active project source-record links",
-    thresholds.projectRecordLinks,
-    `select count(*) from "ProjectRecordLink" where "archivedAt" is null;`,
-  ),
+  ...projectTrackerChecks,
   section("DEC-0036 release readiness registers"),
   equal(
     "UAT evidence register table",
@@ -421,7 +444,7 @@ const checks = [
         equal(
           "Privileged users missing verified MFA evidence",
           0,
-          `with privileged_users as (select distinct u."id" as "userId", case when usa."scopeType" = 'COMPANY' then usa."scopeId" else l."companyId" end as "companyId" from "User" u join "UserRoleAssignment" ura on ura."userId" = u."id" and ura."status" = 'ACTIVE' and ura."startsAt" <= now() and (ura."endsAt" is null or ura."endsAt" > now()) join "RolePermission" rp on rp."roleId" = ura."roleId" join "Permission" p on p."id" = rp."permissionId" join "UserScopeAssignment" usa on usa."userId" = u."id" and usa."status" = 'ACTIVE' and usa."startsAt" <= now() and (usa."endsAt" is null or usa."endsAt" > now()) left join "Location" l on usa."scopeType" = 'LOCATION' and l."id" = usa."scopeId" and l."status" = 'ACTIVE' where u."status" = 'ACTIVE' and (usa."scopeType" = 'COMPANY' or (usa."scopeType" = 'LOCATION' and l."id" is not null)) and (p."code" in (${sensitivePermissionSql}) or p."code" like '%.approve' or p."code" like '%.post' or p."code" like '%.reverse' or p."code" like '%.review' or p."code" like '%.correct')) select count(*) from privileged_users pu where pu."companyId" is not null and not exists (select 1 from (select distinct on ("targetUserId", "companyId") "targetUserId", "companyId", "status" from "PrivilegedMfaEnrollment" order by "targetUserId", "companyId", "createdAt" desc) latest where latest."targetUserId" = pu."userId" and latest."companyId" = pu."companyId" and latest."status" = 'VERIFIED');`,
+          `with privileged_users as (select distinct u."id" as "userId", case when usa."scopeType" = 'COMPANY' then usa."scopeId" else l."companyId" end as "companyId" from "User" u join "UserRoleAssignment" ura on ura."userId" = u."id" and ura."status" = 'ACTIVE' and ura."startsAt" <= now() and (ura."endsAt" is null or ura."endsAt" > now()) join "RolePermission" rp on rp."roleId" = ura."roleId" join "Permission" p on p."id" = rp."permissionId" join "UserScopeAssignment" usa on usa."userId" = u."id" and usa."status" = 'ACTIVE' and usa."startsAt" <= now() and (usa."endsAt" is null or usa."endsAt" > now()) left join "Location" l on usa."scopeType" = 'LOCATION' and l."id" = usa."scopeId" and l."status" = 'ACTIVE' where u."status" = 'ACTIVE' and (usa."scopeType" = 'COMPANY' or (usa."scopeType" = 'LOCATION' and l."id" is not null)) and ${sensitivePermissionPredicate}) select count(*) from privileged_users pu where pu."companyId" is not null and not exists (select 1 from (select distinct on ("targetUserId", "companyId") "targetUserId", "companyId", "status" from "PrivilegedMfaEnrollment" order by "targetUserId", "companyId", "createdAt" desc) latest where latest."targetUserId" = pu."userId" and latest."companyId" = pu."companyId" and latest."status" = 'VERIFIED');`,
         ),
         equal(
           "Pending provider session invalidations",
@@ -459,6 +482,9 @@ writeFileSync(
     "OGFI ERP Phase I / Phase 1.5 pilot readiness check",
     `Generated UTC: ${timestamp}`,
     `Evidence run ID: ${runId}`,
+    `Readiness profile: ${readinessProfile}`,
+    `Included modules: ${inventoryControlProfile ? "Inventory Control Pilot / applicable Phase I controls" : "Phase I and Phase 1.5 combined assessment"}`,
+    `Deferred modules: ${inventoryControlProfile ? "Phase 1.5 Projects & Implementation Tracker (no pilot credit)" : "none"}`,
     `Database URL fingerprint: ${databaseUrlFingerprint(databaseUrl)}`,
     `Threshold snapshot: ${thresholdSnapshot(thresholds)}`,
     `Evidence file: ${outputFile}`,
@@ -471,6 +497,10 @@ let failures = 0;
 for (const check of checks) {
   if (check.type === "section") {
     write(`\n${check.label}`);
+    continue;
+  }
+  if (check.type === "deferred") {
+    write(`DEFERRED | ${check.label}`);
     continue;
   }
 
@@ -551,6 +581,10 @@ function min(label, minimum, sql) {
 
 function equal(label, expected, sql) {
   return { type: "equal", label, expected, sql };
+}
+
+function deferred(label) {
+  return { type: "deferred", label };
 }
 
 function queryCount(sql) {

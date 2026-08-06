@@ -3,6 +3,13 @@ import type { SessionContext } from "./context";
 
 export const permissions = {
   coreAdminister: "core.administer",
+  supplierMasterView: "master_data.supplier.view",
+  supplierMasterCreate: "master_data.supplier.create",
+  supplierMasterEdit: "master_data.supplier.edit",
+  supplierMasterManage: "master_data.supplier.manage",
+  itemMasterView: "master_data.item.view",
+  itemMasterCreate: "master_data.item.create",
+  itemMasterEdit: "master_data.item.edit",
   tenantRoleAdminister: "core.tenant_role_administer",
   evidenceLegalHoldSet: "evidence.legal_hold.set",
   evidenceRetentionView: "evidence.retention.view",
@@ -37,6 +44,7 @@ export const permissions = {
   stockCountSubmit: "inventory.stock_count.submit",
   stockCountReview: "inventory.stock_count.review",
   stockCountCancel: "inventory.stock_count.cancel",
+  stockCountRecovery: "inventory.stock_count.recovery",
   wastageView: "inventory.wastage.view",
   wastageCreate: "inventory.wastage.create",
   wastageSubmit: "inventory.wastage.submit",
@@ -52,6 +60,9 @@ export const permissions = {
   stockAdjustmentPost: "inventory.stock_adjustment.post",
   stockAdjustmentReverse: "inventory.stock_adjustment.reverse",
   stockAdjustmentCancel: "inventory.stock_adjustment.cancel",
+  inventoryPilotConfigurationView: "inventory.pilot_configuration.view",
+  inventoryPilotConfigurationDraft: "inventory.pilot_configuration.draft",
+  inventoryPilotConfigurationSeal: "inventory.pilot_configuration.seal",
   openingInventoryView: "inventory.opening_inventory.view",
   openingInventoryPrepare: "inventory.opening_inventory.prepare",
   openingInventorySubmit: "inventory.opening_inventory.submit",
@@ -251,7 +262,8 @@ export function canUseStockCounts(permissionCodes: string[]) {
     permissionCodes.includes(permissions.stockCountEnter) ||
     permissionCodes.includes(permissions.stockCountSubmit) ||
     permissionCodes.includes(permissions.stockCountReview) ||
-    permissionCodes.includes(permissions.stockCountCancel)
+    permissionCodes.includes(permissions.stockCountCancel) ||
+    permissionCodes.includes(permissions.stockCountRecovery)
   );
 }
 

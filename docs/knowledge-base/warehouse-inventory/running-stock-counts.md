@@ -9,7 +9,7 @@
 
 Use this article to schedule, start, enter, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; the detail screen labels the current immutable attempt number. When adjustment context is shown to an authorized reviewer, it follows the selected current attempt; an older recount adjustment is not presented as current. Reviewed count variances do not directly adjust stock balances. Count Variance adjustment generation is currently disabled while immutable recovery and adjustment-lineage gates are completed.
 
-If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. The recovery workflow is not yet enabled.
+If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. A protected recount request is currently unavailable: its controlled-evidence policy/adapter, exact approval cohort, MFA, segregation, and UAT gates are not active. Never use a free-text evidence reference as a substitute.
 
 If a detail, list, or export action reports that count history is unavailable or inconsistent, stop and contact an administrator. The system intentionally does not expose a potentially divergent count until its immutable attempt and legacy header/lifecycle and line history reconcile.
 
@@ -61,7 +61,7 @@ If a future authorized release has activated the pilot count-review route and th
 - Approval or cancellation of a count does not post inventory, change a balance, or create a Stock Adjustment. A later variance correction remains a separate controlled workflow.
 - A release emergency disable can deny new pilot admissions. It cannot downgrade an already admitted count to an uncontrolled direct-review path or remove its approval controls.
 - Access to a count or dashboard does not authorize review, approval, adjustment posting, or inventory movement. The source workflow checks that authority again.
-- Recount history and variance activation remain controlled release work. Do not use a reviewer view as evidence that stock has been corrected.
+- Recount history is append-only and reviewer-only; a successor never overwrites the reviewed attempt. Recount recovery and variance activation remain controlled release work. Do not use a reviewer view as evidence that stock has been corrected. If recovery is unavailable, preserve the count record and escalate through the approved supervisor/incident process rather than changing stock outside the ERP workflow.
 
 ## Related articles
 

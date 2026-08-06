@@ -12,6 +12,7 @@ import {
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
+import { assertApprovalReviewQuotationRequestMutable } from "./approvalReviewAggregateFence";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 
@@ -246,7 +247,7 @@ export async function listQuoteOptions(session: SessionContext) {
   };
 }
 
-type QuoteRequestPageOptions = { page?: number; pageSize?: number; query?: string; fromDate?: string; toDate?: string };
+type QuoteRequestPageOptions = { page?: number; pageSize?: number; maxRows?: number; query?: string; fromDate?: string; toDate?: string };
 
 const quoteRequestPageWhere = (session: SessionContext, options: Pick<QuoteRequestPageOptions, "query" | "fromDate" | "toDate"> = {}) => ({
   tenantId: session.context.tenantId,
@@ -270,12 +271,19 @@ export async function listQuoteRequests(
   await requirePermission(session, permissions.quoteManage);
 
   const hasPaging = options.page !== undefined;
+  if (options.maxRows !== undefined && (!Number.isInteger(options.maxRows) || options.maxRows < 1 || options.maxRows > 100_000)) {
+    throw new Error("SUPPLIER_QUOTE_EXPORT_MAX_ROWS_INVALID");
+  }
   const pageSize = Math.min(Math.max(options.pageSize ?? 25, 1), 100);
   const page = Math.max(options.page ?? 1, 1);
 
   const requests = await prisma.purchaseRequest.findMany({
     where: quoteRequestPageWhere(session, options),
-    ...(hasPaging ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+    ...(hasPaging
+      ? { skip: (page - 1) * pageSize, take: pageSize }
+      : options.maxRows !== undefined
+        ? { take: options.maxRows + 1 }
+        : {}),
     include: {
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -345,7 +353,7 @@ export async function listQuoteRequests(
     : [];
   const commercialByQuoteId = new Map(commercialRows.map((row) => [row.id, row]));
 
-  return requests.map((request) => {
+  const mappedRequests = requests.map((request) => {
     const line = request.lines[0];
     const quotationRequest = request.quotationRequests[0] ?? null;
     const quotes = request.quotationRequests.flatMap((quotationRequest) =>
@@ -460,6 +468,10 @@ export async function listQuoteRequests(
         : null
     };
   });
+  if (options.maxRows !== undefined && mappedRequests.length > options.maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
+  return mappedRequests;
 }
 
 export async function listQuoteRequestsPage(
@@ -645,6 +657,12 @@ export async function createSupplierQuote(formData: FormData) {
       }
       return existingQuote.id;
     }
+
+    await assertApprovalReviewQuotationRequestMutable(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      quotationRequestId: quotationRequest.id,
+    });
 
     const quoteId = randomUUID();
     const quoteRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`

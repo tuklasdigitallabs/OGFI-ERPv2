@@ -4,7 +4,7 @@
 
 **Applies to:** New local identities and recovery of existing local accounts
 
-**Last verified against:** bounded Recovery queue, selected review actions, 30-minute single-use activation, controlled recovery, session revocation, optional MFA reset, and audit events
+**Last verified against:** bounded Recovery queue, selected review actions, 30-minute single-use activation, controlled recovery, non-privileged manual temporary-password UAT fallback, session revocation, optional MFA reset, and audit events
 
 ## Purpose
 
@@ -18,6 +18,7 @@ The deployment-only first-administrator bootstrap is not an account-recovery too
 - Fresh runtime MFA assurance within the current 15-minute step-up window when the application requests it.
 - For recovery, a verified identity-recovery reason, an evidence reference, and a different eligible administrator to review the request.
 - The user's current account email address must be an approved, verified delivery address. Production email delivery must be configured and healthy.
+- The SMTP-free manual fallback is local/test-data UAT only and is unavailable for administrators, approvers, sensitive roles, or high-risk scopes.
 
 ## Navigation Path
 
@@ -43,6 +44,18 @@ The user opens the link, creates and confirms a password that meets the displaye
 6. The reviewer enters an independent review reason and selects `Approve and send link` or `Reject`. Approved and rejected requests remain visible as read-only history.
 7. If approved, the system sends the link directly to the target user's account email. If delivery fails, an MFA-assured administrator can retry it from `Activation delivery attention` before expiry.
 
+## Issue A Manual Temporary Password For Local UAT
+
+Use this only for an active non-privileged test account when SMTP is intentionally unavailable.
+
+1. Open `Admin` → `Authentication` and select the manual temporary-password control.
+2. Select an in-scope user who is not an administrator, approver, sensitive-role holder, or high-risk location manager.
+3. Complete the administrator's fresh MFA step-up and issue the credential.
+4. Give the displayed temporary password to the verified test user through an approved private channel. It is shown only for this action and is never written to audit data.
+5. The user signs in within 30 minutes and is redirected to `Set your password`. No normal ERP route is available until the new password is saved.
+
+The temporary password is single-use. Issuing another one invalidates prior sessions and the prior temporary credential. This fallback does not replace controlled recovery for privileged accounts and does not authorize production activation.
+
 ## Expected Result
 
 - A new identity receives a single-use activation link by account email that expires after 30 minutes.
@@ -59,6 +72,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 - The requesting administrator cannot review the same recovery request, and the target user cannot request or review their own recovery.
 - Activation links are secrets. They are not shown to administrators and must not be copied into tickets, public chat, screenshots, or the MFA evidence register.
 - A failed delivery does not expose the link. Correct the approved SMTP transport or account email and use the controlled retry action before expiry.
+- The SMTP-free temporary-password fallback is never used for privileged, approver, sensitive-role, or high-risk-scope accounts; use the MFA-assured controlled recovery path instead.
 - Issuing a new link replaces prior active activation links. Each link is single-use and expires after 30 minutes.
 - Recovery records the requester, reviewer, reasons, evidence reference, decision, timestamps, session invalidation, and related audit events.
 - Account recovery changes authentication only. It does not grant a role, scope, approval authority, inventory access, or financial authority.

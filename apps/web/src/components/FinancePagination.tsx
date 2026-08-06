@@ -65,30 +65,30 @@ export function FinancePagination({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">
-      <p>
+      <p className="min-w-0">
         Showing {startIndex + 1}-{endIndex} of {totalCount}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <Link
           aria-disabled={page === 1}
           className={
             page === 1
-              ? "pointer-events-none inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
-              : "inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              ? "pointer-events-none inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-slate-200 bg-slate-100 px-3 font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+              : "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           }
           href={buildHref(basePath, tab, Math.max(1, page - 1), pageParam, tabParam)}
         >
           Previous
         </Link>
-        <span className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <span className="shrink-0 whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Page {page} of {totalPages}
         </span>
         <Link
           aria-disabled={page === totalPages}
           className={
             page === totalPages
-              ? "pointer-events-none inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
-              : "inline-flex min-h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100 dark:hover:bg-blue-900"
+              ? "pointer-events-none inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-slate-200 bg-slate-100 px-3 font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+              : "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100 dark:hover:bg-blue-900"
           }
           href={buildHref(basePath, tab, Math.min(totalPages, page + 1), pageParam, tabParam)}
         >

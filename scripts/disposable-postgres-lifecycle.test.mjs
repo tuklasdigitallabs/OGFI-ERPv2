@@ -26,7 +26,13 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       assertSafePsqlDockerContainer("ogfierp-v2-postgres-1"),
       "ogfierp-v2-postgres-1",
     );
-    for (const value of ["", "../postgres", "postgres;rm", "postgres container", "-postgres"]) {
+    for (const value of [
+      "",
+      "../postgres",
+      "postgres;rm",
+      "postgres container",
+      "-postgres",
+    ]) {
       assert.throws(
         () => assertSafePsqlDockerContainer(value),
         /DISPOSABLE_DATABASE_PSQL_DOCKER_CONTAINER_INVALID/,
@@ -88,8 +94,14 @@ describe("disposable PostgreSQL lifecycle safety", () => {
   });
 
   it("rejects cross-run controlled and adversarial role variables", () => {
-    const first = createDisposablePostgresIdentity("cross-run-one", "1".repeat(64));
-    const second = createDisposablePostgresIdentity("cross-run-two", "2".repeat(64));
+    const first = createDisposablePostgresIdentity(
+      "cross-run-one",
+      "1".repeat(64),
+    );
+    const second = createDisposablePostgresIdentity(
+      "cross-run-two",
+      "2".repeat(64),
+    );
     assert.equal(assertAdversarialRoleBinding(first), true);
     for (const override of [
       { ownerRole: second.ownerRole },
@@ -103,13 +115,24 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       );
     }
     const fixture = readFileSync(
-      fileURLToPath(new URL("../infra/hostinger/postgres/adversarial-role-drift.sql", import.meta.url)),
+      fileURLToPath(
+        new URL(
+          "../infra/hostinger/postgres/adversarial-role-drift.sql",
+          import.meta.url,
+        ),
+      ),
       "utf8",
     );
     assert.match(fixture, /migrator_role <> regexp_replace\(owner_role/);
     assert.match(fixture, /runtime_role <> regexp_replace\(owner_role/);
-    assert.match(fixture, /adversarial_identity\[1\] <> controlled_identity\[1\]/);
-    assert.match(fixture, /left\(controlled_identity\[1\], 16\) <> database_identity\[2\]/);
+    assert.match(
+      fixture,
+      /adversarial_identity\[1\] <> controlled_identity\[1\]/,
+    );
+    assert.match(
+      fixture,
+      /left\(controlled_identity\[1\], 16\) <> database_identity\[2\]/,
+    );
   });
 
   it("requires an explicit admin URL", () => {
@@ -122,7 +145,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
   });
 
   it("gives the child only the runtime database credential", () => {
-    const identity = createDisposablePostgresIdentity("run-12345", "d".repeat(64));
+    const identity = createDisposablePostgresIdentity(
+      "run-12345",
+      "d".repeat(64),
+    );
     const adminUrl = "postgresql://postgres:admin@127.0.0.1:5432/ogfi_ci";
     const runtimeUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
       username: identity.runtimeRole,
@@ -149,7 +175,8 @@ describe("disposable PostgreSQL lifecycle safety", () => {
         MIGRATOR_DSN: "postgresql://migrator:secret@localhost/db",
         ALTERNATE_DATABASE_URL: "postgresql://owner:secret@localhost/db",
         DATABASE_PASSWORD: "database-secret",
-        OPENING_STOCK_EXECUTOR_DATABASE_URL: "postgresql://executor:secret@localhost/db",
+        OPENING_STOCK_EXECUTOR_DATABASE_URL:
+          "postgresql://executor:secret@localhost/db",
         OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: "/tmp/leaked-bootstrap.sock",
         OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: "leaked-bootstrap-token",
         POSTGRES_USER: "postgres",
@@ -184,16 +211,26 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     ]) {
       assert.equal(child[key], undefined, `${key} is absent`);
     }
-    assert.equal(child.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME, identity.databaseName);
+    assert.equal(
+      child.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME,
+      identity.databaseName,
+    );
     assert.equal(child.OGFI_DISPOSABLE_DATABASE_RUN_ID, identity.runId);
-    assert.equal(child.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256, identity.nonceSha256);
+    assert.equal(
+      child.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256,
+      identity.nonceSha256,
+    );
     assert.equal(child.DIRECT_DATABASE_URL, "");
   });
 
   it("confines the executor credential to the exact opening-cutover child suite", () => {
-    const executorUrl = "postgresql://executor:secret@127.0.0.1:5432/ogfi_test_run_aaaaaaaaaaaaaaaa";
+    const executorUrl =
+      "postgresql://executor:secret@127.0.0.1:5432/ogfi_test_run_aaaaaaaaaaaaaaaa";
     assert.deepEqual(
-      buildOpeningStockExecutorTestEnvironment("opening-inventory-cutover", executorUrl),
+      buildOpeningStockExecutorTestEnvironment(
+        "opening-inventory-cutover",
+        executorUrl,
+      ),
       { OPENING_STOCK_EXECUTOR_DATABASE_URL: executorUrl },
     );
     assert.deepEqual(
@@ -201,35 +238,60 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       {},
     );
     assert.throws(
-      () => buildOpeningStockExecutorTestEnvironment("authorization-all", executorUrl),
+      () =>
+        buildOpeningStockExecutorTestEnvironment(
+          "authorization-all",
+          executorUrl,
+        ),
       { message: "OPENING_STOCK_EXECUTOR_ENVIRONMENT_SUITE_FORBIDDEN" },
     );
     assert.throws(
-      () => buildOpeningStockExecutorTestEnvironment("opening-inventory-cutover", undefined),
+      () =>
+        buildOpeningStockExecutorTestEnvironment(
+          "opening-inventory-cutover",
+          undefined,
+        ),
       { message: "OPENING_STOCK_EXECUTOR_DATABASE_URL_REQUIRED" },
     );
 
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     assert.match(runner, /suiteName === "opening-inventory-cutover"/);
-    assert.match(runner, /buildOpeningStockExecutorTestEnvironment\(suiteName, openingStockExecutorUrl\)/);
-    assert.doesNotMatch(runner, /buildRuntimeEnvironment\([\s\S]*OPENING_STOCK_EXECUTOR_DATABASE_URL/);
+    assert.match(
+      runner,
+      /buildOpeningStockExecutorTestEnvironment\(suiteName, openingStockExecutorUrl\)/,
+    );
+    assert.doesNotMatch(
+      runner,
+      /buildRuntimeEnvironment\([\s\S]*OPENING_STOCK_EXECUTOR_DATABASE_URL/,
+    );
   });
 
   it("confines inventory-pilot bootstrap access to its approved child suites", () => {
     const brokerEnvironment = {
-      OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: "/tmp/ogfi-inventory-bootstrap-test.sock",
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET:
+        "/tmp/ogfi-inventory-bootstrap-test.sock",
       OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: "opaque-test-token",
-      MIGRATOR_DATABASE_URL: "postgresql://migrator:secret@localhost/disposable",
+      MIGRATOR_DATABASE_URL:
+        "postgresql://migrator:secret@localhost/disposable",
     };
     for (const suite of [
       "inventory-approval",
+      "reviewseven",
       "opening-inventory-cutover",
       "authorization-procurement-inventory",
+      "authorization-all",
+      "production-authenticated-e2e",
     ]) {
-      assert.equal(shouldStartInventoryPilotBootstrapBroker(suite), true, suite);
+      assert.equal(
+        shouldStartInventoryPilotBootstrapBroker(suite),
+        true,
+        suite,
+      );
       assert.deepEqual(
         buildInventoryPilotBootstrapTestEnvironment(suite, brokerEnvironment),
         {
@@ -240,25 +302,41 @@ describe("disposable PostgreSQL lifecycle safety", () => {
         },
       );
     }
-    for (const suite of ["authorization-all", "access-control", "authorization-finance"]) {
-      assert.equal(shouldStartInventoryPilotBootstrapBroker(suite), false, suite);
-      assert.deepEqual(buildInventoryPilotBootstrapTestEnvironment(suite, undefined), {});
+    for (const suite of ["access-control", "authorization-finance"]) {
+      assert.equal(
+        shouldStartInventoryPilotBootstrapBroker(suite),
+        false,
+        suite,
+      );
+      assert.deepEqual(
+        buildInventoryPilotBootstrapTestEnvironment(suite, undefined),
+        {},
+      );
       assert.throws(
-        () => buildInventoryPilotBootstrapTestEnvironment(suite, brokerEnvironment),
+        () =>
+          buildInventoryPilotBootstrapTestEnvironment(suite, brokerEnvironment),
         { message: "INVENTORY_PILOT_BOOTSTRAP_ENVIRONMENT_SUITE_FORBIDDEN" },
       );
     }
 
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
-    assert.match(runner, /shouldStartInventoryPilotBootstrapBroker\(suiteName\)/);
+    assert.match(
+      runner,
+      /shouldStartInventoryPilotBootstrapBroker\(suiteName\)/,
+    );
     assert.match(
       runner,
       /buildInventoryPilotBootstrapTestEnvironment\(\s*suiteName,\s*inventoryPilotBootstrap\?\.runtimeEnvironment,\s*\)/,
     );
-    assert.match(runner, /if \(suiteName === "inventory-approval"\) \{[\s\S]*installInventoryPilotRollbackHarness/);
+    assert.match(
+      runner,
+      /if \(suiteName === "inventory-approval"\) \{[\s\S]*installInventoryPilotRollbackHarness/,
+    );
     assert.equal(
       buildInventoryPilotBootstrapTestEnvironment(
         "authorization-procurement-inventory",
@@ -275,7 +353,8 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       {
         PATH: "/bin",
         DATABASE_URL: "postgresql://leaked:secret@localhost/other",
-        DISPOSABLE_DATABASE_ADMIN_URL: "postgresql://admin:secret@localhost/postgres",
+        DISPOSABLE_DATABASE_ADMIN_URL:
+          "postgresql://admin:secret@localhost/postgres",
         PGUSER: "leaked",
         PGPASSWORD: "leaked",
         POSTGRES_PASSWORD: "leaked",
@@ -296,7 +375,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
   });
 
   it("runs seed repeatability only inside the aggregate authorization lifecycle", () => {
-    const identity = createDisposablePostgresIdentity("run-12345", "e".repeat(64));
+    const identity = createDisposablePostgresIdentity(
+      "run-12345",
+      "e".repeat(64),
+    );
     const adminUrl = "postgresql://postgres:admin@127.0.0.1:5432/postgres";
     const runtimeUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
       username: identity.runtimeRole,
@@ -312,14 +394,22 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     assert.equal(shouldRunSeedRepeatability("opening-inventory-cutover"), true);
     assert.equal(shouldRunSeedRepeatability("access-control"), false);
     assert.equal(env.OGFI_RUN_SEED_REPEATABILITY_TEST, "true");
-    assert.equal(env.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME, identity.databaseName);
+    assert.equal(
+      env.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME,
+      identity.databaseName,
+    );
     assert.equal(env.OGFI_DISPOSABLE_DATABASE_RUN_ID, identity.runId);
-    assert.equal(env.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256, identity.nonceSha256);
+    assert.equal(
+      env.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256,
+      identity.nonceSha256,
+    );
     assert.equal(env.DATABASE_URL, runtimeUrl);
     assert.equal(env.DISPOSABLE_DATABASE_ADMIN_URL, undefined);
 
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     assert.match(runner, /shouldRunSeedRepeatability\(suiteName\)/);
@@ -328,16 +418,28 @@ describe("disposable PostgreSQL lifecycle safety", () => {
 
   it("runs all per-run adversarial role cases only in authorization-all", () => {
     assert.equal(shouldRunAdversarialRoleContract("authorization-all"), true);
-    for (const suite of ["access-control", "authorization-finance", "e2e", "authorization_all"]) {
+    for (const suite of [
+      "access-control",
+      "authorization-finance",
+      "e2e",
+      "authorization_all",
+    ]) {
       assert.equal(shouldRunAdversarialRoleContract(suite), false, suite);
     }
 
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     const fixture = readFileSync(
-      fileURLToPath(new URL("../infra/hostinger/postgres/adversarial-role-drift.sql", import.meta.url)),
+      fileURLToPath(
+        new URL(
+          "../infra/hostinger/postgres/adversarial-role-drift.sql",
+          import.meta.url,
+        ),
+      ),
       "utf8",
     );
     assert.match(runner, /shouldRunAdversarialRoleContract\(suiteName\)/);
@@ -348,7 +450,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     );
     assert.match(runner, /ADVERSARIAL_ROLE_CONTRACT_PASS/);
     assert.match(runner, /adversarial_role: marker\.adversarialRole/);
-    assert.match(runner, /applyAdversarialFixture\(adminTargetUrl, marker, "cleanup", driftCase\)/);
+    assert.match(
+      runner,
+      /applyAdversarialFixture\(adminTargetUrl, marker, "cleanup", driftCase\)/,
+    );
     assert.match(runner, /DROP ROLE IF EXISTS[\s\S]*marker\.adversarialRole/);
     for (const driftCase of [
       "security_definer",
@@ -364,14 +469,19 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     }
     assert.match(fixture, /:'adversarial_role'/);
     assert.match(fixture, /\^ogfi_adv_/);
-    assert.match(fixture, /adversarial_identity\[1\] <> controlled_identity\[1\]/);
+    assert.match(
+      fixture,
+      /adversarial_identity\[1\] <> controlled_identity\[1\]/,
+    );
     assert.match(fixture, /requires PostgreSQL 17/);
     assert.doesNotMatch(fixture, /ogfi_contract_adversarial_role/);
   });
 
   it("exposes marker attestation only through a constrained security-definer function", () => {
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     assert.match(runner, /SECURITY DEFINER/);
@@ -394,13 +504,18 @@ describe("disposable PostgreSQL lifecycle safety", () => {
 
   it("proves approval routing ALWAYS triggers under replication role", () => {
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     assert.match(runner, /suiteName === "approval-routing-backfill"/);
     assert.match(runner, /SET LOCAL session_replication_role = replica/);
     assert.match(runner, /APPROVAL_ROUTING_CONTEXT_IMMUTABLE/);
-    assert.match(runner, /Approval ALWAYS trigger was bypassed by replication role/);
+    assert.match(
+      runner,
+      /Approval ALWAYS trigger was bypassed by replication role/,
+    );
   });
 
   it("serializes procurement and inventory database files while preserving their internal races", () => {
@@ -418,13 +533,21 @@ describe("disposable PostgreSQL lifecycle safety", () => {
 
   it("rehearses approval-integrity owner guards only inside the marked disposable database", () => {
     const runner = readFileSync(
-      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      fileURLToPath(
+        new URL("./run-disposable-postgres-tests.mjs", import.meta.url),
+      ),
       "utf8",
     );
     assert.match(runner, /verifyApprovalIntegrityOwnerGuards\(setupUrl\)/);
     assert.match(runner, /APPROVAL_INSTANCE_PENDING_DUPLICATE/);
-    assert.match(runner, /Approval pending tuple index was not restored after preflight rollback/);
-    assert.match(runner, /TRUNCATE TABLE public\."PettyCashApprovalStepIntent"/);
+    assert.match(
+      runner,
+      /Approval pending tuple index was not restored after preflight rollback/,
+    );
+    assert.match(
+      runner,
+      /TRUNCATE TABLE public\."PettyCashApprovalStepIntent"/,
+    );
     assert.match(runner, /SET LOCAL session_replication_role = replica/);
   });
 
@@ -449,7 +572,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
   });
 
   it("rejects host, role, database, and marker mismatches", () => {
-    const identity = createDisposablePostgresIdentity("run-12345", "b".repeat(64));
+    const identity = createDisposablePostgresIdentity(
+      "run-12345",
+      "b".repeat(64),
+    );
     const adminUrl = "postgresql://postgres:x@127.0.0.1:5432/ogfi_ci";
     const runtimeUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
       username: identity.runtimeRole,

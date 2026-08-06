@@ -184,20 +184,29 @@ export async function GET(request: Request) {
   const filters: InventoryBalanceFilters = {
     query: url.searchParams.get("q") ?? undefined
   };
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    searchApplied: Boolean(filters.query)
+  };
 
   let balances: Awaited<ReturnType<typeof listInventoryBalances>>;
   try {
     await logOperationalExportAudit({
       session,
       reportId: "stock-balances",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
-    balances = await listInventoryBalances(session, filters);
+    balances = await listInventoryBalances(session, filters, {
+      maxRows: exportPolicy.maxRows
+    });
   } catch (error) {
     await logOperationalExportFailure({
       session,
       reportId: "stock-balances",
-      error
+      error,
+      metadata: auditMetadata
     });
     const response = exportErrorResponse(error);
     if (response) {
@@ -211,13 +220,15 @@ export async function GET(request: Request) {
     session,
     reportId: "stock-balances",
     eventType: "report.export_completed",
-    rowCount: balances.length
+    rowCount: balances.length,
+    metadata: auditMetadata
   });
 
   return csvExportResponse(rows, "stock-balances.csv", {
-    metadata: await buildReportCsvMetadata({
-      session,
-      reportId: "stock-balances"
-    })
+      metadata: await buildReportCsvMetadata({
+        session,
+        reportId: "stock-balances",
+        extra: [["Maximum Rows", exportPolicy.maxRows]]
+      })
   });
 }

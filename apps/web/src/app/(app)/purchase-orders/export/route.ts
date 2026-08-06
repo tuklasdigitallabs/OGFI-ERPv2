@@ -18,6 +18,7 @@ import {
   type PurchaseOrderListFilters
 } from "@/server/services/purchaseOrders";
 import { getOperationalReportTrustContext } from "@/server/services/reports";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -45,15 +46,15 @@ export async function GET(request: Request) {
     approver: url.searchParams.get("approver") ?? undefined
   });
   const trustContext = await getOperationalReportTrustContext(session);
+  const exportPolicy = await getReportExportPolicy(session);
   const auditMetadata = {
-    companyId: session.context.companyId,
-    companyName: session.context.companyName,
-    brandId: session.context.brandId,
-    brandName: session.context.brandName,
-    locationId: session.context.locationId,
-    locationName: session.context.locationName,
-    locationType: session.context.locationType,
-    filters: dashboardProfile ? { dashboardProfile } : filters,
+    maxRows: exportPolicy.maxRows,
+    dashboardProfile: dashboardProfile ?? null,
+    searchApplied: Boolean(filters.query),
+    statusFilterApplied: Boolean(filters.status),
+    dateRangeApplied: Boolean(filters.expectedFrom || filters.expectedTo),
+    amountRangeApplied: Boolean(filters.minAmount || filters.maxAmount),
+    approverFilterApplied: Boolean(filters.approver),
     trustGateMode: trustContext.trustGateMode,
     trustGateLabel: trustContext.trustGateLabel,
     trustGateSourceDecisionId: trustContext.trustGateSourceDecisionId,
@@ -78,8 +79,12 @@ export async function GET(request: Request) {
   });
   try {
     const orders = dashboardProfile
-      ? await listPurchaseOrdersDashboardProfile(session, dashboardProfile)
-      : await listPurchaseOrders(session, filters);
+      ? await listPurchaseOrdersDashboardProfile(session, dashboardProfile, {
+          maxRows: exportPolicy.maxRows
+        })
+      : await listPurchaseOrders(session, filters, {
+          maxRows: exportPolicy.maxRows
+        });
     if (!orders) {
       return exportErrorResponse(
         new Error("PURCHASE_ORDER_DASHBOARD_PROFILE_UNSUPPORTED")
@@ -171,7 +176,8 @@ export async function GET(request: Request) {
           ["Filter Expected To", filters.expectedTo ?? ""],
           ["Filter Min Amount", filters.minAmount ?? ""],
           ["Filter Max Amount", filters.maxAmount ?? ""],
-          ["Filter Approver", filters.approver ?? ""]
+          ["Filter Approver", filters.approver ?? ""],
+          ["Maximum Rows", exportPolicy.maxRows]
         ]
       })
     });
@@ -181,11 +187,10 @@ export async function GET(request: Request) {
       reportId: "purchase-order-status",
       eventType: "report.export_failed",
       reasonCode: "EXPORT_FAILED",
-      metadata: {
-        ...auditMetadata,
-        errorMessage: error instanceof Error ? error.message : "Unknown export error"
-      }
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

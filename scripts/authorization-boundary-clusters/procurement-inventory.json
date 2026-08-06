@@ -3,7 +3,8 @@
   "cluster": "procurement-inventory",
   "testFiles": [
     "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
-    "apps/web/tests/inventoryPilotApprovalPg.integration.test.ts"
+    "apps/web/tests/inventoryPilotApprovalPg.integration.test.ts",
+    "apps/web/tests/inventoryPilotConfiguration.integration.test.ts"
   ],
   "cases": [
     {
@@ -47,6 +48,118 @@
       "testName": "AUTHZ-PI-OPENING-INVENTORY-APPROVAL-PERMISSION-MFA-SOD-NO-MUTATION",
       "kind": "REAL_POSTGRESQL_NEGATIVE",
       "coveredControls": ["live operations-review permission", "tenant-company approval and cutover lookup", "fresh privileged MFA", "opening-cutover approver segregation", "no approval attestation, source, inventory, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["live dedicated permission", "exact Company MANAGE scope", "cross-company denial", "no draft or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["second tenant with equivalent permission and Company MANAGE", "uniform foreign identifier denial", "foreign selection rejection", "Opening admission denial", "no draft, revision, cohort, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS",
+      "kind": "REAL_POSTGRESQL_READINESS_TRANSACTION",
+      "coveredControls": ["exact five distinct participants", "exact eight route families", "active in-company endpoint and item", "participant permission and every-opening-endpoint scope", "tenant-company rule selection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["Opening route exact two-step contract", "one-step route rejection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["distinct Operations and Accounting roles", "same-role two-step route rejection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["Operations-first permission evidence", "Accounting-second permission evidence", "reversed route rejection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY",
+      "kind": "REAL_POSTGRESQL_READINESS_BOUNDARY",
+      "coveredControls": ["all live role assignees considered", "valid scoped actor after fifty unscoped assignees", "no false readiness blocker"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-PARTICIPANT-CANDIDATE-PAGINATION",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-PARTICIPANT-CANDIDATE-PAGINATION",
+      "kind": "REAL_POSTGRESQL_READ_BOUNDARY",
+      "coveredControls": ["responsibility-scoped eligibility", "database pagination", "stable ordering", "non-overlapping pages", "exact totals"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION",
+      "kind": "REAL_POSTGRESQL_READINESS_TRANSACTION",
+      "coveredControls": ["shared Purchase Request resolver", "standard non-emergency scenario", "DEFAULT selected with PR_EMERGENCY coexistence", "digest-covered resolver input and outcome", "wrong selected route rejection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["standard non-emergency scenario", "missing DEFAULT route rejection", "emergency fallback is not pilot readiness"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["shared route classification", "DEFAULT and PR_EMERGENCY key contract", "scope-filter and route-key mismatch rejection"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED",
+      "kind": "REAL_POSTGRESQL_READINESS_NEGATIVE",
+      "coveredControls": ["exactly one active sealed normal route", "multiple normal candidates rejected"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT",
+      "kind": "REAL_POSTGRESQL_TRANSACTION",
+      "coveredControls": ["creator and editor segregation", "fresh MFA", "atomic immutable seal", "same-key replay", "conflicting retry denial", "single seal audit", "no activation, cohort, movement, or balance side effects"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER",
+      "kind": "REAL_POSTGRESQL_TRANSACTION",
+      "coveredControls": ["audit failure transaction rollback", "company advisory serialization", "concurrent successor one-winner", "no activation or inventory side effects"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-OPENING-LATEST-AND-LIVE-READINESS-GATE",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-OPENING-LATEST-AND-LIVE-READINESS-GATE",
+      "kind": "REAL_POSTGRESQL_ADMISSION_GATE",
+      "coveredControls": ["latest eligible schema-v2 leaf", "existing cohort revision pinning", "superseded revision denied for new cohort", "stale participant denial", "stale route actor denial"]
+    },
+    {
+      "id": "AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY",
+      "file": "apps/web/tests/inventoryPilotConfiguration.integration.test.ts",
+      "testName": "AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY",
+      "kind": "REAL_POSTGRESQL_APPEND_ONLY",
+      "coveredControls": ["sealed evidence update rejection", "sealed evidence delete rejection", "sealed evidence truncate rejection"]
     },
     {
       "id": "AUTHZ-PI-PILOT-TRANSFER-CLASSIFIER-ATOMIC-ADMISSION",
@@ -273,6 +386,7 @@
     {"surfaceId":"server/services/stockCounts.ts#reviewStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockCountSession","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockCounts.ts#cancelStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","freeze-release"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockCountSession","InventoryBalance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockCounts.ts#scheduleStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#requestStockCountRecount","classification":"PUBLIC_BOUNDARY","adapterIds":["dedicated-recovery-permission","live-scope-and-mfa","controlled-evidence-policy-gate","immutable-recount-lineage"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountRecountTransition","StockCountAttempt","StockAdjustment","InventoryMovement","InventoryBalance","Notification","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockCounts.ts#startStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","StockCountLine","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockCounts.ts#saveStockCountEntries","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","StockCountLine","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockCounts.ts#generateStockCountVarianceAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockAdjustment","StockAdjustmentLine","AuditEvent"],"status":"COVERED"},
@@ -292,7 +406,7 @@
 
     {"surfaceId":"server/services/myTasks.ts#getMyTasksPage","classification":"PUBLIC_BOUNDARY","adapterIds":["permission-gated-source-enrollment"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only personal task aggregation"],"status":"COVERED"},
 
-    {"surfaceId":"server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","tenant-company-sealed-configuration-query","endpoint-location-scope","transactional-cohort-and-audit"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["OpeningInventoryCohort","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","tenant-company-sealed-configuration-query","endpoint-location-scope","transactional-cohort-and-audit"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"],"noMutationControls":["OpeningInventoryCohort","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/openingInventoryCutovers.ts#prepareOpeningInventoryCutover","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","tenant-company-source-query","endpoint-location-scope","idempotency-key","transactional-cutover-lines-and-audit"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["OpeningInventoryCutover","OpeningInventoryCutoverLine","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/openingInventoryCutovers.ts#sealOpeningInventoryCohort","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","tenant-company-cohort-query","endpoint-location-scope","version-concurrency","transactional-cohort-and-audit"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["OpeningInventoryCohort","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/openingInventoryCutovers.ts#submitOpeningInventoryCutoverForApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["live-submit-permission","tenant-company-cutover-query","location-scope","approval-routing-segregation","transactional-approval-and-audit"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-SUBMIT-SCOPE-SOD-NO-MUTATION"],"noMutationControls":["OpeningInventoryCutover","ApprovalInstance","ApprovalInstanceStep","AuditEvent"],"status":"COVERED"},
@@ -302,7 +416,17 @@
     {"surfaceId":"server/services/openingInventoryCutovers.ts#getOpeningInventoryFormOptions","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","current-location-scope","tenant-company-form-options-query"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only opening-inventory form options"],"status":"COVERED"},
     {"surfaceId":"server/services/openingInventoryCutovers.ts#getOpeningInventoryPreparationFormOptions","classification":"PUBLIC_BOUNDARY","adapterIds":["live-prepare-permission","tenant-company-cohort-query","endpoint-location-scope","source-attempt-non-disclosure"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only opening-inventory preparation facts"],"status":"COVERED"},
     {"surfaceId":"server/services/approvals.ts#approveOpeningInventoryCutover","classification":"PUBLIC_BOUNDARY","adapterIds":["live-operations-or-accounting-review-permission","tenant-company-approval-and-cutover-query","opening-cutover-prohibited-actor-check","fresh-privileged-mfa","transactional-attestation-and-approval"],"caseIds":["AUTHZ-PI-OPENING-INVENTORY-APPROVAL-PERMISSION-MFA-SOD-NO-MUTATION"],"noMutationControls":["OpeningInventoryApprovalAttestation","OpeningInventoryCutover","ApprovalInstance","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationDraft","classification":"PUBLIC_BOUNDARY","adapterIds":["live-draft-permission","exact-company-manage-scope","active-session-epoch","transactional-draft-and-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION"],"noMutationControls":["InventoryPilotConfigurationDraft","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationSuccessorDraft","classification":"PUBLIC_BOUNDARY","adapterIds":["live-draft-permission","exact-company-manage-scope","latest-sealed-predecessor","transactional-clone-and-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER"],"noMutationControls":["InventoryPilotConfigurationDraft","draft selection memberships","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft","classification":"PUBLIC_BOUNDARY","adapterIds":["live-draft-permission","exact-company-manage-scope","tenant-company-selection-validation","optimistic-version","transactional-whole-snapshot-and-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"],"noMutationControls":["InventoryPilotConfigurationDraft","draft selection memberships","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#abandonInventoryPilotConfigurationDraft","classification":"PUBLIC_BOUNDARY","adapterIds":["live-draft-permission","exact-company-manage-scope","optimistic-state-transition","transactional-abandon-and-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"],"noMutationControls":["InventoryPilotConfigurationDraft","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#evaluateInventoryPilotConfigurationReadiness","classification":"PUBLIC_BOUNDARY","adapterIds":["live-draft-permission","exact-company-manage-scope","live-endpoint-item-participant-route-evidence","shared-purchase-request-resolver","transactional-readiness-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS","AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED","AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED","AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED","AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY","AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION","AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED","AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED","AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED"],"noMutationControls":["configuration facts remain unchanged; only readiness audit is appended"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#sealInventoryPilotConfigurationDraft","classification":"PUBLIC_BOUNDARY","adapterIds":["live-seal-permission","exact-company-manage-scope","fresh-mfa","creator-editor-segregation","company-advisory-lock","idempotency-key","transactional-revision-memberships-operation-and-audit"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT","AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER","AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY"],"noMutationControls":["InventoryPilotFamilyActivation","OpeningInventoryCohort","InventoryMovement","InventoryBalance"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationWorkspace","classification":"PUBLIC_BOUNDARY","adapterIds":["live-view-permission","exact-company-manage-scope","tenant-company-query-scope","server-pagination"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-PARTICIPANT-CANDIDATE-PAGINATION"],"noMutationControls":["read-only configuration workspace"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot","classification":"PUBLIC_BOUNDARY","adapterIds":["live-view-permission","exact-company-manage-scope","tenant-company-query-scope","read-only-full-draft-snapshot"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION","AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"],"noMutationControls":["read-only draft selection snapshot"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventoryPilotConfiguration.ts#getInventoryPilotRevisionOpeningReadiness","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller-owned-transaction","tenant-company-sealed-v2-leaf","digest-and-exact-evidence","live-participant-and-route-blocker-evidence"],"caseIds":["AUTHZ-PI-PILOT-CONFIG-OPENING-LATEST-AND-LIVE-READINESS-GATE"],"noMutationControls":["read-only categorized opening admission evidence"],"status":"COVERED"},
     {"surfaceId":"server/services/inventoryPilotApprovalPolicy.ts#classifyInventoryTransferForPilotApproval","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller-owned-locked-transfer-snapshot","tenant-company-lineage-consistency","pilot-endpoint-capability-membership","sealed-activation-attestation"],"caseIds":["AUTHZ-PI-PILOT-TRANSFER-CLASSIFIER-ATOMIC-ADMISSION"],"noMutationControls":["classifier is read-only; caller transaction admits no partial transfer, approval, intent, audit, notification, movement, or balance state"],"status":"COVERED"},
     {"surfaceId":"server/services/inventoryPilotApprovalPolicy.ts#classifyStockCountAttemptForPilotApproval","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller-owned-locked-current-attempt-snapshot","tenant-company-lineage-consistency","pilot-count-endpoint-capability-membership","sealed-activation-attestation"],"caseIds":["AUTHZ-PI-PILOT-STOCK-COUNT-CLASSIFIER-ATOMIC-ADMISSION"],"noMutationControls":["classifier is read-only; caller transaction admits no partial count, approval, intent, audit, notification, movement, or balance state"],"status":"COVERED"}
+    ,{"surfaceId":"server/services/inventoryActionAuthority.ts#lockLiveInventoryActionAuthority","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["live-actor-session","live-permission","live-location-scope","fresh-mfa-when-required","transaction-owned-authority-lock"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["caller-owned inventory action transaction; no mutation before authority lock succeeds"],"status":"COVERED"}
   ]
 }

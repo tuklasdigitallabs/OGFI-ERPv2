@@ -1155,6 +1155,9 @@ export function buildAuthorizationSurfaceManifest() {
     } else if (relativePath.includes("/account/security/")) {
       permission = "authentication.account_security";
       dimensions = ["TENANT", "COMPANY"];
+    } else if (relativePath.includes("/account/password-change/")) {
+      permission = "authentication.password_change";
+      dimensions = ["TENANT"];
     } else {
       throw new Error(`AUTHORIZATION_SURFACE_UNCLASSIFIED:${relativePath}`);
     }
@@ -1325,6 +1328,213 @@ export function buildAuthorizationSurfaceManifest() {
       },
     ],
   ]);
+  const controlledMutationRoutes = new Map([
+    [
+      "app/api/admin/organization/[entity]/route.ts",
+      {
+        permission: "core.administer AND core.tenant_role_administer",
+        dimensions: ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
+        guardChain: [
+          "organization-entity-allowlist",
+          "trusted-mutation-origin",
+          "service-session",
+          "live-core-admin-permission",
+          "live-tenant-role-admin-permission",
+          "company-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "404_UNKNOWN_ENTITY_OR_403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: [
+          "server/services/coreAdmin.ts#updateCoreAdminBrand",
+          "server/services/coreAdmin.ts#updateCoreAdminCompany",
+          "server/services/coreAdmin.ts#updateCoreAdminDepartment",
+          "server/services/coreAdmin.ts#updateCoreAdminLocation",
+        ],
+        noMutationControls: ["Company", "Brand", "Department", "Location", "AuditEvent"],
+      },
+    ],
+    [
+      "app/api/admin/organization/create/[entity]/route.ts",
+      {
+        permission: "core.administer",
+        dimensions: ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
+        guardChain: [
+          "organization-entity-allowlist",
+          "trusted-mutation-origin",
+          "service-session",
+          "live-core-admin-permission",
+          "company-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "404_UNKNOWN_ENTITY_OR_403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: [
+          "server/services/coreAdmin.ts#createCoreAdminBrand",
+          "server/services/coreAdmin.ts#createCoreAdminCompany",
+          "server/services/coreAdmin.ts#createCoreAdminDepartment",
+          "server/services/coreAdmin.ts#createCoreAdminLocation",
+        ],
+        noMutationControls: ["Company", "Brand", "Department", "Location", "AuditEvent"],
+      },
+    ],
+    ...[
+      ["create", "createOperationalReasonCode"],
+      ["deactivate", "deactivateOperationalReasonCode"],
+      ["update", "updateOperationalReasonCode"],
+    ].map(([operation, serviceName]) => [
+      `app/api/admin/reason-codes/${operation}/route.ts`,
+      {
+        permission: "core.administer",
+        dimensions: ["TENANT", "COMPANY"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "service-session",
+          "live-core-admin-permission",
+          "company-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: [
+          `server/services/operationalReasonCodes.ts#${serviceName}`,
+        ],
+        noMutationControls: ["OperationalReasonCode", "AuditEvent"],
+      },
+    ]),
+    [
+      "app/api/context/location/route.ts",
+      {
+        permission: "authenticated",
+        dimensions: ["TENANT", "COMPANY", "BRAND", "LOCATION"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "session",
+          "authorized-location-membership",
+          "http-only-same-site-context-cookie",
+        ],
+        denialContract: "403_ORIGIN_OR_LOCATION_SCOPE_DENIED_OR_401_AUTH_REQUIRED_NO_COOKIE",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: ["server/services/context.ts#getSessionContext"],
+        noMutationControls: ["location context cookie", "no database mutation"],
+      },
+    ],
+    ...[
+      ["category/create", "SERVICE_ENFORCED", "createItemCategory", ["ItemCategory", "AuditEvent"]],
+      ["category/deactivate", "core.administer", "deactivateItemCategory", ["ItemCategory", "AuditEvent"]],
+      ["category/update", "SERVICE_ENFORCED", "updateItemCategory", ["ItemCategory", "AuditEvent"]],
+      ["conversion/update", "SERVICE_ENFORCED", "updateItemUomConversion", ["ItemUomConversion", "AuditEvent"]],
+      ["uom/create", "SERVICE_ENFORCED", "createUom", ["Uom", "AuditEvent"]],
+      ["uom/deactivate", "core.administer", "deactivateUom", ["Uom", "AuditEvent"]],
+      ["uom/update", "SERVICE_ENFORCED", "updateUom", ["Uom", "AuditEvent"]],
+    ].map(([routePath, permission, serviceName, noMutationControls]) => [
+      `app/api/item-master/${routePath}/route.ts`,
+      {
+        permission,
+        dimensions: ["TENANT", "COMPANY"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "service-session",
+          "live-item-master-permission",
+          "company-master-data-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: [`server/services/items.ts#${serviceName}`],
+        noMutationControls,
+      },
+    ]),
+    ...[
+      [
+        "create",
+        "SERVICE_ENFORCED",
+        "createSupplier",
+        ["Supplier", "SupplierContact", "AuditEvent"],
+      ],
+      [
+        "deactivate",
+        "SERVICE_ENFORCED",
+        "deactivateSupplier",
+        ["Supplier", "AuditEvent"],
+      ],
+      [
+        "accreditation",
+        "SERVICE_ENFORCED",
+        "updateSupplierAccreditation",
+        ["Supplier", "AuditEvent"],
+      ],
+    ].map(([operation, permission, serviceName, noMutationControls]) => [
+      `app/api/suppliers/${operation}/route.ts`,
+      {
+        permission,
+        dimensions: ["TENANT", "COMPANY"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "service-session",
+          "live-supplier-master-permission",
+          "company-master-data-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: [`server/services/suppliers.ts#${serviceName}`],
+        noMutationControls,
+      },
+    ]),
+    [
+      "app/api/transfers/[id]/receipt/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["TENANT", "COMPANY", "LOCATION"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "session",
+          "live-permission",
+          "destination-location-scope",
+          "idempotency",
+          "transactional-ledger-posting",
+        ],
+        denialContract: "SAFE_RECEIPT_ERROR_NO_DUPLICATE_LEDGER_POSTING",
+        method: "POST",
+        testIds: ["AUTHZ-TRANSFER-RECEIPT-ROUTE-001"],
+      },
+    ],
+    [
+      "app/api/transfers/[id]/reversal/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["TENANT", "COMPANY", "LOCATION"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "session",
+          "live-permission",
+          "destination-location-scope",
+          "receipt-state-check",
+          "transactional-reversal-posting",
+        ],
+        denialContract: "SAFE_REVERSAL_ERROR_NO_DUPLICATE_COUNTER_MOVEMENT",
+        method: "POST",
+        testIds: ["AUTHZ-TRANSFER-REVERSAL-ROUTE-001"],
+      },
+    ],
+  ]);
   for (const routeFile of allRouteFiles) {
     if (routeFile.startsWith(`${protectedAppRoot}${path.sep}`)) continue;
     const relativePath = path
@@ -1385,6 +1595,47 @@ export function buildAuthorizationSurfaceManifest() {
             `${relativePath}#${controlledInternalPolicy.method}`,
             serviceId,
           ]),
+        }),
+      );
+      continue;
+    }
+    const controlledMutationPolicy = controlledMutationRoutes.get(relativePath);
+    if (controlledMutationPolicy) {
+      const explicitDelegatedServiceIds = controlledMutationPolicy.delegatedServiceIds;
+      const routeDelegation = explicitDelegatedServiceIds
+        ? {
+            delegatedServiceIds: explicitDelegatedServiceIds,
+            callChains: explicitDelegatedServiceIds.map(
+              (serviceId) =>
+                `${relativePath}#${controlledMutationPolicy.method} -> ${serviceId}`,
+            ),
+          }
+        : analyzeServerActionDelegations(
+            readFileSync(routeFile, "utf8"),
+            relativePath,
+            knownServiceIds,
+            knownServiceSymbols,
+            [controlledMutationPolicy.method],
+          ).get(controlledMutationPolicy.method);
+      for (const serviceId of routeDelegation.delegatedServiceIds) {
+        if (!knownServiceIds.has(serviceId)) {
+          throw new Error(`AUTHORIZATION_ROUTE_DELEGATION_UNKNOWN:${relativePath}:${serviceId}`);
+        }
+      }
+      entries.push(
+        entry({
+          id: `${relativePath}#${controlledMutationPolicy.method}`,
+          surfaceType: "ROUTE_HANDLER",
+          permission: controlledMutationPolicy.permission,
+          dimensions: controlledMutationPolicy.dimensions,
+          guardChain: controlledMutationPolicy.guardChain,
+          denialContract: controlledMutationPolicy.denialContract,
+          riskTier: "HIGH",
+          testIds: controlledMutationPolicy.testIds,
+          boundaryClassifications: ["MUTATION_BOUNDARY"],
+          noMutationControls: controlledMutationPolicy.noMutationControls,
+          delegatedServiceIds: routeDelegation.delegatedServiceIds,
+          callChains: routeDelegation.callChains,
         }),
       );
       continue;
@@ -1930,6 +2181,14 @@ export function authorizationBoundaryCoverageReport(manifest) {
           ? !surface.executableTestIds.includes(
               "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE",
             )
+        : surface.id === "app/api/transfers/[id]/receipt/route.ts#POST"
+          ? !surface.executableTestIds.includes("AUTHZ-TRANSFER-RECEIPT-ROUTE-001")
+        : surface.id === "app/api/transfers/[id]/reversal/route.ts#POST"
+          ? !surface.executableTestIds.includes("AUTHZ-TRANSFER-REVERSAL-ROUTE-001")
+        : surface.executableTestIds.includes(
+              "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION",
+            )
+          ? false
         : surface.surfaceType === "EVIDENCE_DOWNLOAD"
         ? !surface.executableTestIds.includes("AUTHZ-EVIDENCE-001")
         : !surface.executableTestIds.includes("AUTHZ-ROUTE-MATRIX-001"),

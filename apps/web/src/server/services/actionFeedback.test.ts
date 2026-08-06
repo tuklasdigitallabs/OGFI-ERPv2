@@ -59,6 +59,16 @@ const mappedOperationalCodes = [
   "INVENTORY_MOVEMENT_BASE_QUANTITY_INVALID",
   "INVENTORY_MOVEMENT_FROZEN_BY_STOCK_COUNT",
   "INVENTORY_SEARCH_QUERY_TOO_LONG",
+  "INVENTORY_PILOT_CONFIGURATION_NOT_FOUND",
+  "INVENTORY_PILOT_CONFIGURATION_PERMISSION_DENIED",
+  "INVENTORY_PILOT_CONFIGURATION_COMPANY_MANAGE_REQUIRED",
+  "INVENTORY_PILOT_CONFIGURATION_AUTHORITY_STALE",
+  "INVENTORY_PILOT_CONFIGURATION_STATE_CONFLICT",
+  "INVENTORY_PILOT_CONFIGURATION_IDEMPOTENCY_CONFLICT",
+  "INVENTORY_PILOT_CONFIGURATION_SELECTION_INVALID",
+  "INVENTORY_PILOT_CONFIGURATION_READINESS_BLOCKED",
+  "INVENTORY_PILOT_CONFIGURATION_EDITOR_CANNOT_SEAL",
+  "INVENTORY_PILOT_CONFIGURATION_MFA_REQUIRED",
   "INVALID_STATUS_TRANSITION",
   "MFA_CHALLENGE_TEMPORARILY_THROTTLED",
   "ITEM_CATEGORY_HAS_ACTIVE_ITEMS",
@@ -208,6 +218,9 @@ describe("action feedback helpers", () => {
   it("maps every stable opening-inventory failure to safe corrective guidance", () => {
     const codes = [
       "OPENING_INVENTORY_CONFIGURATION_NOT_SEALED",
+      "OPENING_INVENTORY_CONFIGURATION_NOT_LATEST",
+      "OPENING_INVENTORY_CONFIGURATION_EVIDENCE_INVALID",
+      "OPENING_INVENTORY_CONFIGURATION_LIVE_READINESS_BLOCKED",
       "OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED",
       "OPENING_INVENTORY_ITEM_SCOPE_DENIED",
       "OPENING_INVENTORY_SOURCE_ATTEMPT_NOT_REVIEWED",
@@ -298,10 +311,12 @@ describe("action feedback helpers", () => {
   it("maps approval routing races and deployment gates to safe guidance", () => {
     for (const code of [
       "APPROVAL_AUTHORITY_STALE",
+      "APPROVAL_REVIEW_STALE",
       "APPROVAL_NEXT_STEP_ROUTING_CHANGED",
       "APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE",
       "APPROVAL_ROUTING_BACKFILL_REQUIRED",
-      "APPROVAL_ROUTING_V1_DISABLED"
+      "APPROVAL_ROUTING_V1_DISABLED",
+      "APPROVAL_WORKLIST_ITEM_UNAVAILABLE"
     ]) {
       const feedback = getActionFeedback({ error: code });
       expect(feedback?.message, code).not.toContain("The action could not be completed");
@@ -344,6 +359,37 @@ describe("action feedback helpers", () => {
       expect.objectContaining({ title: "Action completed", tone: "success" })
     );
     expect(getActionFeedback({ success: "UNMAPPED_SUCCESS" })).toBeNull();
+  });
+
+  it("announces inventory pilot configuration lifecycle outcomes", () => {
+    for (const success of [
+      "INVENTORY_PILOT_CONFIGURATION_DRAFT_CREATED",
+      "INVENTORY_PILOT_CONFIGURATION_DRAFT_UPDATED",
+      "INVENTORY_PILOT_CONFIGURATION_DRAFT_ABANDONED",
+      "INVENTORY_PILOT_CONFIGURATION_SUCCESSOR_DRAFT_CREATED",
+      "INVENTORY_PILOT_CONFIGURATION_READINESS_EVALUATED",
+      "INVENTORY_PILOT_CONFIGURATION_REVISION_SEALED",
+    ]) {
+      expect(getActionFeedback({ success }), success).toEqual(
+        expect.objectContaining({ code: success, title: "Action completed", tone: "success" })
+      );
+    }
+  });
+
+  it("announces bounded approval decision outcomes after the queue refresh", () => {
+    for (const success of [
+      "APPROVAL_DECISION_APPROVED",
+      "APPROVAL_DECISION_RETURNED",
+      "APPROVAL_DECISION_REJECTED",
+    ]) {
+      expect(getActionFeedback({ success }), success).toEqual(
+        expect.objectContaining({
+          code: success,
+          title: "Action completed",
+          tone: "success",
+        }),
+      );
+    }
   });
 
   it("explains an incomplete supplier reference price", () => {
@@ -451,7 +497,17 @@ describe("action feedback helpers", () => {
 
       expect(source, page).toContain("ActionFeedbackBanner");
       expect(source, page).toContain("getActionFeedback");
-      expect(source, page).toContain("actionErrorRedirectPath");
+      if (page === "suppliers/page.tsx") {
+        expect(source, page).toContain("getActionErrorCode");
+        expect(source, page).toContain("UrlOwnedActionState");
+        expect(source, page).not.toContain("actionErrorRedirectPath");
+      } else if (page === "approvals/[id]/page.tsx") {
+        expect(source, page).toContain("getActionErrorFeedback");
+        expect(source, page).toContain("ApprovalDecisionActionState");
+        expect(source, page).not.toContain("actionErrorRedirectPath");
+      } else {
+        expect(source, page).toContain("actionErrorRedirectPath");
+      }
     }
   });
 });

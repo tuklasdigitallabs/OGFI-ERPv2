@@ -2,6 +2,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/server/services/exportAudit";
 import { canExportSupplierQuotes } from "@/server/services/exportAuthorization";
 import { listQuoteRequests } from "@/server/services/quotes";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +30,19 @@ export async function GET() {
     });
     return exportPermissionDeniedResponse();
   }
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = { maxRows: exportPolicy.maxRows };
 
   try {
     await logOperationalExportAudit({
       session,
       reportId: "supplier-quotes",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
-    const requests = await listQuoteRequests(session);
+    const requests = await listQuoteRequests(session, {
+      maxRows: exportPolicy.maxRows
+    });
     const quoteRows = requests.flatMap((request) =>
       request.quotes.flatMap((quote) => {
         const lines = quote.lines.length > 0 ? quote.lines : [null];
@@ -92,26 +99,34 @@ export async function GET() {
       ],
       ...quoteRows
     ];
+    if (quoteRows.length > exportPolicy.maxRows) {
+      throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    }
 
     await logOperationalExportAudit({
       session,
       reportId: "supplier-quotes",
       eventType: "report.export_completed",
-      rowCount: quoteRows.length
+      rowCount: quoteRows.length,
+      metadata: auditMetadata
     });
 
     return csvExportResponse(rows, "supplier-quotes.csv", {
       metadata: await buildReportCsvMetadata({
         session,
-        reportId: "supplier-quotes"
+        reportId: "supplier-quotes",
+        extra: [["Maximum Rows", exportPolicy.maxRows]]
       })
     });
   } catch (error) {
     await logOperationalExportFailure({
       session,
       reportId: "supplier-quotes",
-      error
+      error,
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

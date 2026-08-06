@@ -365,12 +365,24 @@ BEGIN
     'GRANT EXECUTE ON FUNCTION public.controlled_evidence_canonical_json(JSONB) TO %I',
     runtime_role
   );
-  -- Runtime typed-intent checks call only the pure JSON canonicalizer. The
-  -- revision projection belongs to the migrator-owned configuration plane and
-  -- deliberately remains unavailable to the shared application runtime.
+  -- Inventory-pilot validators are SECURITY INVOKER. Runtime writes therefore
+  -- need only the exact read-only canonicalizer call chain used by their
+  -- ENABLE ALWAYS triggers; validator/constructor routines remain revoked.
   IF to_regprocedure('public.inventory_pilot_canonical_json(jsonb)') IS NOT NULL THEN
     EXECUTE format(
       'GRANT EXECUTE ON FUNCTION public.inventory_pilot_canonical_json(JSONB) TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regprocedure('public.inventory_pilot_approval_rule_canonical_json(uuid)') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.inventory_pilot_approval_rule_canonical_json(UUID) TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regprocedure('public.inventory_pilot_revision_canonical_json(uuid)') IS NOT NULL THEN
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.inventory_pilot_revision_canonical_json(UUID) TO %I',
       runtime_role
     );
   END IF;
@@ -448,7 +460,8 @@ BEGIN
     'PettyCashApprovalStepIntent',
     'AttachmentScanAttempt',
     'ControlledEvidenceActionQualification',
-    'ControlledEvidenceActionSelection'
+    'ControlledEvidenceActionSelection',
+    'StockCountRecountTransition'
   ]
   LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
@@ -465,13 +478,82 @@ BEGIN
     EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
   END LOOP;
 
-  -- DEC-0261: pilot configuration, membership, and activation authority is a
-  -- migrator-owned control plane. Runtime may classify against it but cannot
-  -- manufacture or alter cohort authority.
+  -- DEC-0273: draft authoring is mutable only through reviewed columns. Runtime
+  -- cannot hard-delete a draft or child row, and terminal states remain guarded
+  -- by the always-enabled database triggers.
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryPilotConfigurationDraft',
+    'InventoryPilotDraftEndpointMembership',
+    'InventoryPilotDraftItemMembership',
+    'InventoryPilotDraftParticipant',
+    'InventoryPilotDraftRouteReadiness'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', protected_table, runtime_role);
+  END LOOP;
+  EXECUTE format(
+    'GRANT INSERT (id, "tenantId", "companyId", "schemaVersion", status, version, "predecessorRevisionId", "predecessorRevisionNumber", "predecessorDigest", "sourceDecisionId", "createdByUserId", "lastEditedByUserId", "createdAt", "updatedAt") ON TABLE public."InventoryPilotConfigurationDraft" TO %I',
+    runtime_role
+  );
+  EXECUTE format(
+    'GRANT UPDATE (status, version, "lastEditedByUserId", "sealedRevisionId", "sealedRevisionNumber", "sealedRevisionDigest", "sealedAt", "abandonedByUserId", "abandonedAt", "abandonmentReason", "updatedAt") ON TABLE public."InventoryPilotConfigurationDraft" TO %I',
+    runtime_role
+  );
+  EXECUTE format(
+    'GRANT INSERT (id, "draftId", "tenantId", "companyId", "inventoryLocationId", "locationId", capability, "isIncluded", "createdAt", "updatedAt"), UPDATE ("isIncluded", "updatedAt") ON TABLE public."InventoryPilotDraftEndpointMembership" TO %I',
+    runtime_role
+  );
+  EXECUTE format(
+    'GRANT INSERT (id, "draftId", "tenantId", "companyId", "itemId", "isIncluded", "createdAt", "updatedAt"), UPDATE ("isIncluded", "updatedAt") ON TABLE public."InventoryPilotDraftItemMembership" TO %I',
+    runtime_role
+  );
+  EXECUTE format(
+    'GRANT INSERT (id, "draftId", "tenantId", "companyId", responsibility, "userId", "roleAssignmentId", "roleId", "isIncluded", "createdAt", "updatedAt"), UPDATE ("userId", "roleAssignmentId", "roleId", "isIncluded", "updatedAt") ON TABLE public."InventoryPilotDraftParticipant" TO %I',
+    runtime_role
+  );
+  EXECUTE format(
+    'GRANT INSERT (id, "draftId", "tenantId", "companyId", family, "approvalRuleId", "approvalRuleLineageId", "approvalRuleVersion", "ruleDefinitionCanonicalJson", "ruleDefinitionDigest", "resolverEvidenceCanonicalJson", "resolverEvidenceDigest", "readinessCheckedAt", "isIncluded", "createdAt", "updatedAt"), UPDATE ("approvalRuleId", "approvalRuleLineageId", "approvalRuleVersion", "ruleDefinitionCanonicalJson", "ruleDefinitionDigest", "resolverEvidenceCanonicalJson", "resolverEvidenceDigest", "readinessCheckedAt", "isIncluded", "updatedAt") ON TABLE public."InventoryPilotDraftRouteReadiness" TO %I',
+    runtime_role
+  );
+
+  -- Atomic sealing appends immutable configuration and evidence. These tables
+  -- expose read/append only; activation remains a separate read-only control
+  -- plane and no routine constructor is executable by runtime.
   FOREACH protected_table IN ARRAY ARRAY[
     'InventoryPilotConfigurationRevision',
     'InventoryPilotEndpointMembership',
     'InventoryPilotItemMembership',
+    'InventoryPilotParticipantMembership',
+    'InventoryPilotRouteReadinessMembership',
+    'InventoryPilotConfigurationSealOperation'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
+  END LOOP;
+
+  FOREACH protected_table IN ARRAY ARRAY[
     'InventoryPilotFamilyActivationEvent',
     'InventoryPilotFamilyActivation'
   ]

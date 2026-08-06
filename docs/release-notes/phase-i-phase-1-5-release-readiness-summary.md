@@ -94,7 +94,7 @@
 - CI includes production build and Playwright e2e gates; the disposable staging rehearsal remains useful, but hosted deployment and rollback are unavailable until DEC-0248 is implemented. Backup/restore, recovery, authoritative smoke, and signed GO/NO-GO evidence still require environment execution.
 - No queueing functionality is included in the Phase I or Phase 1.5 scope.
 - Binary upload/download for all operational attachments remains a deferred shared attachment-service hardening item. Current operational evidence guidance uses evidence references where implemented.
-- Full post-receiving PO amendment and supplier/location/line-add/delete/substitution/payment-term amendment, backdated operational correction, partial receiving-line reversal, transfer dispatch reversal, automated replacement/finance settlement, automated notification scheduler, email delivery, time-limited download links, and formal PDF summaries remain deferred controlled transitions. Transfer discrepancy closure is available as a non-posting audited settlement action.
+- Full post-receiving PO amendment and supplier/location/line-add/delete/substitution/payment-term amendment, backdated operational correction, partial receiving-line reversal, transfer dispatch reversal, automated replacement/finance settlement, automated notification scheduler, email delivery, time-limited download links, and formal PDF summaries remain deferred controlled transitions. Transfer discrepancy settlement remains dormant and fail-closed until DEC-0265 confirms finality and reopen/reversal semantics; no final discrepancy closure is available.
 - Project tracker records coordinate work only. Purchasing, inventory, receiving, approval, finance, and audit source records remain in their proper modules.
 
 ## Learn more
@@ -125,6 +125,12 @@ Reason Codes administration now uses bounded server pagination, selected-company
 filters, exact counts, and a selected-code detail summary. Deactivation is a
 single URL-selected TaskSheet with preserved list context and an atomic expected-
 ACTIVE claim; history remains retained and concurrent/stale actions fail safely.
+
+Wastage reason codes now use two required applicability dimensions: Wastage
+event/type and item inventory class. Branch and warehouse users see an active
+code only when both match the Wastage Report; an unmapped legacy code remains
+unavailable for new entry until an authorized administrator configures its
+mapping. This does not change evidence, approval, or stock-posting controls.
 
 Authentication Recovery now uses an active-section bounded queue with exact
 filtered paging, visible terminal history, and one selected review TaskSheet.

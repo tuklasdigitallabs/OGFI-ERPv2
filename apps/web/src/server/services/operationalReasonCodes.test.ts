@@ -17,6 +17,11 @@ describe("operational reason-code registry contract", () => {
     expect(service).toContain('take: values.pageSize');
     expect(service).toContain('{ id: "asc" }');
     expect(service).toContain("getOperationalReasonCodeDetail");
+    expect(service).toContain("listActiveWastageReasonCodes");
+    expect(service).toContain("requireActiveWastageReasonCode");
+    expect(service).toContain("wastageTypes");
+    expect(service).toContain("inventoryClasses");
+    expect(service).toContain("OPERATIONAL_REASON_CODE_INVALID");
     expect(service).toContain("updateMany");
     expect(service).toContain('status: "ACTIVE"');
     expect(service).toContain("transition.count !== 1");

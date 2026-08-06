@@ -11,6 +11,7 @@
 - The confidential permission is not standalone authority. Existing Supplier workspace authority and selected-company scope remain required for every read or action.
 - `CONFIGURED_ADMIN` does not receive this sensitive permission by default or recommendation.
 - The Catalog now presents the same filtered, paged result set as a desktop table and responsive mobile cards. Filters, list pages, lookup pages, and selected-action context remain in the URL.
+- The register now uses whole-row or whole-card toggle selection and one contextual **Open supplier** action. Clicking the selected record again clears it; the Open action stays unavailable with no selection. The selected Supplier opens in one focused workspace overlay, with Catalog available as a tab instead of a repeated row link. Closing the overlay returns to the preserved register context.
 - Supplier creation and Supplier/link deactivation use focused task modes. Inactive records remain as read-only history.
 - Supplier and link deactivation recheck the exact company-scoped record and active status. When concurrent attempts target the same record, only one succeeds and records the deactivation audit entry.
 - Supplier deactivation now serializes with accreditation updates and new Supplier Item links, preventing a stale writer from restoring accreditation or adding a link after the Supplier becomes inactive.

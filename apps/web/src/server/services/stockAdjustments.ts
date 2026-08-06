@@ -1,4 +1,4 @@
-import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { STOCK_ADJUSTMENT_MAX_LINES } from "../../lib/workflowLimits";
@@ -35,6 +35,7 @@ import {
   inventoryItemLotExpiryRequirements
 } from "./policySettings";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import { lockLiveInventoryActionAuthority } from "./inventoryActionAuthority";
 import {
   dashboardTaskAfterWhere,
   type DashboardTaskCursor,
@@ -710,6 +711,17 @@ async function assertFreshStockAdjustmentCancellationAuthority(
   }
 }
 
+async function assertFreshStockAdjustmentInventoryAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { inventoryLocationId: string; permissionCode: string }
+) {
+  return lockLiveInventoryActionAuthority(tx, session, {
+    ...input,
+    staleErrorCode: "STOCK_ADJUSTMENT_AUTHORITY_STALE",
+  });
+}
+
 function requiredFormValues(formData: FormData, name: string) {
   return formData
     .getAll(name)
@@ -806,9 +818,19 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
 
 export async function listStockAdjustments(
   session: SessionContext,
-  profile?: StockAdjustmentDashboardProfile
+  profile?: StockAdjustmentDashboardProfile,
+  input: { maxRows?: number } = {}
 ) {
   await requireStockAdjustmentRead(session);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("STOCK_ADJUSTMENT_EXPORT_MAX_ROWS_INVALID");
+  }
 
   const adjustments = await prisma.stockAdjustment.findMany({
     where: profile
@@ -822,8 +844,13 @@ export async function listStockAdjustments(
       reversedBy: true,
       lines: true
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    take: maxRows + 1
   });
+
+  if (adjustments.length > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   return adjustments.map(mapStockAdjustment);
 }
@@ -1253,20 +1280,6 @@ export async function submitStockAdjustment(formData: FormData) {
     throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
   }
   assertDedicatedOpeningCutoverRequired(initialAdjustment.adjustmentType);
-  await assertPrivilegedMfaForAction(session, {
-    action: "stock_adjustment.post",
-    enforcementScope: "all_sensitive",
-    permissionCode: permissions.stockAdjustmentPost,
-    entityType: "StockAdjustment",
-    entityId: initialAdjustment.id,
-    reason:
-      "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.",
-    metadata: {
-      adjustmentType: initialAdjustment.adjustmentType,
-      inventoryLocationId: initialAdjustment.inventoryLocationId
-    }
-  });
-
   await withApprovalProducerTransaction({
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -1693,6 +1706,8 @@ export async function postStockAdjustment(formData: FormData) {
       if (lockedSource?.status === "POSTED" || lockedSource?.postedAt) return;
       throw new Error("STOCK_ADJUSTMENT_NOT_APPROVED_FOR_POSTING");
     }
+    const liveMfaSession = await assertFreshStockAdjustmentInventoryAuthority(tx, session, { inventoryLocationId: lockedSource.inventoryLocationId, permissionCode: permissions.stockAdjustmentPost });
+    await assertPrivilegedMfaForAction(liveMfaSession, { action: "stock_adjustment.post", enforcementScope: "all_sensitive", permissionCode: permissions.stockAdjustmentPost, entityType: "StockAdjustment", entityId: adjustment.id, reason: "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.", metadata: { adjustmentType: adjustment.adjustmentType, inventoryLocationId: lockedSource.inventoryLocationId } }, { transaction: tx });
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,
@@ -1868,16 +1883,25 @@ export async function reverseStockAdjustment(formData: FormData) {
     )) {
       throw new Error("STOCK_ADJUSTMENT_LINE_POSTED_MOVEMENT_REQUIRED");
     }
-    await tx.$queryRaw<Array<{ id: string }>>`
+    const postedMovementIds = lockedLineRows
+      .map((line) => line.postedMovementId)
+      .filter((id): id is string => Boolean(id));
+    await tx.$queryRaw`
+      -- InventoryMovement is append-only for the runtime role, so use a
+      -- transaction-scoped advisory lock instead of a row lock that would
+      -- require UPDATE privilege.
       SELECT movement.id
         FROM "InventoryMovement" movement
-        JOIN "StockAdjustmentLine" line ON line."postedMovementId" = movement.id
-       WHERE line."stockAdjustmentId" = ${adjustment.id}::uuid
-         AND line."tenantId" = ${session.context.tenantId}::uuid
-         AND line."companyId" = ${session.context.companyId}::uuid
+        CROSS JOIN LATERAL (
+          SELECT pg_advisory_xact_lock(hashtextextended(movement.id::text, 0))
+        ) movement_lock
+       WHERE movement.id IN (${Prisma.join(postedMovementIds.map((id) => Prisma.sql`${id}::uuid`))})
+         AND movement."tenantId" = ${session.context.tenantId}::uuid
+         AND movement."companyId" = ${session.context.companyId}::uuid
        ORDER BY movement.id ASC
-       FOR UPDATE OF movement
     `;
+    const liveMfaSession = await assertFreshStockAdjustmentInventoryAuthority(tx, session, { inventoryLocationId: lockedSource.inventoryLocationId, permissionCode: permissions.stockAdjustmentReverse });
+    await assertPrivilegedMfaForAction(liveMfaSession, { action: "stock_adjustment.reverse", enforcementScope: "all_sensitive", permissionCode: permissions.stockAdjustmentReverse, entityType: "StockAdjustment", entityId: adjustment.id, reason: "Reversing a stock adjustment creates counter-movements and requires privileged MFA evidence.", metadata: { adjustmentType: adjustment.adjustmentType, inventoryLocationId: lockedSource.inventoryLocationId } }, { transaction: tx });
     const authoritativeAdjustment = await tx.stockAdjustment.findFirst({
       where: {
         id: adjustment.id,

@@ -14,7 +14,7 @@ The transfer header and line quantities remain lifecycle rollups. Receipt events
 
 Update: full receipt-event reversal is implemented as the approved correction path. Posted receipt events are reversed as whole events with linked `REVERSAL` movements for accepted quantities; corrected quantities are posted through a replacement receipt event.
 
-Update: final transfer discrepancy settlement is implemented as a non-posting closure action. A user with `inventory.transfer.discrepancy.settle` at the destination location can move a disputed transfer to `DISCREPANCY_SETTLED` with settlement type, reason, evidence reference, and audit metadata. The requester, dispatcher, and active receipt receiver cannot settle the same discrepancy.
+Historical implementation note: a non-posting discrepancy-settlement path exists in the codebase, but it is dormant and fail-closed. Under DEC-0265, no user currently has settlement authority until finality and reopen/reversal semantics are confirmed. Do not treat `DISCREPANCY_SETTLED` as an available or final custody state.
 
 ## Required Controls
 
@@ -28,7 +28,7 @@ Update: final transfer discrepancy settlement is implemented as a non-posting cl
   - `DISPUTED` when damaged, rejected, or short/discrepancy quantity is recorded.
   - `RECEIVED` when all dispatched quantity is accepted with no discrepancy.
 - Do not create stock adjustments, wastage, replacement transfers, or finance entries from discrepancy capture in this slice.
-- Discrepancy settlement is audit-only and must not create inventory movements, stock adjustments, wastage, replacement transfers, or finance entries.
+- If settlement policy is later enabled, it must remain audit-only and must not create inventory movements, stock adjustments, wastage, replacement transfers, or finance entries.
 
 ## Rationale
 

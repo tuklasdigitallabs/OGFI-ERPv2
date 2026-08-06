@@ -3,6 +3,7 @@
   "cluster": "admin-platform",
   "testFiles": [
     "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+    "apps/web/tests/authorizationAdminMasterUpdates.integration.test.ts",
     "apps/web/tests/approvalRuleLifecyclePg.integration.test.ts"
   ],
   "cases": [
@@ -347,9 +348,106 @@
         "privileged-MFA self-review",
         "exact record no-mutation"
       ]
+    },
+    {
+      "id": "AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "token-bound PASSWORD_CHANGE_REQUIRED session",
+        "temporary password expiry and one-use credential predicate",
+        "password/session compare-and-set",
+        "sibling session revocation",
+        "secret-free password-change audit",
+        "replay denial without mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "core administration permission and company scope",
+        "self-issue denial before credential mutation",
+        "no identity, credential, or audit mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminMasterUpdates.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live core.administer permission revalidation",
+        "live core.tenant_role_administer permission revalidation for organization updates",
+        "company, brand, department, location, reason-code, and audit no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminMasterUpdates.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "selected company predicate",
+        "exact tenant-owned record predicate",
+        "active company MANAGE assignment",
+        "non-enumerating foreign reason-code denial",
+        "exact business-record and audit no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER",
+      "file": "apps/web/tests/authorizationAdminMasterUpdates.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "required change reason rejects before mutation",
+        "authorized company, brand, department, location, and reason-code updates",
+        "transactional audit event with before and after values",
+        "exact actor and change reason attribution"
+      ]
     }
   ],
   "boundaries": [
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#issueTemporaryPassword",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "core administrator permission",
+        "company MANAGE scope",
+        "self-target prohibition",
+        "privileged MFA guard",
+        "target-user privileged/high-risk exclusion"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "self-target denial leaves identity, credential, session, and audit state unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#changeRequiredPassword",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "trusted same-origin server action",
+        "token-bound PASSWORD_CHANGE_REQUIRED session",
+        "unexpired single-use temporary-password credential predicate",
+        "session and credential compare-and-set",
+        "sibling-session revocation"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "invalid or replayed password-change session leaves credentials, sessions, and audit unchanged"
+      ],
+      "status": "COVERED"
+    },
     {
       "surfaceId": "server/services/authentication.ts#completeMfaChallenge",
       "classification": "PUBLIC_BOUNDARY",
@@ -1148,6 +1246,94 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/coreAdmin.ts#updateCoreAdminCompany",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "requirePermission(core.tenant_role_administer)",
+        "selected tenant-company predicate",
+        "active company MANAGE assignment",
+        "required change-reason validation",
+        "transactional update plus audit"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+      ],
+      "noMutationControls": [
+        "permission, scope, tenant, company, and missing-reason denials leave Company and AuditEvent unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#updateCoreAdminBrand",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "requirePermission(core.tenant_role_administer)",
+        "tenant-owned Brand predicate",
+        "active company MANAGE assignment",
+        "required change-reason validation",
+        "transactional update plus audit"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+      ],
+      "noMutationControls": [
+        "permission, scope, tenant, company, and missing-reason denials leave Brand and AuditEvent unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#updateCoreAdminDepartment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "requirePermission(core.tenant_role_administer)",
+        "tenant-owned Department predicate",
+        "active company MANAGE assignment",
+        "required change-reason validation",
+        "transactional update plus audit"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+      ],
+      "noMutationControls": [
+        "permission, scope, tenant, company, and missing-reason denials leave Department and AuditEvent unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#updateCoreAdminLocation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "requirePermission(core.tenant_role_administer)",
+        "tenant-owned Location predicate",
+        "active company MANAGE assignment",
+        "required change-reason validation",
+        "transactional update plus audit"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+      ],
+      "noMutationControls": [
+        "permission, scope, tenant, company, and missing-reason denials leave Location and AuditEvent unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/coreAdmin.ts#createUserRoleAssignment",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": [
@@ -1509,6 +1695,27 @@
       ],
       "noMutationControls": [
         "operational reason-code status unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/operationalReasonCodes.ts#updateOperationalReasonCode",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "active company MANAGE assignment",
+        "tenant-company OperationalReasonCode predicate",
+        "required change-reason validation",
+        "transactional update plus audit"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+      ],
+      "noMutationControls": [
+        "permission, scope, tenant, company, and missing-reason denials leave OperationalReasonCode and AuditEvent unchanged"
       ],
       "status": "COVERED"
     },

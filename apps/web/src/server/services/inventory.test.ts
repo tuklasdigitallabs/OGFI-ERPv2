@@ -646,6 +646,28 @@ describe("inventory ledger foundation rules", () => {
     );
   });
 
+  test("keeps reconciliation exports bounded without widening ordinary page limits", () => {
+    const scopedSession = {
+      user: { id: "00000000-0000-4000-8000-000000000001" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      }
+    } as SessionContext;
+    const built = buildInventoryLedgerVarianceQuery(scopedSession, {
+      exportMaxRows: 100
+    });
+    expect(built.query.sql).toContain("LIMIT");
+    expect(built.query.values).toContain(101);
+    expect(() =>
+      buildInventoryLedgerVarianceQuery(scopedSession, { exportMaxRows: 0 })
+    ).toThrow("INVENTORY_LEDGER_VARIANCE_EXPORT_MAX_ROWS_INVALID");
+    expect(() =>
+      buildInventoryLedgerVarianceQuery(scopedSession, { exportMaxRows: 100_001 })
+    ).toThrow("INVENTORY_LEDGER_VARIANCE_EXPORT_MAX_ROWS_INVALID");
+  });
+
   test("requires complete typed trace filters and ANDs them with current scope", () => {
     const scopedSession = {
       user: { id: "00000000-0000-4000-8000-000000000001" },
@@ -799,6 +821,12 @@ describe("inventory ledger foundation rules", () => {
     expect(source).toContain("prisma.$queryRaw<InventoryLedgerVarianceRawRow[]>");
     expect(source).not.toContain("const rowsByKey = new Map");
     expect(source).not.toContain("lastReconciledAt");
+    expect(source).toContain("exportMaxRows");
+    expect(source).not.toContain("pageSize: null");
+    expect(source).toContain("take: maxRows + 1");
+    expect(source).toContain("INVENTORY_BALANCE_EXPORT_MAX_ROWS_INVALID");
+    expect(source).toContain("INVENTORY_LEDGER_EXPORT_MAX_ROWS_INVALID");
+    expect(source).not.toContain("take: 100");
   });
 });
 

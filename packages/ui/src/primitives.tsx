@@ -292,7 +292,7 @@ export function PaginationBar({
   const canGoPrevious = safePage > 1;
   const canGoNext = safePage < pageCount;
   const buttonClass =
-    "inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-sm font-semibold transition-colors";
+    "inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-sm font-semibold transition-colors";
   const enabledClass =
     "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-muted)]";
   const disabledClass =
@@ -301,16 +301,16 @@ export function PaginationBar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-t border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-wrap flex-col gap-3 border-t border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
         className
       )}
     >
-      <p className="text-sm text-[var(--color-text-secondary)]">
+      <p className="min-w-0 text-sm text-[var(--color-text-secondary)]">
         Showing <span className="font-semibold text-[var(--color-text-primary)]">{start}-{end}</span>{" "}
         of <span className="font-semibold text-[var(--color-text-primary)]">{totalItems}</span>{" "}
         {itemLabel}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {canGoPrevious ? (
           <a className={cn(buttonClass, enabledClass, controlClassName)} href={getPageHref(safePage - 1)}>
             Previous
@@ -320,7 +320,7 @@ export function PaginationBar({
             Previous
           </span>
         )}
-        <span className="inline-flex min-h-9 items-center rounded-[var(--radius-control)] px-2 text-sm font-semibold text-[var(--color-text-secondary)]">
+        <span className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-[var(--radius-control)] px-2 text-sm font-semibold text-[var(--color-text-secondary)]">
           Page {safePage} of {pageCount}
         </span>
         {canGoNext ? (

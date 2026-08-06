@@ -43,13 +43,13 @@ test("receiving register tabs and filters remain usable on desktop and mobile", 
   const controls = page.locator("main .ogfi-data-surface input:visible, main .ogfi-data-surface select:visible, main .ogfi-data-surface button:visible");
   for (const control of await controls.all()) {
     const height = await control.evaluate((element) => element.getBoundingClientRect().height);
-    if (height > 0) expect(height).toBeGreaterThanOrEqual(40);
+    if (height > 0) expect(height).toBeGreaterThanOrEqual(44);
   }
   for (const control of [
     page.getByRole("link", { name: "Create Draft Receipt", exact: true }),
     page.getByRole("link", { name: "Export CSV", exact: true }),
   ]) {
-    expect(await control.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
+    expect(await control.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   }
 
   await page.goto("/receiving?tab=draft&q=GRN");

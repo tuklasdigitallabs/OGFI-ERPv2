@@ -2,8 +2,8 @@
 
 **Audience:** Assigned opening-inventory preparers and submitters, Operations and Accounting reviewers, activation/recovery requesters, System Administrators, UAT coordinators, and pilot release owners
 **Duration:** 75 minutes
-**Prerequisites:** Assigned local pilot scope and sample accounts; a sealed pilot configuration; reviewed `OPENING` count attempt(s); controlled evidence; valuation lines; separate Operations and Accounting reviewers; read access to the UAT evidence pack
-**Related knowledge-base articles:** [Using The Opening Inventory Cutover Pilot](../knowledge-base/warehouse-inventory/using-the-opening-inventory-cutover-pilot.md); [Running Stock Counts](../knowledge-base/warehouse-inventory/running-stock-counts.md); [Understanding Stock Adjustments](../knowledge-base/warehouse-inventory/understanding-stock-adjustments.md)
+**Prerequisites:** Assigned local pilot scope and sample accounts; a sealed pilot configuration; reviewed `OPENING` count attempt(s); controlled evidence; valuation lines; separate Operations and Accounting reviewers; read access to the UAT evidence pack; configuration drafting/sealing implementation and UAT gates passed before the administrator exercise
+**Related knowledge-base articles:** [Preparing And Sealing An Inventory Pilot Configuration](../knowledge-base/administration/preparing-and-sealing-an-inventory-pilot-configuration.md); [Using The Opening Inventory Cutover Pilot](../knowledge-base/warehouse-inventory/using-the-opening-inventory-cutover-pilot.md); [Running Stock Counts](../knowledge-base/warehouse-inventory/running-stock-counts.md); [Understanding Stock Adjustments](../knowledge-base/warehouse-inventory/understanding-stock-adjustments.md)
 
 ## Training status
 
@@ -14,6 +14,10 @@ Local, default-off pilot training only. This module does not authorize staging/V
 By the end of this module, participants can:
 
 - Explain why an opening cutover is not a Stock Adjustment or a direct balance edit.
+- Distinguish a mutable pilot configuration draft from its immutable sealed revision and explain why its creator or current editor cannot be the sealer.
+- Identify explicit endpoint capabilities, high-risk Item IDs, the five distinct Opening actors, and all eight readiness families.
+- Explain that `PurchaseRequest` readiness covers only the standard, non-emergency `DEFAULT` route resolved by `purchase_request_approval_rule_v1`, while a valid coexisting `PR_EMERGENCY` route remains uncertified and earns no emergency UAT credit.
+- Explain why seal-time readiness evidence does not grant current authority and why a successor affects only eligible new cohorts.
 - Confirm the company and location scope, sealed configuration, reviewed count, complete selected-item coverage, zero lines, controlled evidence, and valuation before sealing.
 - Demonstrate the separate Operations then Accounting approval path and explain why source-custody actors cannot approve.
 - Explain the inventory impact of Freeze, Stage, and Activate.
@@ -23,21 +27,26 @@ By the end of this module, participants can:
 
 ## Demonstration flow
 
-1. Sign in with a sample scoped viewer and open `Inventory → Opening Inventory`. Use the server-side search, status filters, and page controls. Confirm that the queue shows only the authorized location, does not disclose draft cohorts at an adjacent location, and that visibility does not provide prepare, approval, activation, or recovery authority.
-2. Switch to the assigned preparer. Create a draft cohort from the sealed pilot configuration and effective cutover time. Point out that the cohort is company-level rather than brand-bound and that draft creation has no stock impact.
-3. Open the focused preparation task. Add controlled cohort evidence, choose the reviewed `OPENING` count attempt, and prepare a location batch. Use `Show incomplete lines` to identify every positive-count line missing a valuation unit cost.
-4. Demonstrate that the preparation draft is retained only in the same browser session for the exact user, cohort, and count attempt. Select evidence on more than one server-paged evidence page, then explain that this temporary draft is cleared only after successful preparation.
-5. Verify all selected-item source lines, including a recorded zero quantity. Explain that a zero line proves coverage but is omitted from the resulting opening movements and derived balance rows.
-6. Show the source count, evidence digest, valuation digest, cutover digest, current location, and detail tabs. Seal only after all required location batches are prepared.
-7. Switch to the submitter and submit the batch. Explain that the server rechecks the submitter’s exact-location authority before admitting only the Opening Inventory Cutover approval route. The batch becomes `PENDING APPROVAL` and still has no inventory movement or usable balance.
-8. Switch to an eligible Operations reviewer, then an eligible Accounting reviewer. Demonstrate the ordered independent review and inspect the approval/audit history after final approval.
-9. With an eligible command requester and fresh MFA in a designated local test scenario, demonstrate the requested order: cohort freeze, location staging, then cohort activation. Explain that the request creates an immutable command and the separate executor, not the requester or page, consumes eligible commands.
-10. Open the `Activity` tab. Show lifecycle feedback and explain that a pending, claimed, or retrying matching command must not be submitted again. If a command fails, record the safe failure code and follow the next controlled action or escalate.
-11. Open the `Evidence` and `Activity` tabs with a viewer whose live scope does not cover every cohort location. Confirm that the local batch remains visible while cohort-shared evidence and authority activity are restricted. Do not attempt to bypass this with another user’s account.
-12. Use an unavailable or out-of-scope batch detail link. Confirm that the user sees only a generic unavailable message and `Back to queue`, with no indication that another location’s batch exists.
-13. At each state, explain the effect: Freeze applies the cutover fence; Stage validates and reconciles only; Activate atomically posts eligible locations to the ledger.
-14. Demonstrate the approved recovery explanation without using real records: before release, immutable logical supersession/replacement preserves history and posts no reversal; after release, a separately approved delta Stock Adjustment is the forward-only correction route.
-15. Review the Admin Audit workspace and the inventory ledger. Emphasize that direct balance edits and an ordinary opening-balance adjustment are prohibited.
+1. After the configuration workspace's implementation and UAT gates pass, sign in as the sample configuration editor and open `Inventory → Opening Inventory → Setup Center`. Confirm the exact Company context and show that view, draft, and seal are separate permissions that also require Company `MANAGE`.
+2. Select `Create configuration draft`. Use the `Endpoints`, `Items`, `Named users`, and `Routes` tabs to add explicit endpoint capabilities (`TRANSFER_SOURCE`, `TRANSFER_DESTINATION`, `COUNT_LOCATION`, and `OPENING_STOCK_LOCATION`), exact high-risk Item IDs, five distinct Opening actors, and candidate approval rules. Record the required change reason for each save. Explain that the deployment executor is not selected here and route bindings grant no authority.
+3. Open `Readiness`, select `Validate readiness`, and review exactly eight family results: `PurchaseRequest`, `QuotationRecommendation`, `PurchaseOrder`, `InventoryTransfer`, `StockCountAttemptReview`, `WastageReport`, `StockAdjustment`, and `OpeningInventoryCutover`. For `PurchaseRequest`, confirm that the evidence identifies resolver `purchase_request_approval_rule_v1` and the standard, non-emergency `DEFAULT` route. A valid `PR_EMERGENCY` route may coexist, but do not count it as certified or award emergency-scenario UAT credit. Resolve each `Blocked` result in its authoritative source; do not describe `Ready at cutoff` as a grant.
+4. Switch to a separate sample sealer with the seal permission, exact Company `MANAGE`, and fresh MFA. Select `Seal configuration revision`, enter the seal reason, and submit `Seal immutable revision`. Inspect the sealed revision number, `Immutable SHA-256 digest`, lineage, and Activity. Explain that an error requires `Create successor draft`, and that sealing does not activate or post anything.
+5. Show an older cohort pinned to its original revision and explain that only an eligible new cohort may use the latest sealed revision through the separate selection path. Do not attempt to migrate the old cohort.
+6. Sign in with a sample scoped viewer and open `Inventory → Opening Inventory`. Use the server-side search, status filters, and page controls. Confirm that the queue shows only the authorized location, does not disclose draft cohorts at an adjacent location, and that visibility does not provide prepare, approval, activation, or recovery authority.
+7. Switch to the assigned preparer. Create a draft cohort from the latest eligible sealed pilot configuration and effective cutover time. Point out that the cohort is company-level rather than brand-bound and that draft creation has no stock impact.
+8. Open the focused preparation task. Add controlled cohort evidence, choose the reviewed `OPENING` count attempt, and prepare a location batch. Use `Show incomplete lines` to identify every positive-count line missing a valuation unit cost.
+9. Demonstrate that the preparation draft is retained only in the same browser session for the exact user, cohort, and count attempt. Select evidence on more than one server-paged evidence page, then explain that this temporary draft is cleared only after successful preparation.
+10. Verify all selected-item source lines, including a recorded zero quantity. Explain that a zero line proves coverage but is omitted from the resulting opening movements and derived balance rows.
+11. Show the source count, evidence digest, valuation digest, cutover digest, current location, and detail tabs. Seal only after all required location batches are prepared.
+12. Switch to the submitter and submit the batch. Explain that the server rechecks the submitter’s exact-location authority before admitting only the Opening Inventory Cutover approval route. The batch becomes `PENDING APPROVAL` and still has no inventory movement or usable balance.
+13. Switch to an eligible Operations reviewer, then an eligible Accounting reviewer. Demonstrate the ordered independent review and inspect the approval/audit history after final approval.
+14. With an eligible command requester and fresh MFA in a designated local test scenario, demonstrate the requested order: cohort freeze, location staging, then cohort activation. Explain that the request creates an immutable command and the separate executor, not the requester or page, consumes eligible commands.
+15. Open the `Activity` tab. Show lifecycle feedback and explain that a pending, claimed, or retrying matching command must not be submitted again. If a command fails, record the safe failure code and follow the next controlled action or escalate.
+16. Open the `Evidence` and `Activity` tabs with a viewer whose live scope does not cover every cohort location. Confirm that the local batch remains visible while cohort-shared evidence and authority activity are restricted. Do not attempt to bypass this with another user’s account.
+17. Use an unavailable or out-of-scope batch detail link. Confirm that the user sees only a generic unavailable message and `Back to queue`, with no indication that another location’s batch exists.
+18. At each state, explain the effect: configuration seal, cohort draft, cohort seal, approval, Freeze, and Stage do not post inventory; Activate is the separately controlled step that can post eligible locations to the ledger.
+19. Demonstrate the approved recovery explanation without using real records: before release, immutable logical supersession/replacement preserves history and posts no reversal; after release, a separately approved delta Stock Adjustment is the forward-only correction route.
+20. Review the Admin Audit workspace and the inventory ledger. Emphasize that direct balance edits and an ordinary opening-balance adjustment are prohibited.
 
 ## Practice exercise
 
@@ -48,6 +57,10 @@ Do not execute an activation unless the facilitator has provided an approved loc
 ## Common errors and recovery
 
 - **Using an ordinary Stock Adjustment for opening stock:** Stop. Use the dedicated opening-inventory cohort workflow; Stock Adjustments are not a cutover substitute.
+- **Trying to seal a draft you created or last edited:** Stop. A different authorized sealer must complete fresh MFA and the live Company `MANAGE` and seal-permission checks.
+- **Treating a route or actor readiness snapshot as access:** Stop. It is point-in-time evidence only; current permission, scope, assignment, segregation, MFA, route, and source state remain authoritative.
+- **Counting the standard Purchase Request snapshot as emergency coverage:** Stop. The snapshot certifies only the non-emergency `DEFAULT` route resolved by `purchase_request_approval_rule_v1`. A valid `PR_EMERGENCY` route may coexist, but receives no credit in this pilot exercise.
+- **Editing a sealed pilot revision:** Create and seal a higher successor draft. Existing cohorts remain pinned to the revision and digest they originally used.
 - **Treating a zero count as a missing line:** Record the explicit zero line. It proves selected-item coverage but does not create stock when activated.
 - **Assuming the browser draft is a saved cutover:** It is temporary and scoped to one user, cohort, and count attempt. Prepare the batch successfully before treating its facts as immutable.
 - **Expecting approval or staging to change stock:** Neither posts inventory. Only authorized cohort activation posts the opening movements.
@@ -64,8 +77,11 @@ Do not execute an activation unless the facilitator has provided an approved loc
 ## Completion check
 
 - Participant can explain the no-stock-impact states (`DRAFT`, seal, approval, Freeze, and Stage) and the activation-only ledger effect.
+- Participant can name all four endpoint capabilities, all five distinct Opening actors, and all eight readiness families without treating them as runtime grants.
+- Participant can distinguish certified standard Purchase Request readiness from an uncertified coexisting `PR_EMERGENCY` route and state that the latter receives no emergency UAT credit.
+- Participant can demonstrate editor/sealer separation, fresh MFA at configuration seal, immutable revision/digest review, and forward-only successor correction.
 - Participant can identify the required evidence, valuation, complete count coverage, explicit zero-line, scope, and independent-review controls.
 - Participant can navigate the server-paged queue/detail tabs, distinguish the local temporary preparation draft from immutable facts, and interpret command lifecycle feedback.
 - Participant can state the pre-release and post-release recovery paths without proposing an edit, direct balance change, or ordinary opening-balance adjustment.
-- Participant can state that the feature is locally implemented and default-off, with no current VPS/staging/production activation or GO authorization.
+- Participant can state that the opening-cutover foundation is locally implemented and default-off, while the configuration exercise is available only after its implementation and UAT gates pass; neither statement grants VPS/staging/production activation or a GO authorization.
 - Participant can explain why adjacent-location drafts and unavailable batch details must not be disclosed, and can return safely to the queue.

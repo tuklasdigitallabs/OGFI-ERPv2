@@ -29,19 +29,18 @@ const expansionRoutes = [
   { path: "/expansion/post-opening", heading: "Post-Opening Review", action: "Create Review", actionRole: "button" }
 ] as const;
 
-test("Expansion workspace routes are available to the scoped super user", async ({ page }) => {
-  test.setTimeout(180_000);
-  await signInAsSuperUser(page);
-
-  for (const route of expansionRoutes) {
+for (const route of expansionRoutes) {
+  test(`Expansion workspace route is available: ${route.path}`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await signInAsSuperUser(page);
     await page.goto(route.path);
     await expect(
       page.getByRole("heading", { name: route.heading, exact: true })
     ).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Expansion lifecycle" })).toBeVisible();
     await expect(page.getByRole(route.actionRole, { name: route.action })).toBeVisible();
-  }
-});
+  });
+}
 
 test("Expansion lifecycle navigation exposes all working stages", async ({ page }) => {
   await signInAsSuperUser(page);

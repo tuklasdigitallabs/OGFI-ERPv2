@@ -288,14 +288,14 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               <label className="flex-1 text-sm font-semibold text-slate-700">
                 Search follow-up records
                 <input
-                  className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-3 font-normal"
+                  className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 font-normal"
                   defaultValue={profilePage?.query ?? ""}
                   maxLength={120}
                   name="q"
                   placeholder="GRN, PO, or supplier"
                 />
               </label>
-              <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" type="submit">
+              <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" type="submit">
                 Search
               </button>
               {profilePage?.query ? (
@@ -307,40 +307,40 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
             <form className="flex flex-wrap items-end gap-2 border-b border-slate-100 p-4" method="get">
               <input type="hidden" name="tab" value={activeTab} />
               <input
-                className="min-h-10 min-w-56 flex-1 rounded-md border border-slate-300 px-3 text-sm"
+                className="min-h-11 min-w-56 flex-1 rounded-md border border-slate-300 px-3 text-sm"
                 name="q"
                 defaultValue={query}
                 maxLength={120}
                 placeholder="Search GRN, Purchase Order, or supplier"
               />
-              <select name="status" defaultValue={status ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm">
+              <select name="status" defaultValue={status ?? ""} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm">
                 <option value="">Any status</option>
                 {['DRAFT','POSTING','POSTED','POSTED_WITH_DISCREPANCY','REVERSING','REVERSED'].map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <input name="receivedFrom" type="date" defaultValue={receivedFrom} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
-              <input name="receivedTo" type="date" defaultValue={receivedTo} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
+              <input name="receivedFrom" type="date" defaultValue={receivedFrom} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm" />
+              <input name="receivedTo" type="date" defaultValue={receivedTo} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm" />
               <label className="flex min-w-44 flex-col gap-1 text-xs font-semibold text-slate-600">
                 Supplier
-                <select name="supplierId" defaultValue={supplierId ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm font-normal">
+                <select name="supplierId" defaultValue={supplierId ?? ""} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm font-normal">
                   <option value="">All suppliers</option>
                   {filterOptions?.suppliers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </label>
               <label className="flex min-w-40 flex-col gap-1 text-xs font-semibold text-slate-600">
                 Purchase Order
-                <select name="purchaseOrderId" defaultValue={purchaseOrderId ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm font-normal">
+                <select name="purchaseOrderId" defaultValue={purchaseOrderId ?? ""} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm font-normal">
                   <option value="">All Purchase Orders</option>
                   {filterOptions?.purchaseOrders.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </label>
               <label className="flex min-w-44 flex-col gap-1 text-xs font-semibold text-slate-600">
                 Receiver
-                <select name="receivedByUserId" defaultValue={receivedByUserId ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm font-normal">
+                <select name="receivedByUserId" defaultValue={receivedByUserId ?? ""} className="min-h-11 rounded-md border border-slate-300 px-2 text-sm font-normal">
                   <option value="">All receivers</option>
                   {filterOptions?.receivers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </label>
-              <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Search</button>
+              <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Search</button>
               {query || status || receivedFrom || receivedTo || supplierId || purchaseOrderId || receivedByUserId ? <ButtonLink href={receivingHref(activeTab)} tone="secondary">Clear filters</ButtonLink> : null}
             </form>
             <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">

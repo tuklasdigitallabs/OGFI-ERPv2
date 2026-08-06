@@ -1,4 +1,4 @@
-import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
+import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import type { SessionContext } from "./context";
 import type { ApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 
@@ -529,7 +529,10 @@ export async function listEligibleApprovalStepPage(
   input: {
     page?: number;
     pageSize?: number;
+    approvalInstanceId?: string;
     approvalInstanceStepId?: string;
+    /** Server-owned family filter for a deliberately bounded worklist. */
+    documentTypes?: readonly string[];
     view?: "ASSIGNED" | "DUE_SOON";
     dueBefore?: Date;
     now?: Date;
@@ -538,13 +541,22 @@ export async function listEligibleApprovalStepPage(
 ): Promise<EligibleApprovalStepPage> {
   const { page, pageSize, offset } = normalizeApprovalRoutingPage(input);
   const now = input.now ?? new Date();
+  const approvalId = input.approvalInstanceId ?? null;
   const stepId = input.approvalInstanceStepId ?? null;
+  const documentTypes = input.documentTypes ?? null;
+  // Keep the interpolated IN list syntactically valid for the unfiltered path.
+  // The boolean branch makes this sentinel unreachable as a filter value.
+  const documentTypeFilter = documentTypes ?? ["__UNFILTERED_APPROVAL_TYPE__"];
   const view = input.view ?? "ASSIGNED";
   if (view === "DUE_SOON" && !input.dueBefore) {
     throw new Error("APPROVAL_ROUTING_DUE_BEFORE_REQUIRED");
   }
   const dueBefore = input.dueBefore ?? now;
   const isDueSoon = view === "DUE_SOON";
+  const transferPilotEnabled =
+    process.env.INVENTORY_TRANSFER_APPROVAL_V1_ENABLED === "true";
+  const stockCountPilotEnabled =
+    process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
   const rows = await client.$queryRaw<EligibleApprovalStepRow[]>`
     WITH eligible AS MATERIALIZED (
       SELECT ai.id AS "approvalInstanceId",
@@ -563,7 +575,64 @@ export async function listEligibleApprovalStepPage(
         JOIN "User" actor ON actor.id = ${session.user.id}::uuid
        WHERE ai."tenantId" = ${session.context.tenantId}::uuid
          AND ai."companyId" = ${session.context.companyId}::uuid
+         AND (${approvalId}::uuid IS NULL OR ai.id = ${approvalId}::uuid)
          AND ai.status = 'PENDING'::"ApprovalStatus"
+         AND (
+           ai."documentType" <> 'InventoryTransfer'
+           OR (
+             ${transferPilotEnabled} = true
+             AND EXISTS (
+               SELECT 1
+                 FROM "InventoryTransferApprovalSubmissionIntent" intent
+                 JOIN "InventoryPilotFamilyActivation" activation
+                   ON activation."tenantId" = intent."tenantId"
+                  AND activation."companyId" = intent."companyId"
+                  AND activation.family = intent."activationFamily"
+                  AND activation.status = intent."activationStatus"
+                  AND activation."configurationRevisionId" = intent."configurationRevisionId"
+                  AND activation."configurationRevisionNumber" = intent."configurationRevisionNumber"
+                  AND activation."configurationDigest" = intent."configurationDigest"
+                  AND activation."currentActivationEventId" = intent."activationEventId"
+                  AND activation.generation = intent."activationGeneration"
+                WHERE intent."approvalInstanceId" = ai.id
+                  AND intent."tenantId" = ai."tenantId"
+                  AND intent."companyId" = ai."companyId"
+                  AND intent."activationFamily" = 'InventoryTransfer'::"InventoryPilotApprovalFamily"
+                  AND intent."activationStatus" = 'ACTIVE'::"InventoryPilotActivationStatus"
+             )
+           )
+         )
+         AND (
+           ai."documentType" <> 'StockCountAttemptReview'
+           OR (
+             ${stockCountPilotEnabled} = true
+             AND EXISTS (
+               SELECT 1
+                 FROM "StockCountReviewSubmissionIntent" intent
+                 JOIN "InventoryPilotFamilyActivation" activation
+                   ON activation."tenantId" = intent."tenantId"
+                  AND activation."companyId" = intent."companyId"
+                  AND activation.family = intent."activationFamily"
+                  AND activation.status = intent."activationStatus"
+                  AND activation."configurationRevisionId" = intent."configurationRevisionId"
+                  AND activation."configurationRevisionNumber" = intent."configurationRevisionNumber"
+                  AND activation."configurationDigest" = intent."configurationDigest"
+                  AND activation."currentActivationEventId" = intent."activationEventId"
+                  AND activation.generation = intent."activationGeneration"
+                WHERE intent."approvalInstanceId" = ai.id
+                  AND intent."tenantId" = ai."tenantId"
+                  AND intent."companyId" = ai."companyId"
+                  AND intent."activationFamily" = 'StockCountAttemptReview'::"InventoryPilotApprovalFamily"
+                  AND intent."activationStatus" = 'ACTIVE'::"InventoryPilotActivationStatus"
+             )
+           )
+         )
+         AND (
+           ${documentTypes === null} = true
+           OR ai."documentType" IN (${Prisma.join(
+             documentTypeFilter.map((documentType) => Prisma.sql`${documentType}`),
+           )})
+         )
          AND step.status = 'PENDING'::"ApprovalStepStatus"
          AND step."stepOrder" = ai."currentStepOrder"
          AND step."routingSchemaVersion" = ${APPROVAL_ROUTING_SCHEMA_VERSION}

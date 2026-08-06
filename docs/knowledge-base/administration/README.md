@@ -3,6 +3,7 @@
 Authorized administrator guidance for users, roles, scopes, local account activation and recovery, runtime security, controlled-evidence retention, release readiness, break-glass access, locations, supplier, and inventory master data.
 
 - [Managing User Access And Controlled Scopes](./managing-user-access-and-controlled-scopes.md)
+- [Reviewing And Editing Organization Scope Records](./reviewing-and-editing-organization-scope-records.md) — select a Company, Brand, Department, or Location before reviewing audit history or making an available audited descriptive correction.
 - [Reviewing User Access Requests](./reviewing-user-access-requests.md) — bounded scope/role request review and selected decision controls.
 - [Reviewing User Access Audit](./reviewing-user-access-audit.md) — actor-scoped, redacted, read-only audit history.
 - [Managing Release Readiness Gates](./managing-release-readiness-gates.md) — UAT, deployment, enablement, security counters, external-security proof references, and GO / NO-GO tracking.
@@ -13,5 +14,7 @@ Authorized administrator guidance for users, roles, scopes, local account activa
 - [Session Invalidation And Reauthentication](./session-invalidation-and-reauthentication.md) — user/admin application-session revocation, privilege-change reauthentication, and conditional external-provider follow-up.
 - [Configuring Policy Defaults](./configuring-policy-defaults.md)
 - [Configuring Approval Rules](./configuring-approval-rules.md) — immutable company versions, role-only ordered steps, controlled activation/deactivation, and intentional tenant-wide/named-user limits.
+- [Configuring Wastage Reason Codes](./configuring-wastage-reason-codes.md) — company-scoped event/type and inventory-class applicability for Wastage codes.
+- [Preparing And Sealing An Inventory Pilot Configuration](./preparing-and-sealing-an-inventory-pilot-configuration.md) — separate company drafts, explicit endpoints/items/actors, eight seal-time readiness snapshots, immutable revisions, and no activation or posting effect.
 
 Use the knowledge-base article template and follow the knowledge-base standard.

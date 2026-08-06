@@ -63,7 +63,6 @@ describe("Approval decision composer", () => {
 
   it("keeps drafts client-owned after returned errors and locks competing submissions", () => {
     const component = readFileSync(path.resolve(__dirname, "ApprovalDecisionComposer.tsx"), "utf8");
-    const page = readFileSync(path.resolve(__dirname, "../app/(app)/approvals/[id]/page.tsx"), "utf8");
 
     expect(component).toContain('const [remarks, setRemarks] = useState("")');
     expect(component).toContain('const [evidenceReference, setEvidenceReference] = useState("")');
@@ -74,11 +73,9 @@ describe("Approval decision composer", () => {
     expect(component).toContain("evidenceRef.current?.focus()");
     expect(component).toContain("errorSummaryRef.current?.focus()");
     expect(component).toContain("Your remarks and evidence draft remain available.");
-    expect(page).toContain("assertNormalizedApprovalDecisionAvailable(approvalKind, decision)");
-    expect(page.match(/if \(!normalizedApprovalRoutingEnabled\(\)\)/g)).toHaveLength(2);
-    expect(page).toContain('redirect("/approvals?error=APPROVAL_ROUTING_V1_DISABLED")');
-    expect(page).toContain('status: "error"');
-    expect(page).toContain("<ApprovalDecisionComposer");
-    expect(page).toContain("min-h-11 w-full");
+    expect(component).toContain('state.code === "APPROVAL_REVIEW_STALE"');
+    expect(component).toContain("pending || staleReview || !entry.available");
+    expect(component).toContain("Reload current review");
+    expect(component).toContain("reloadCurrentReviewHref");
   });
 });

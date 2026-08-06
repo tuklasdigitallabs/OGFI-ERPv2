@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 export const PERSISTED_APPROVAL_KEYS = Object.freeze([
   "PURCHASE_REQUEST", "PurchaseOrder", "PurchaseOrderAmendment",
   "PurchaseOrderBalanceClosure", "QuotationRecommendation", "StockAdjustment",
-  "StockCountVarianceAdjustment", "WastageReport",
+  "StockCountAttemptReview", "StockCountVarianceAdjustment", "WastageReport",
+  "InventoryTransfer", "OpeningInventoryCutover",
 ]);
-const MISSING_CONCEPTUAL_FAMILIES = Object.freeze(["ORDINARY_STOCK_COUNT", "TRANSFER_REQUEST"]);
+const MISSING_CONCEPTUAL_FAMILIES = Object.freeze([]);
 const PROHIBITED_OVERLAPS = Object.freeze(["approver:poster", "requester:approver", "requester:poster"]);
 const SYNTHETIC_ID = /^synthetic-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSAFE_TEXT = /(?:^|[^a-z])(prod(?:uction)?|live|real|operational|authoritative|approved)(?:[^a-z]|$)/i;
@@ -13,13 +14,14 @@ const ROLE_PERMISSIONS = Object.freeze({
   "synthetic-role-purchasing-requester": ["purchasing.purchase_order.amend", "purchasing.purchase_order.close_remaining", "purchasing.purchase_order.create", "purchasing.purchase_order.submit", "purchasing.purchase_request.create", "purchasing.purchase_request.submit", "purchasing.quote.manage"],
   "synthetic-role-purchasing-approver": ["purchasing.purchase_order.approve", "purchasing.purchase_request.approve", "purchasing.quote.approve"],
   "synthetic-role-purchasing-poster": ["purchasing.purchase_order.issue"],
-  "synthetic-role-inventory-requester": ["inventory.stock_adjustment.create", "inventory.stock_adjustment.submit", "inventory.stock_count.create", "inventory.stock_count.enter", "inventory.stock_count.submit", "inventory.wastage.create", "inventory.wastage.submit"],
-  "synthetic-role-inventory-approver": ["inventory.stock_adjustment.approve", "inventory.stock_count.review", "inventory.wastage.approve"],
-  "synthetic-role-inventory-poster": ["inventory.receiving.post", "inventory.stock_adjustment.post", "inventory.wastage.post"],
+  "synthetic-role-inventory-requester": ["inventory.opening_inventory.prepare", "inventory.opening_inventory.submit", "inventory.stock_adjustment.create", "inventory.stock_adjustment.submit", "inventory.stock_count.create", "inventory.stock_count.enter", "inventory.stock_count.submit", "inventory.wastage.create", "inventory.wastage.submit"],
+  "synthetic-role-inventory-approver": ["inventory.opening_inventory.review.operations", "inventory.stock_adjustment.approve", "inventory.stock_count.review", "inventory.transfer.approve", "inventory.wastage.approve"],
+  "synthetic-role-inventory-poster": ["inventory.opening_inventory.request_execute", "inventory.receiving.post", "inventory.stock_adjustment.post", "inventory.wastage.post"],
   "synthetic-role-transfer-dispatcher": ["inventory.transfer.dispatch"],
   "synthetic-role-transfer-receiver": ["inventory.transfer.receive"],
   "synthetic-role-count-performer": ["inventory.stock_count.enter", "inventory.stock_count.submit"],
   "synthetic-role-read-only-auditor": ["inventory.balance.view", "inventory.ledger.view", "inventory.receiving.view", "inventory.stock_adjustment.view", "inventory.stock_count.view", "inventory.transfer.view", "inventory.wastage.view", "purchasing.purchase_order.view"],
+  "synthetic-role-opening-accounting-reviewer": ["inventory.opening_inventory.review.accounting"],
 });
 const ACTOR_ROLES = Object.freeze({
   "synthetic-actor-purchasing-requester": ["synthetic-role-purchasing-requester"],
@@ -32,6 +34,7 @@ const ACTOR_ROLES = Object.freeze({
   "synthetic-actor-read-only-auditor": ["synthetic-role-read-only-auditor"],
   "synthetic-actor-no-role": [],
   "synthetic-actor-out-of-scope": ["synthetic-role-read-only-auditor"],
+  "synthetic-actor-opening-accounting-reviewer": ["synthetic-role-opening-accounting-reviewer"],
 });
 const PURCHASING_APPROVAL_DUTIES = Object.freeze({
   requesterActorId: "synthetic-actor-purchasing-requester",
@@ -45,10 +48,32 @@ const INVENTORY_APPROVAL_DUTIES = Object.freeze({
 });
 const FAMILY_DUTIES = Object.freeze(Object.fromEntries(PERSISTED_APPROVAL_KEYS.map((key) => [
   key,
-  ["WastageReport", "StockAdjustment", "StockCountVarianceAdjustment"].includes(key)
-    ? INVENTORY_APPROVAL_DUTIES
-    : PURCHASING_APPROVAL_DUTIES,
+  key === "InventoryTransfer"
+    ? { requesterActorId: "synthetic-actor-inventory-requester", approverActorId: "synthetic-actor-approver", posterActorId: "synthetic-actor-transfer-dispatcher", executionActorIds: ["synthetic-actor-transfer-dispatcher", "synthetic-actor-transfer-receiver"] }
+    : key === "StockCountAttemptReview"
+      ? { requesterActorId: "synthetic-actor-count-performer", approverActorId: "synthetic-actor-approver", posterActorId: "synthetic-actor-poster", executionActorIds: ["synthetic-actor-poster"] }
+      : key === "OpeningInventoryCutover"
+        ? { requesterActorId: "synthetic-actor-inventory-requester", approverActorId: "synthetic-actor-approver", posterActorId: "synthetic-actor-poster", executionActorIds: ["synthetic-actor-poster", "synthetic-actor-opening-accounting-reviewer"] }
+        : ["WastageReport", "StockAdjustment", "StockCountVarianceAdjustment"].includes(key)
+          ? { ...INVENTORY_APPROVAL_DUTIES, executionActorIds: ["synthetic-actor-poster"] }
+          : { ...PURCHASING_APPROVAL_DUTIES, executionActorIds: ["synthetic-actor-poster"] },
 ])));
+const ROUTE_PLAN_REQUIREMENTS = Object.freeze({
+  PURCHASE_REQUEST: [{ stepOrder: "01", roleId: "synthetic-role-purchasing-approver", permissionCode: "purchasing.purchase_request.approve" }],
+  QuotationRecommendation: [{ stepOrder: "01", roleId: "synthetic-role-purchasing-approver", permissionCode: "purchasing.quote.approve" }],
+  PurchaseOrder: [{ stepOrder: "01", roleId: "synthetic-role-purchasing-approver", permissionCode: "purchasing.purchase_order.approve" }],
+  PurchaseOrderBalanceClosure: [{ stepOrder: "01", roleId: "synthetic-role-purchasing-approver", permissionCode: "purchasing.purchase_order.approve" }],
+  PurchaseOrderAmendment: [{ stepOrder: "01", roleId: "synthetic-role-purchasing-approver", permissionCode: "purchasing.purchase_order.approve" }],
+  InventoryTransfer: [{ stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.transfer.approve" }],
+  StockCountAttemptReview: [{ stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.stock_count.review" }],
+  StockCountVarianceAdjustment: [{ stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.stock_adjustment.approve" }],
+  StockAdjustment: [{ stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.stock_adjustment.approve" }],
+  WastageReport: [{ stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.wastage.approve" }],
+  OpeningInventoryCutover: [
+    { stepOrder: "01", roleId: "synthetic-role-inventory-approver", permissionCode: "inventory.opening_inventory.review.operations" },
+    { stepOrder: "02", roleId: "synthetic-role-opening-accounting-reviewer", permissionCode: "inventory.opening_inventory.review.accounting" },
+  ],
+});
 
 function fail(path, message) { throw new TypeError(`${path}: ${message}`); }
 function asciiCompare(left, right) { return left < right ? -1 : left > right ? 1 : 0; }
@@ -192,20 +217,38 @@ export function validateSyntheticPilotManifest(manifest) {
   for (const requiredActor of ["synthetic-actor-read-only-auditor", "synthetic-actor-no-role", "synthetic-actor-out-of-scope"]) if (!actorIds.has(requiredActor)) fail("manifest.accessGraph.actors", `must contain ${requiredActor}`);
 
   const approvals = manifest.approvalExpectations;
-  exactObject(approvals, ["familyDutyMappings", "missingConceptualFamilies", "persistedKeys"], "manifest.approvalExpectations");
-  exactSet(approvals.persistedKeys, PERSISTED_APPROVAL_KEYS, "manifest.approvalExpectations.persistedKeys");
+  exactObject(approvals, ["familyDutyMappings", "missingConceptualFamilies", "persistedKeys", "routePlans"], "manifest.approvalExpectations");
+  exactSet(approvals.persistedKeys, [...PERSISTED_APPROVAL_KEYS].sort(asciiCompare), "manifest.approvalExpectations.persistedKeys");
   if (!Array.isArray(approvals.missingConceptualFamilies)) fail("manifest.approvalExpectations.missingConceptualFamilies", "must be an array");
   const missingNames = approvals.missingConceptualFamilies.map((entry, index) => { exactObject(entry, ["conceptualFamily", "persistedKey"], `manifest.approvalExpectations.missingConceptualFamilies[${index}]`); if (entry.persistedKey !== null) fail(`manifest.approvalExpectations.missingConceptualFamilies[${index}].persistedKey`, "must be null because this is not a persisted key"); return entry.conceptualFamily; });
   exactSet(missingNames, MISSING_CONCEPTUAL_FAMILIES, "manifest.approvalExpectations.missingConceptualFamilies");
   if (!Array.isArray(approvals.familyDutyMappings) || approvals.familyDutyMappings.length !== PERSISTED_APPROVAL_KEYS.length) fail("manifest.approvalExpectations.familyDutyMappings", "must map every persisted family exactly once");
-  exactSet(approvals.familyDutyMappings.map(({ persistedKey }) => persistedKey), PERSISTED_APPROVAL_KEYS, "manifest.approvalExpectations.familyDutyMappings.persistedKey");
+  exactSet(approvals.familyDutyMappings.map(({ persistedKey }) => persistedKey), [...PERSISTED_APPROVAL_KEYS].sort(asciiCompare), "manifest.approvalExpectations.familyDutyMappings.persistedKey");
   approvals.familyDutyMappings.forEach((mapping, index) => {
-    const path = `manifest.approvalExpectations.familyDutyMappings[${index}]`; exactObject(mapping, ["approverActorId", "persistedKey", "posterActorId", "prohibitedOverlaps", "requesterActorId"], path);
+    const path = `manifest.approvalExpectations.familyDutyMappings[${index}]`; exactObject(mapping, ["approverActorId", "executionActorIds", "persistedKey", "posterActorId", "prohibitedOverlaps", "requesterActorId"], path);
     exactSet(mapping.prohibitedOverlaps, PROHIBITED_OVERLAPS, `${path}.prohibitedOverlaps`);
+    exactSet(mapping.executionActorIds, [...FAMILY_DUTIES[mapping.persistedKey].executionActorIds].sort(asciiCompare), `${path}.executionActorIds`);
     for (const key of ["requesterActorId", "approverActorId", "posterActorId"]) if (!actorIds.has(mapping[key])) fail(`${path}.${key}`, "must reference a manifest actor");
+    for (const actorId of mapping.executionActorIds) if (!actorIds.has(actorId)) fail(`${path}.executionActorIds`, "must reference a manifest actor");
     if (new Set([mapping.requesterActorId, mapping.approverActorId, mapping.posterActorId]).size !== 3) fail(path, "requester, approver, and poster must be distinct");
     const expectedDuties = FAMILY_DUTIES[mapping.persistedKey];
     for (const key of ["requesterActorId", "approverActorId", "posterActorId"]) if (mapping[key] !== expectedDuties[key]) fail(`${path}.${key}`, `must be ${expectedDuties[key]} for ${mapping.persistedKey}`);
+  });
+  if (!Array.isArray(approvals.routePlans) || approvals.routePlans.length !== PERSISTED_APPROVAL_KEYS.length) fail("manifest.approvalExpectations.routePlans", "must define every persisted family exactly once");
+  exactSet(approvals.routePlans.map(({ persistedKey }) => persistedKey), [...PERSISTED_APPROVAL_KEYS].sort(asciiCompare), "manifest.approvalExpectations.routePlans.persistedKey");
+  approvals.routePlans.forEach((plan, index) => {
+    const path = `manifest.approvalExpectations.routePlans[${index}]`;
+    exactObject(plan, ["persistedKey", "steps"], path);
+    const expectedSteps = ROUTE_PLAN_REQUIREMENTS[plan.persistedKey];
+    if (!Array.isArray(plan.steps) || plan.steps.length !== expectedSteps.length) fail(`${path}.steps`, `must contain the exact ${expectedSteps.length}-step synthetic route`);
+    plan.steps.forEach((step, stepIndex) => {
+      const stepPath = `${path}.steps[${stepIndex}]`;
+      exactObject(step, ["permissionCode", "roleId", "stepOrder"], stepPath);
+      const expected = expectedSteps[stepIndex];
+      if (step.stepOrder !== expected.stepOrder || step.roleId !== expected.roleId || step.permissionCode !== expected.permissionCode) fail(stepPath, `must match the closed ${plan.persistedKey} route-plan requirement`);
+      if (!roleIds.has(step.roleId)) fail(`${stepPath}.roleId`, "must reference a manifest role");
+      if (!ROLE_PERMISSIONS[step.roleId].includes(step.permissionCode)) fail(`${stepPath}.permissionCode`, "must be granted by the route-step role");
+    });
   });
   return manifest;
 }
@@ -222,6 +265,8 @@ export function canonicalizeSyntheticPilotManifest(manifest) {
   value.approvalExpectations.missingConceptualFamilies.sort((left, right) => asciiCompare(left.conceptualFamily, right.conceptualFamily));
   value.approvalExpectations.familyDutyMappings.sort((left, right) => asciiCompare(left.persistedKey, right.persistedKey));
   value.approvalExpectations.familyDutyMappings.forEach((mapping) => mapping.prohibitedOverlaps.sort(asciiCompare));
+  value.approvalExpectations.familyDutyMappings.forEach((mapping) => mapping.executionActorIds.sort(asciiCompare));
+  value.approvalExpectations.routePlans.sort((left, right) => asciiCompare(left.persistedKey, right.persistedKey));
   return stableJson(value);
 }
 export function digestSyntheticPilotManifest(manifest) { return createHash("sha256").update(canonicalizeSyntheticPilotManifest(manifest), "utf8").digest("hex"); }

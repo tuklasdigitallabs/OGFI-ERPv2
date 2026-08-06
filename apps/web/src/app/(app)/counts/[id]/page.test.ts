@@ -13,7 +13,7 @@ const actionEligibility = source.slice(
 );
 
 describe("stock count detail action eligibility", () => {
-  it("limits assigned counter work to the approved pre-review states", () => {
+  it("limits first-pass and recount start work to the recorded assigned entry actor", () => {
     expect(actionEligibility).toContain("isAssignedEntryActor");
     expect(actionEligibility).toContain('count.status === "DRAFT"');
     expect(actionEligibility).toContain("count.scheduledStartEligible");
@@ -21,7 +21,9 @@ describe("stock count detail action eligibility", () => {
     expect(actionEligibility).toContain("count.hasSnapshotLines");
     expect(actionEligibility).toContain("count.hasUncountedLines");
     expect(actionEligibility).toContain("!count.hasUncountedLines");
-    expect(actionEligibility).not.toContain("RECOUNT_REQUESTED");
+    expect(actionEligibility).toContain("const canStartRecount");
+    expect(actionEligibility).toContain("recountRecoveryEnabled");
+    expect(actionEligibility).toContain('count.status === "RECOUNT_REQUESTED"');
   });
 
   it("explains unassigned, future-scheduled, incomplete, and empty-snapshot states", () => {
@@ -65,6 +67,14 @@ describe("stock count detail action eligibility", () => {
   it("keeps recount visibly unavailable until immutable recovery is verified", () => {
     expect(source).toContain("Request recount (temporarily unavailable)");
     expect(source).toContain("Recount recovery is disabled until immutable attempt");
+    expect(source).toContain("StockCountRecoveryPanel");
+    expect(source).toContain("canShowProtectedFacts={count.canShowSystemQuantity}");
+    expect(source).toContain("caseStatus={count.status}");
+    expect(source).toContain("currentAttemptNumber={count.currentAttemptNumber}");
+    expect(source).toContain("attemptHistory={count.attemptHistory}");
+    expect(source).toContain("Start Recount");
+    expect(source).toContain("Protected recount start unavailable");
+    expect(source).toContain("recountStartReadOnlyReason");
   });
 
   it("shows the validated current immutable attempt context", () => {

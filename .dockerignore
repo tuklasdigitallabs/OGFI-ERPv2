@@ -1,8 +1,14 @@
 .git
 .github
 .next*
+**/.next-*
+**/playwright-report
+**/test-results
+**/*.tsbuildinfo
 node_modules
 **/node_modules
+**/tmp
+.pnpm-store
 release-evidence
 backups
 *.log

@@ -181,6 +181,50 @@ their release gates. Final regression and independent re-review of the current
 location-disclosure, server-pagination, lock-order, and visible-surface
 remediations remain pending before local Phase 3 completion can be recorded.
 
+### 6.2 Inventory Pilot configuration preparation and Opening eligibility
+
+The Inventory Pilot Setup Center prepares normalized mutable company drafts and
+seals a ready draft atomically into the existing immutable configuration
+revision boundary. The author selects exact endpoint capabilities, explicit
+high-risk Item IDs, five distinct named Opening actors (preparer, submitter,
+Operations reviewer, Accounting reviewer, and command requester), and one
+active sealed Approval Rule snapshot for each of `PurchaseRequest`,
+`QuotationRecommendation`, `PurchaseOrder`, `InventoryTransfer`,
+`StockCountAttemptReview`, `WastageReport`, `StockAdjustment`, and
+`OpeningInventoryCutover`.
+
+The single `PurchaseRequest` readiness snapshot covers only a standard,
+non-emergency pilot request. It persists resolver ID
+`purchase_request_approval_rule_v1` and invokes the same production
+`resolvePurchaseRequestApprovalRule` path with `isEmergency=false`. Readiness
+requires the selected active/sealed route to be `DEFAULT`, the resolver outcome
+to be `normal`, and fallback to be false. A valid `PR_EMERGENCY` route may remain
+configured alongside it, but it is not part of this readiness evidence and is
+not certified for pilot or emergency UAT. Live Opening eligibility rederives the
+same resolver input/outcome and fails closed if it changes.
+
+View, draft, and seal use separate permissions and always require a current
+active assignment plus exact selected-company `MANAGE`. Seal also requires
+fresh MFA, reason, optimistic-version/idempotency checks, and a sealer who is
+neither the creator nor latest editor. The server locks and revalidates the
+draft, endpoint/item state, participant role/scope evidence, and current route
+definitions before creating the schema-v2 revision, exact memberships, seal
+record, terminal draft state, and audit event in one transaction. Failure or a
+concurrent change produces no partial revision.
+
+Named actors and route bindings are immutable, digest-covered evidence at the
+seal cutoff; they do not grant live permission, scope, approval, routing,
+command, executor, or posting authority. The Opening executor remains
+deployment-controlled. Schema-v1 revisions remain historic for already pinned
+records. A new Opening cohort may select only the latest unsuperseded schema-v2
+revision after canonical/digest verification and current participant and route
+readiness revalidation. A successor revision governs only future cohorts through
+that controlled selection; existing cohorts remain pinned to their original
+revision/digest. Drafting, evaluating, abandoning, creating a successor, and
+sealing have no activation, approval, opening-command, ledger, balance, custody,
+or financial effect. This remains local-only, **NO-GO** behavior and supplies no
+emergency Purchase Request UAT or release credit.
+
 ---
 
 ## 7. Item Master Workflow
@@ -285,6 +329,8 @@ First-pass count execution is assigned work. Only the recorded counter may start
 ### 9.6 Recount
 
 Recount is required where policy calls for it, for example high-value variance, missing lot detail, counter / verifier mismatch, or audit request. Recount creates a separate record or version and never overwrites original evidence.
+
+The local DEC-0264 recovery foundation now models that successor lineage explicitly: the reviewed source attempt remains immutable, a successor begins with a new cutoff, and a linked adjustment must first reach a terminal disposition. Recovery admission requires live recovery authority, MFA, actor segregation, scoped idempotency, exact active Stock Count review-cohort pins, and an immutable controlled-evidence qualification. The qualification policy and recount adapter remain dormant under DEC-0077; free-text `evidenceReference` is supplemental and never satisfies the evidence gate. Until the evidence matrix, poster-versus-approver rule, and activation/UAT gates are approved, recovery fails closed before any void, successor, notification, audit, ledger, or balance mutation.
 
 During the additive `DEC-0098` cutover, first-pass start, entry-save, submission, review, and cancellation actions transactionally mirror the legacy session/line records into the linked immutable attempt-1 records. The legacy tables remain the read compatibility path until the full recount recovery and Count Variance activation gates pass; no recount, void-for-recount, or variance-posting behavior is enabled by this mirror. A cancellation that cannot update the selected attempt atomically rolls back the session mutation and audit event. Any scoped read whose current-attempt lifecycle/header or line digest diverges from the compatibility projection fails closed; it does not silently mix case and attempt facts.
 

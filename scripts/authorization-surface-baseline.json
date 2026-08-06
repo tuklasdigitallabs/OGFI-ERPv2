@@ -210,6 +210,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/stockAdjustments.ts#listStockAdjustments"
     ],
     "callChains": [
@@ -217,6 +218,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/stockAdjustments.ts#listStockAdjustments"
     ],
     "boundaryClassifications": [
@@ -617,6 +619,56 @@
       "inventory",
       "failure audit only after an authenticated authorized export attempt",
       "no money or workflow mutation"
+    ]
+  },
+  {
+    "id": "admin/authentication/page.tsx#issueManualPassword",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/authenticationAdmin.ts#issueTemporaryPassword",
+      "server/services/context.ts#getSessionContext"
+    ],
+    "callChains": [
+      "issueManualPassword -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "issueManualPassword -> server/services/authenticationAdmin.ts#issueTemporaryPassword",
+      "issueManualPassword -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "core administrator permission",
+      "company MANAGE scope",
+      "self-target prohibition",
+      "privileged MFA guard",
+      "target-user privileged/high-risk exclusion",
+      "authentication cookie",
+      "session validation",
+      "live context resolution"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "self-target denial leaves identity, credential, session, and audit state unchanged",
+      "invalid or stale session cannot authorize protected mutation"
     ]
   },
   {
@@ -1156,165 +1208,6 @@
     ]
   },
   {
-    "id": "admin/page.tsx#createBrandAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/coreAdmin.ts#createCoreAdminBrand"
-    ],
-    "callChains": [
-      "createBrandAction -> server/services/coreAdmin.ts#createCoreAdminBrand"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "tenant-company predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "permission and foreign-company scope denials leave brand count unchanged"
-    ]
-  },
-  {
-    "id": "admin/page.tsx#createCompanyAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/coreAdmin.ts#createCoreAdminCompany"
-    ],
-    "callChains": [
-      "createCompanyAction -> server/services/coreAdmin.ts#createCoreAdminCompany"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "tenant company predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "company and actor scope counts unchanged on live-permission denial"
-    ]
-  },
-  {
-    "id": "admin/page.tsx#createDepartmentAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/coreAdmin.ts#createCoreAdminDepartment"
-    ],
-    "callChains": [
-      "createDepartmentAction -> server/services/coreAdmin.ts#createCoreAdminDepartment"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "tenant-company predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "permission and foreign-company scope denials leave department count unchanged"
-    ]
-  },
-  {
-    "id": "admin/page.tsx#createLocationAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/coreAdmin.ts#createCoreAdminLocation"
-    ],
-    "callChains": [
-      "createLocationAction -> server/services/coreAdmin.ts#createCoreAdminLocation"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "tenant-company-brand predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "permission and foreign-company scope denials leave location count unchanged"
-    ]
-  },
-  {
     "id": "admin/page.tsx#createRoleAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -1838,85 +1731,6 @@
     ],
     "noMutationControls": [
       "shared permission denial covered; decision-specific evidence and status negative remains"
-    ]
-  },
-  {
-    "id": "admin/reason-codes/page.tsx#createReasonCodeAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/operationalReasonCodes.ts#createOperationalReasonCode"
-    ],
-    "callChains": [
-      "createReasonCodeAction -> server/services/operationalReasonCodes.ts#createOperationalReasonCode"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "assertCanManageCompanyScope"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "operational reason-code count unchanged on live-permission denial"
-    ]
-  },
-  {
-    "id": "admin/reason-codes/page.tsx#deactivateReasonCodeAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/operationalReasonCodes.ts#deactivateOperationalReasonCode"
-    ],
-    "callChains": [
-      "deactivateReasonCodeAction -> server/services/operationalReasonCodes.ts#deactivateOperationalReasonCode"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "assertCanManageCompanyScope",
-      "tenant-company reason-code predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "operational reason-code status unchanged on live-permission denial"
     ]
   },
   {
@@ -2635,6 +2449,48 @@
     ]
   },
   {
+    "id": "app/(auth)/account/password-change/page.tsx#changePassword",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "authentication.password_change",
+    "scopeDimensions": [
+      "TENANT"
+    ],
+    "guardChain": [
+      "server-action",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/authentication.ts#changeRequiredPassword"
+    ],
+    "callChains": [
+      "changePassword -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "changePassword -> server/services/authentication.ts#changeRequiredPassword"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "trusted same-origin server action",
+      "token-bound PASSWORD_CHANGE_REQUIRED session",
+      "unexpired single-use temporary-password credential predicate",
+      "session and credential compare-and-set",
+      "sibling-session revocation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "invalid or replayed password-change session leaves credentials, sessions, and audit unchanged"
+    ]
+  },
+  {
     "id": "app/(auth)/account/security/page.tsx#manageEnrollment",
     "surfaceType": "SERVER_ACTION",
     "permission": "authentication.account_security",
@@ -2924,6 +2780,308 @@
     ]
   },
   {
+    "id": "app/api/admin/organization/[entity]/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer AND core.tenant_role_administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "organization-entity-allowlist",
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "live-tenant-role-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "404_UNKNOWN_ENTITY_OR_403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/coreAdmin.ts#updateCoreAdminBrand",
+      "server/services/coreAdmin.ts#updateCoreAdminCompany",
+      "server/services/coreAdmin.ts#updateCoreAdminDepartment",
+      "server/services/coreAdmin.ts#updateCoreAdminLocation"
+    ],
+    "callChains": [
+      "app/api/admin/organization/[entity]/route.ts#POST -> server/services/coreAdmin.ts#updateCoreAdminBrand",
+      "app/api/admin/organization/[entity]/route.ts#POST -> server/services/coreAdmin.ts#updateCoreAdminCompany",
+      "app/api/admin/organization/[entity]/route.ts#POST -> server/services/coreAdmin.ts#updateCoreAdminDepartment",
+      "app/api/admin/organization/[entity]/route.ts#POST -> server/services/coreAdmin.ts#updateCoreAdminLocation"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave Brand and AuditEvent unchanged",
+      "permission, scope, tenant, company, and missing-reason denials leave Company and AuditEvent unchanged",
+      "permission, scope, tenant, company, and missing-reason denials leave Department and AuditEvent unchanged",
+      "permission, scope, tenant, company, and missing-reason denials leave Location and AuditEvent unchanged"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "requirePermission(core.tenant_role_administer)",
+      "tenant-owned Brand predicate",
+      "active company MANAGE assignment",
+      "required change-reason validation",
+      "transactional update plus audit",
+      "selected tenant-company predicate",
+      "tenant-owned Department predicate",
+      "tenant-owned Location predicate"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ]
+  },
+  {
+    "id": "app/api/admin/organization/create/[entity]/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "organization-entity-allowlist",
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "404_UNKNOWN_ENTITY_OR_403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/coreAdmin.ts#createCoreAdminBrand",
+      "server/services/coreAdmin.ts#createCoreAdminCompany",
+      "server/services/coreAdmin.ts#createCoreAdminDepartment",
+      "server/services/coreAdmin.ts#createCoreAdminLocation"
+    ],
+    "callChains": [
+      "app/api/admin/organization/create/[entity]/route.ts#POST -> server/services/coreAdmin.ts#createCoreAdminBrand",
+      "app/api/admin/organization/create/[entity]/route.ts#POST -> server/services/coreAdmin.ts#createCoreAdminCompany",
+      "app/api/admin/organization/create/[entity]/route.ts#POST -> server/services/coreAdmin.ts#createCoreAdminDepartment",
+      "app/api/admin/organization/create/[entity]/route.ts#POST -> server/services/coreAdmin.ts#createCoreAdminLocation"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "permission and foreign-company scope denials leave brand count unchanged",
+      "company and actor scope counts unchanged on live-permission denial",
+      "permission and foreign-company scope denials leave department count unchanged",
+      "permission and foreign-company scope denials leave location count unchanged"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "tenant-company predicate",
+      "tenant company predicate",
+      "tenant-company-brand predicate"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/admin/reason-codes/create/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/operationalReasonCodes.ts#createOperationalReasonCode"
+    ],
+    "callChains": [
+      "app/api/admin/reason-codes/create/route.ts#POST -> server/services/operationalReasonCodes.ts#createOperationalReasonCode"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "operational reason-code count unchanged on live-permission denial"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "assertCanManageCompanyScope"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/admin/reason-codes/deactivate/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/operationalReasonCodes.ts#deactivateOperationalReasonCode"
+    ],
+    "callChains": [
+      "app/api/admin/reason-codes/deactivate/route.ts#POST -> server/services/operationalReasonCodes.ts#deactivateOperationalReasonCode"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "operational reason-code status unchanged on live-permission denial"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "assertCanManageCompanyScope",
+      "tenant-company reason-code predicate"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/admin/reason-codes/update/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/operationalReasonCodes.ts#updateOperationalReasonCode"
+    ],
+    "callChains": [
+      "app/api/admin/reason-codes/update/route.ts#POST -> server/services/operationalReasonCodes.ts#updateOperationalReasonCode"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave OperationalReasonCode and AuditEvent unchanged"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "active company MANAGE assignment",
+      "tenant-company OperationalReasonCode predicate",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ]
+  },
+  {
+    "id": "app/api/context/location/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "authenticated",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "session",
+      "authorized-location-membership",
+      "http-only-same-site-context-cookie"
+    ],
+    "denialContract": "403_ORIGIN_OR_LOCATION_SCOPE_DENIED_OR_401_AUTH_REQUIRED_NO_COOKIE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext"
+    ],
+    "callChains": [
+      "app/api/context/location/route.ts#POST -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ]
+  },
+  {
     "id": "app/api/evidence/uploads/content/route.ts#POST",
     "surfaceType": "ROUTE_HANDLER",
     "permission": "SERVICE_ENFORCED",
@@ -3107,6 +3265,300 @@
     ]
   },
   {
+    "id": "app/api/item-master/category/create/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#createItemCategory"
+    ],
+    "callChains": [
+      "app/api/item-master/category/create/route.ts#POST -> server/services/items.ts#createItemCategory"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "ItemCategory",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/category/deactivate/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#deactivateItemCategory"
+    ],
+    "callChains": [
+      "app/api/item-master/category/deactivate/route.ts#POST -> server/services/items.ts#deactivateItemCategory"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "ItemCategory",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/category/update/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#updateItemCategory"
+    ],
+    "callChains": [
+      "app/api/item-master/category/update/route.ts#POST -> server/services/items.ts#updateItemCategory"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "ItemCategory",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/conversion/update/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#updateItemUomConversion"
+    ],
+    "callChains": [
+      "app/api/item-master/conversion/update/route.ts#POST -> server/services/items.ts#updateItemUomConversion"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "ItemUomConversion",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/uom/create/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#createUom"
+    ],
+    "callChains": [
+      "app/api/item-master/uom/create/route.ts#POST -> server/services/items.ts#createUom"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Uom",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/uom/deactivate/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#deactivateUom"
+    ],
+    "callChains": [
+      "app/api/item-master/uom/deactivate/route.ts#POST -> server/services/items.ts#deactivateUom"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Uom",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/item-master/uom/update/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-item-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/items.ts#updateUom"
+    ],
+    "callChains": [
+      "app/api/item-master/uom/update/route.ts#POST -> server/services/items.ts#updateUom"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Uom",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
     "id": "app/api/items/option-catalog/route.ts#GET",
     "surfaceType": "ROUTE_HANDLER",
     "permission": "SERVICE_ENFORCED",
@@ -3232,6 +3684,226 @@
     ]
   },
   {
+    "id": "app/api/suppliers/accreditation/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-supplier-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/suppliers.ts#updateSupplierAccreditation"
+    ],
+    "callChains": [
+      "app/api/suppliers/accreditation/route.ts#POST -> server/services/suppliers.ts#updateSupplierAccreditation"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Supplier",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/suppliers/create/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-supplier-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/suppliers.ts#createSupplier"
+    ],
+    "callChains": [
+      "app/api/suppliers/create/route.ts#POST -> server/services/suppliers.ts#createSupplier"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Supplier",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/suppliers/deactivate/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-supplier-master-permission",
+      "company-master-data-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/suppliers.ts#deactivateSupplier"
+    ],
+    "callChains": [
+      "app/api/suppliers/deactivate/route.ts#POST -> server/services/suppliers.ts#deactivateSupplier"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "Supplier",
+      "AuditEvent"
+    ],
+    "authorizationAdapterIds": [
+      "live-core-admin-permission"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
+    ]
+  },
+  {
+    "id": "app/api/transfers/[id]/receipt/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "session",
+      "live-permission",
+      "destination-location-scope",
+      "idempotency",
+      "transactional-ledger-posting"
+    ],
+    "denialContract": "SAFE_RECEIPT_ERROR_NO_DUPLICATE_LEDGER_POSTING",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-TRANSFER-RECEIPT-ROUTE-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/transfers.ts#receiveInventoryTransfer"
+    ],
+    "callChains": [
+      "POST -> server/services/transfers.ts#receiveInventoryTransfer"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "permission",
+      "destination-location-scope",
+      "inventory-posting",
+      "dispatcher-receiver-sod"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
+      "AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "InventoryTransfer",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "app/api/transfers/[id]/reversal/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "session",
+      "live-permission",
+      "destination-location-scope",
+      "receipt-state-check",
+      "transactional-reversal-posting"
+    ],
+    "denialContract": "SAFE_REVERSAL_ERROR_NO_DUPLICATE_COUNTER_MOVEMENT",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-TRANSFER-REVERSAL-ROUTE-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/transfers.ts#reverseInventoryTransferReceipt"
+    ],
+    "callChains": [
+      "POST -> server/services/transfers.ts#reverseInventoryTransferReceipt"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "permission",
+      "destination-location-scope",
+      "inventory-reversal"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "InventoryTransfer",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
+  },
+  {
     "id": "approvals/[id]/page.tsx#addComment",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -3312,10 +3984,12 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
-      "server/services/approvals.ts#executeCanonicalApprovalDecision"
+      "server/services/approvals.ts#executeCanonicalApprovalDecision",
+      "server/services/authentication.ts#assertTrustedServerActionOrigin"
     ],
     "callChains": [
-      "reviewApproval -> server/services/approvals.ts#executeCanonicalApprovalDecision"
+      "reviewApproval -> server/services/approvals.ts#executeCanonicalApprovalDecision",
+      "reviewApproval -> server/services/authentication.ts#assertTrustedServerActionOrigin"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
@@ -3653,46 +4327,6 @@
     "riskTier": "STANDARD",
     "executableTestIds": [
       "AUTHZ-DEEPLINK-001"
-    ]
-  },
-  {
-    "id": "components/AppShell.tsx#switchLocationContext",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION"
-    ],
-    "guardChain": [
-      "server-action",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "switchLocationContext -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "invalid or stale session cannot authorize protected mutation"
     ]
   },
   {
@@ -4591,6 +5225,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/stockCounts.ts#buildStockCountExportRows"
     ],
     "callChains": [
@@ -4598,6 +5233,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/stockCounts.ts#buildStockCountExportRows"
     ],
     "boundaryClassifications": [
@@ -9537,14 +10173,16 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
-      "server/services/inventory.ts#listInventoryMovements"
+      "server/services/inventory.ts#listInventoryMovements",
+      "server/services/policySettings.ts#getReportExportPolicy"
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
-      "GET -> server/services/inventory.ts#listInventoryMovements"
+      "GET -> server/services/inventory.ts#listInventoryMovements",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY",
@@ -9636,14 +10274,16 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
-      "server/services/inventory.ts#listInventoryLedgerVarianceExportRows"
+      "server/services/inventory.ts#listInventoryLedgerVarianceExportRows",
+      "server/services/policySettings.ts#getReportExportPolicy"
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
-      "GET -> server/services/inventory.ts#listInventoryLedgerVarianceExportRows"
+      "GET -> server/services/inventory.ts#listInventoryLedgerVarianceExportRows",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY",
@@ -9690,44 +10330,6 @@
     "riskTier": "STANDARD",
     "executableTestIds": [
       "AUTHZ-DEEPLINK-001"
-    ]
-  },
-  {
-    "id": "items/page.tsx#createCategoryAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/items.ts#createItemCategory"
-    ],
-    "callChains": [
-      "createCategoryAction -> server/services/items.ts#createItemCategory"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "ItemCategory",
-      "AuditEvent"
     ]
   },
   {
@@ -9805,44 +10407,6 @@
     ],
     "noMutationControls": [
       "Item",
-      "AuditEvent"
-    ]
-  },
-  {
-    "id": "items/page.tsx#createUomAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/items.ts#createUom"
-    ],
-    "callChains": [
-      "createUomAction -> server/services/items.ts#createUom"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "Uom",
       "AuditEvent"
     ]
   },
@@ -11524,9 +12088,11 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
       "server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort"
     ],
     "callChains": [
+      "createCohortAction -> server/services/authentication.ts#assertTrustedServerActionOrigin",
       "createCohortAction -> server/services/openingInventoryCutovers.ts#createOpeningInventoryCohort"
     ],
     "boundaryClassifications": [
@@ -11539,7 +12105,8 @@
       "transactional-cohort-and-audit"
     ],
     "boundaryCaseIds": [
-      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
     ],
     "noMutationControls": [
       "OpeningInventoryCohort",
@@ -11625,6 +12192,545 @@
     "noMutationControls": [
       "OpeningInventoryCutover",
       "OpeningInventoryCutoverLine",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#abandonAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#abandonInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "abandonAction -> server/services/inventoryPilotConfiguration.ts#abandonInventoryPilotConfigurationDraft",
+      "abandonAction -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "abandonAction -> sessionForMutation -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "optimistic-state-transition",
+      "transactional-abandon-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "InventoryPilotConfigurationDraft",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#createAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "createAction -> server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationDraft",
+      "createAction -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "createAction -> sessionForMutation -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "active-session-epoch",
+      "transactional-draft-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "InventoryPilotConfigurationDraft",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#createSuccessorAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationSuccessorDraft"
+    ],
+    "callChains": [
+      "createSuccessorAction -> server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationSuccessorDraft",
+      "createSuccessorAction -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "createSuccessorAction -> sessionForMutation -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "latest-sealed-predecessor",
+      "transactional-clone-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#evaluateAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#evaluateInventoryPilotConfigurationReadiness"
+    ],
+    "callChains": [
+      "evaluateAction -> server/services/inventoryPilotConfiguration.ts#evaluateInventoryPilotConfigurationReadiness",
+      "evaluateAction -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "evaluateAction -> sessionForMutation -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "live-endpoint-item-participant-route-evidence",
+      "shared-purchase-request-resolver",
+      "transactional-readiness-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY",
+      "AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION",
+      "AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "configuration facts remain unchanged; only readiness audit is appended"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.opening_inventory.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#sealAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#sealInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "sealAction -> server/services/inventoryPilotConfiguration.ts#sealInventoryPilotConfigurationDraft",
+      "sealAction -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "sealAction -> sessionForMutation -> server/services/context.ts#getSessionContext"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-seal-permission",
+      "exact-company-manage-scope",
+      "fresh-mfa",
+      "creator-editor-segregation",
+      "company-advisory-lock",
+      "idempotency-key",
+      "transactional-revision-memberships-operation-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER",
+      "AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "InventoryPilotFamilyActivation",
+      "OpeningInventoryCohort",
+      "InventoryMovement",
+      "InventoryBalance"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#updateActorsAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "updateActorsAction -> currentDraftSnapshot -> server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "updateActorsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "updateActorsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/context.ts#getSessionContext",
+      "updateActorsAction -> server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "read-only-full-draft-snapshot",
+      "live-draft-permission",
+      "tenant-company-selection-validation",
+      "optimistic-version",
+      "transactional-whole-snapshot-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "read-only draft selection snapshot",
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#updateEndpointsAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "updateEndpointsAction -> currentDraftSnapshot -> server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "updateEndpointsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "updateEndpointsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/context.ts#getSessionContext",
+      "updateEndpointsAction -> server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "read-only-full-draft-snapshot",
+      "live-draft-permission",
+      "tenant-company-selection-validation",
+      "optimistic-version",
+      "transactional-whole-snapshot-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "read-only draft selection snapshot",
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#updateItemsAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "updateItemsAction -> currentDraftSnapshot -> server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "updateItemsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "updateItemsAction -> currentDraftSnapshot -> sessionForMutation -> server/services/context.ts#getSessionContext",
+      "updateItemsAction -> server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "read-only-full-draft-snapshot",
+      "live-draft-permission",
+      "tenant-company-selection-validation",
+      "optimistic-version",
+      "transactional-whole-snapshot-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "read-only draft selection snapshot",
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "opening-inventory/setup/page.tsx#updateRoutesAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/context.ts#getSessionContext",
+      "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "callChains": [
+      "updateRoutesAction -> currentDraftSnapshot -> server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+      "updateRoutesAction -> currentDraftSnapshot -> sessionForMutation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "updateRoutesAction -> currentDraftSnapshot -> sessionForMutation -> server/services/context.ts#getSessionContext",
+      "updateRoutesAction -> server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "read-only-full-draft-snapshot",
+      "live-draft-permission",
+      "tenant-company-selection-validation",
+      "optimistic-version",
+      "transactional-whole-snapshot-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "read-only draft selection snapshot",
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
       "AuditEvent"
     ]
   },
@@ -12603,6 +13709,7 @@
       "server/services/context.ts#getSessionContext",
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/purchaseOrders.ts#listPurchaseOrders",
       "server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfile",
       "server/services/reports.ts#getOperationalReportTrustContext"
@@ -12611,6 +13718,7 @@
       "GET -> server/services/context.ts#getSessionContext",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/purchaseOrders.ts#listPurchaseOrders",
       "GET -> server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfile",
       "GET -> server/services/reports.ts#getOperationalReportTrustContext"
@@ -12959,6 +14067,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/purchaseRequests.ts#listPurchaseRequests",
       "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile"
     ],
@@ -12967,6 +14076,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/purchaseRequests.ts#listPurchaseRequests",
       "GET -> server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile"
     ],
@@ -13090,6 +14200,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/quotes.ts#listQuoteRequests"
     ],
     "callChains": [
@@ -13097,6 +14208,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/quotes.ts#listQuoteRequests"
     ],
     "boundaryClassifications": [
@@ -13423,6 +14535,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/receiving.ts#buildReceivingReportExportRows"
     ],
     "callChains": [
@@ -13430,6 +14543,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/receiving.ts#buildReceivingReportExportRows"
     ],
     "boundaryClassifications": [
@@ -15693,6 +16807,48 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/approvals.ts#getBoundedInventoryUatApprovalWorklistDetail",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.financePeriodCloseManage | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/approvals.ts#listBoundedInventoryUatApprovalWorklistPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/approvals.ts#listNormalizedApprovalInboxPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -16656,6 +17812,45 @@
     ]
   },
   {
+    "id": "server/services/authentication.ts#changeRequiredPassword",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "trusted same-origin server action",
+      "token-bound PASSWORD_CHANGE_REQUIRED session",
+      "unexpired single-use temporary-password credential predicate",
+      "session and credential compare-and-set",
+      "sibling-session revocation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "invalid or replayed password-change session leaves credentials, sessions, and audit unchanged"
+    ]
+  },
+  {
     "id": "server/services/authentication.ts#clearAuthenticationCookies",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -17376,6 +18571,45 @@
     ],
     "noMutationControls": [
       "activation token count unchanged on every denial"
+    ]
+  },
+  {
+    "id": "server/services/authenticationAdmin.ts#issueTemporaryPassword",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "core administrator permission",
+      "company MANAGE scope",
+      "self-target prohibition",
+      "privileged MFA guard",
+      "target-user privileged/high-risk exclusion"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "self-target denial leaves identity, credential, session, and audit state unchanged"
     ]
   },
   {
@@ -20948,6 +22182,27 @@
     ]
   },
   {
+    "id": "server/services/coreAdmin.ts#assertCanManageCompanyMasterDataScope",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/coreAdmin.ts#assertCanManageCompanyScope",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -20967,6 +22222,27 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/coreAdmin.ts#assertCanViewCompanyMasterDataScope",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/coreAdmin.ts#createCoreAdminBrand",
@@ -22160,6 +23436,186 @@
     ],
     "noMutationControls": [
       "guarded success increments the target epoch once and denied callers do not invoke the helper"
+    ]
+  },
+  {
+    "id": "server/services/coreAdmin.ts#updateCoreAdminBrand",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "requirePermission(core.tenant_role_administer)",
+      "tenant-owned Brand predicate",
+      "active company MANAGE assignment",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave Brand and AuditEvent unchanged"
+    ]
+  },
+  {
+    "id": "server/services/coreAdmin.ts#updateCoreAdminCompany",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "requirePermission(core.tenant_role_administer)",
+      "selected tenant-company predicate",
+      "active company MANAGE assignment",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave Company and AuditEvent unchanged"
+    ]
+  },
+  {
+    "id": "server/services/coreAdmin.ts#updateCoreAdminDepartment",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "requirePermission(core.tenant_role_administer)",
+      "tenant-owned Department predicate",
+      "active company MANAGE assignment",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave Department and AuditEvent unchanged"
+    ]
+  },
+  {
+    "id": "server/services/coreAdmin.ts#updateCoreAdminLocation",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "requirePermission(core.tenant_role_administer)",
+      "tenant-owned Location predicate",
+      "active company MANAGE assignment",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave Location and AuditEvent unchanged"
     ]
   },
   {
@@ -27517,6 +28973,45 @@
     ]
   },
   {
+    "id": "server/services/inventoryActionAuthority.ts#lockLiveInventoryActionAuthority",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "live-actor-session",
+      "live-permission",
+      "live-location-scope",
+      "fresh-mfa-when-required",
+      "transaction-owned-authority-lock"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "caller-owned inventory action transaction; no mutation before authority lock succeeds"
+    ]
+  },
+  {
     "id": "server/services/inventoryPilotApprovalPolicy.ts#classifyInventoryTransferForPilotApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -27614,6 +29109,402 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/inventoryPilotConfiguration.ts#abandonInventoryPilotConfigurationDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationDraft",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "optimistic-state-transition",
+      "transactional-abandon-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "InventoryPilotConfigurationDraft",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationDraft",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "active-session-epoch",
+      "transactional-draft-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "InventoryPilotConfigurationDraft",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#createInventoryPilotConfigurationSuccessorDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationDraft",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "latest-sealed-predecessor",
+      "transactional-clone-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER"
+    ],
+    "noMutationControls": [
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#evaluateInventoryPilotConfigurationReadiness",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationDraft | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "live-endpoint-item-participant-route-evidence",
+      "shared-purchase-request-resolver",
+      "transactional-readiness-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-ONE-STEP-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-SAME-ROLE-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-ROUTE-REVERSED-PERMISSIONS-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-ROUTE-ACTOR-BEYOND-FIFTY",
+      "AUTHZ-PI-PILOT-CONFIG-PR-DEFAULT-AND-EMERGENCY-RESOLUTION",
+      "AUTHZ-PI-PILOT-CONFIG-PR-ONLY-EMERGENCY-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-PR-MALFORMED-ROUTE-CLASS-REJECTED",
+      "AUTHZ-PI-PILOT-CONFIG-PR-MULTIPLE-NORMAL-ROUTES-REJECTED"
+    ],
+    "noMutationControls": [
+      "configuration facts remain unchanged; only readiness audit is appended"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationDraftSnapshot",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "read-only-full-draft-snapshot"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "read-only draft selection snapshot"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#getInventoryPilotConfigurationWorkspace",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationView | permissions.inventoryPilotConfigurationDraft | permissions.inventoryPilotConfigurationSeal | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-PARTICIPANT-CANDIDATE-PAGINATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-view-permission",
+      "exact-company-manage-scope",
+      "tenant-company-query-scope",
+      "server-pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-PARTICIPANT-CANDIDATE-PAGINATION"
+    ],
+    "noMutationControls": [
+      "read-only configuration workspace"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#getInventoryPilotRevisionOpeningReadiness",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-OPENING-LATEST-AND-LIVE-READINESS-GATE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller-owned-transaction",
+      "tenant-company-sealed-v2-leaf",
+      "digest-and-exact-evidence",
+      "live-participant-and-route-blocker-evidence"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-OPENING-LATEST-AND-LIVE-READINESS-GATE"
+    ],
+    "noMutationControls": [
+      "read-only categorized opening admission evidence"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#sealInventoryPilotConfigurationDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationSeal | permissions.openingInventoryOperationsReview | permissions.openingInventoryAccountingReview",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-seal-permission",
+      "exact-company-manage-scope",
+      "fresh-mfa",
+      "creator-editor-segregation",
+      "company-advisory-lock",
+      "idempotency-key",
+      "transactional-revision-memberships-operation-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ATOMIC-IDEMPOTENT-NO-SIDE-EFFECT",
+      "AUTHZ-PI-PILOT-CONFIG-SEAL-ROLLBACK-AND-CONCURRENT-ONE-WINNER",
+      "AUTHZ-PI-PILOT-CONFIG-SEALED-EVIDENCE-APPEND-ONLY"
+    ],
+    "noMutationControls": [
+      "InventoryPilotFamilyActivation",
+      "OpeningInventoryCohort",
+      "InventoryMovement",
+      "InventoryBalance"
+    ]
+  },
+  {
+    "id": "server/services/inventoryPilotConfiguration.ts#updateInventoryPilotConfigurationDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryPilotConfigurationDraft",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-draft-permission",
+      "exact-company-manage-scope",
+      "tenant-company-selection-validation",
+      "optimistic-version",
+      "transactional-whole-snapshot-and-audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-READINESS-SCOPE-AND-COMPLETENESS"
+    ],
+    "noMutationControls": [
+      "InventoryPilotConfigurationDraft",
+      "draft selection memberships",
+      "AuditEvent"
+    ]
+  },
+  {
     "id": "server/services/itemOptionCatalogAdmission.ts#runWithItemOptionCatalogAdmission",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -27658,7 +29549,7 @@
   {
     "id": "server/services/items.ts#createItem",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterCreate",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27668,7 +29559,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27694,7 +29585,7 @@
   {
     "id": "server/services/items.ts#createItemCategory",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterCreate",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27704,7 +29595,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27730,7 +29621,7 @@
   {
     "id": "server/services/items.ts#createItemUomConversion",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterCreate",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27740,7 +29631,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27766,7 +29657,7 @@
   {
     "id": "server/services/items.ts#createUom",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterCreate",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27776,7 +29667,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27910,7 +29801,7 @@
   {
     "id": "server/services/items.ts#getItemCategoryRecord",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27920,7 +29811,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27931,7 +29822,7 @@
   {
     "id": "server/services/items.ts#getItemMasterRecord",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27941,7 +29832,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27952,7 +29843,7 @@
   {
     "id": "server/services/items.ts#getItemUomConversionRecord",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27962,7 +29853,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27973,7 +29864,7 @@
   {
     "id": "server/services/items.ts#getUomRecord",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -27983,7 +29874,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -27994,7 +29885,7 @@
   {
     "id": "server/services/items.ts#listItemMasterData",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28004,7 +29895,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28015,7 +29906,7 @@
   {
     "id": "server/services/items.ts#listItemMasterOptionCatalog",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28025,7 +29916,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28036,7 +29927,7 @@
   {
     "id": "server/services/items.ts#updateItem",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterEdit",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28046,7 +29937,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28072,7 +29963,7 @@
   {
     "id": "server/services/items.ts#updateItemCategory",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterEdit",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28082,7 +29973,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28108,7 +29999,7 @@
   {
     "id": "server/services/items.ts#updateItemUomConversion",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterEdit",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28118,7 +30009,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28144,7 +30035,7 @@
   {
     "id": "server/services/items.ts#updateUom",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.itemMasterEdit",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -28154,7 +30045,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -28850,7 +30741,8 @@
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+      "BOUNDARY_CASE:AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
     ],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
     "boundaryClassifications": [
@@ -28863,7 +30755,8 @@
       "transactional-cohort-and-audit"
     ],
     "boundaryCaseIds": [
-      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION"
+      "AUTHZ-PI-OPENING-INVENTORY-PREPARE-MISSING-PERMISSION-NO-MUTATION",
+      "AUTHZ-PI-PILOT-CONFIG-REAL-CROSS-TENANT-IDS-NO-MUTATION"
     ],
     "noMutationControls": [
       "OpeningInventoryCohort",
@@ -29326,6 +31219,27 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/operationalReasonCodes.ts#listActiveWastageReasonCodes",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/operationalReasonCodes.ts#listOperationalReasonCodePage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -29387,6 +31301,71 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/operationalReasonCodes.ts#requireActiveWastageReasonCode",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/operationalReasonCodes.ts#updateOperationalReasonCode",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "active company MANAGE assignment",
+      "tenant-company OperationalReasonCode predicate",
+      "required change-reason validation",
+      "transactional update plus audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
+      "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ],
+    "noMutationControls": [
+      "permission, scope, tenant, company, and missing-reason denials leave OperationalReasonCode and AuditEvent unchanged"
+    ]
   },
   {
     "id": "server/services/operationalWorkflow.ts#recordOperationalStatusTransition",
@@ -37039,7 +39018,7 @@
   {
     "id": "server/services/stockAdjustments.ts#submitStockAdjustment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockAdjustmentSubmit | permissions.stockAdjustmentPost | permissions.stockAdjustmentApprove",
+    "permission": "permissions.stockAdjustmentSubmit | permissions.stockAdjustmentApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37338,6 +39317,52 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/stockCounts.ts#requestStockCountRecount",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockCountRecovery | permissions.stockCountEnter | permissions.stockCountSubmit",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "dedicated-recovery-permission",
+      "live-scope-and-mfa",
+      "controlled-evidence-policy-gate",
+      "immutable-recount-lineage"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
+      "AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "StockCountRecountTransition",
+      "StockCountAttempt",
+      "StockAdjustment",
+      "InventoryMovement",
+      "InventoryBalance",
+      "Notification",
+      "AuditEvent"
+    ]
+  },
+  {
     "id": "server/services/stockCounts.ts#reviewStockCount",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockCountReview",
@@ -37537,7 +39562,7 @@
   {
     "id": "server/services/suppliers.ts#createSupplier",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
+    "permission": "permissions.supplierConfidentialView | permissions.coreAdminister | permissions.supplierMasterCreate",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37573,7 +39598,7 @@
   {
     "id": "server/services/suppliers.ts#createSupplierItemLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
+    "permission": "permissions.supplierConfidentialView | permissions.coreAdminister | permissions.supplierMasterEdit",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37609,7 +39634,7 @@
   {
     "id": "server/services/suppliers.ts#deactivateSupplier",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37619,7 +39644,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -37645,7 +39670,7 @@
   {
     "id": "server/services/suppliers.ts#deactivateSupplierItemLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37655,7 +39680,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -37681,7 +39706,7 @@
   {
     "id": "server/services/suppliers.ts#getSupplierCatalog",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterView | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37702,7 +39727,28 @@
   {
     "id": "server/services/suppliers.ts#getSupplierItemLinkLookup",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterEdit",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/suppliers.ts#getSupplierMasterRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterView | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37723,7 +39769,7 @@
   {
     "id": "server/services/suppliers.ts#listSuppliers",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterView | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37744,7 +39790,7 @@
   {
     "id": "server/services/suppliers.ts#updateSupplierAccreditation",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierMasterManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -37754,7 +39800,7 @@
     ],
     "guardChain": [
       "session",
-      "live-permission",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -39716,44 +41762,6 @@
     ]
   },
   {
-    "id": "suppliers/page.tsx#createSupplierAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/suppliers.ts#createSupplier"
-    ],
-    "callChains": [
-      "createSupplierAction -> server/services/suppliers.ts#createSupplier"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "Supplier",
-      "AuditEvent"
-    ]
-  },
-  {
     "id": "suppliers/page.tsx#createSupplierItemLinkAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -39788,44 +41796,6 @@
     ],
     "noMutationControls": [
       "SupplierItemLink",
-      "AuditEvent"
-    ]
-  },
-  {
-    "id": "suppliers/page.tsx#deactivateSupplierAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/suppliers.ts#deactivateSupplier"
-    ],
-    "callChains": [
-      "deactivateSupplierAction -> server/services/suppliers.ts#deactivateSupplier"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "Supplier",
       "AuditEvent"
     ]
   },
@@ -39883,44 +41853,6 @@
     "riskTier": "STANDARD",
     "executableTestIds": [
       "AUTHZ-DEEPLINK-001"
-    ]
-  },
-  {
-    "id": "suppliers/page.tsx#updateSupplierAccreditationAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/suppliers.ts#updateSupplierAccreditation"
-    ],
-    "callChains": [
-      "updateSupplierAccreditationAction -> server/services/suppliers.ts#updateSupplierAccreditation"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "Supplier",
-      "AuditEvent"
     ]
   },
   {
@@ -40024,94 +41956,6 @@
     "riskTier": "STANDARD",
     "executableTestIds": [
       "AUTHZ-DEEPLINK-001"
-    ]
-  },
-  {
-    "id": "transfers/[id]/page.tsx#receiveTransferAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/transfers.ts#receiveInventoryTransfer"
-    ],
-    "callChains": [
-      "receiveTransferAction -> server/services/transfers.ts#receiveInventoryTransfer"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "permission",
-      "destination-location-scope",
-      "inventory-posting",
-      "dispatcher-receiver-sod"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
-      "AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "InventoryTransfer",
-      "InventoryMovement",
-      "InventoryBalance",
-      "AuditEvent"
-    ]
-  },
-  {
-    "id": "transfers/[id]/page.tsx#reverseTransferReceiptAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/transfers.ts#reverseInventoryTransferReceipt"
-    ],
-    "callChains": [
-      "reverseTransferReceiptAction -> server/services/transfers.ts#reverseInventoryTransferReceipt"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "permission",
-      "destination-location-scope",
-      "inventory-reversal"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "InventoryTransfer",
-      "InventoryMovement",
-      "InventoryBalance",
-      "AuditEvent"
     ]
   },
   {
@@ -40223,6 +42067,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/transfers.ts#buildInventoryTransferExportRows"
     ],
     "callChains": [
@@ -40230,6 +42075,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/transfers.ts#buildInventoryTransferExportRows"
     ],
     "boundaryClassifications": [
@@ -40619,6 +42465,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
       "server/services/wastage.ts#listWastageReports"
     ],
     "callChains": [
@@ -40626,6 +42473,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
       "GET -> server/services/wastage.ts#listWastageReports"
     ],
     "boundaryClassifications": [

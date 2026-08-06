@@ -30,6 +30,7 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   stockCountSession: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  stockCountAttempt: { findMany: vi.fn(), findFirst: vi.fn() },
   auditEvent: { findMany: vi.fn() },
   userRoleAssignment: { findMany: vi.fn() }
 }));
@@ -75,6 +76,8 @@ describe("stock count foundation rules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+    mockPrisma.stockCountAttempt.findMany.mockResolvedValue([]);
+    mockPrisma.stockCountAttempt.findFirst.mockResolvedValue(null);
     mockPrisma.$queryRaw.mockResolvedValue([{
       currentAttemptId: "00000000-0000-4000-8000-000000000005",
       sessionStatus: "DRAFT",
@@ -951,7 +954,8 @@ describe("stock count foundation rules", () => {
     expect(source).toContain(
       "canShowSystemQuantity && line.varianceQuantityBaseUom !== null"
     );
-    expect(route).toContain("buildStockCountExportRows(session)");
+    expect(route).toContain("buildStockCountExportRows(session, {");
+    expect(route).toContain("maxRows: exportPolicy.maxRows");
     expect(route).toContain("exportErrorResponse(error)");
   });
 });

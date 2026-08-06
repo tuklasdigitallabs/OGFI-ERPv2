@@ -206,6 +206,51 @@ for (const layout of [
   });
 }
 
+for (const layout of [
+  { name: "desktop", width: 1366, height: 900, testId: "supplier-row", stateAttribute: "aria-selected" },
+  { name: "mobile", width: 390, height: 844, testId: "supplier-card", stateAttribute: "aria-pressed" }
+] as const) {
+  test(`supplier register uses whole-${layout.name === "desktop" ? "row" : "card"} toggle selection and opens the exact supplier`, async ({ page }) => {
+    await page.setViewportSize({ width: layout.width, height: layout.height });
+    await signInAsAdmin(page);
+    const { supplier } = await seededCatalogContext();
+    await page.goto(`/suppliers?query=${encodeURIComponent(supplier.supplierCode)}`);
+
+    const openSupplier = page.getByRole("button", { name: "Open supplier", exact: true });
+    const selectable = page
+      .getByTestId(layout.testId)
+      .filter({ hasText: supplier.supplierCode })
+      .first();
+
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await expect(openSupplier).toBeDisabled();
+    await selectable.click();
+    await expect(selectable).toHaveAttribute(layout.stateAttribute, "true");
+    await expect(openSupplier).toBeEnabled();
+
+    await selectable.click();
+    await expect(selectable).toHaveAttribute(layout.stateAttribute, "false");
+    await expect(openSupplier).toBeDisabled();
+
+    await selectable.focus();
+    await selectable.press("Enter");
+    await expect(selectable).toHaveAttribute(layout.stateAttribute, "true");
+
+    await openSupplier.click();
+    await expect(page).toHaveURL((url) =>
+      url.pathname === "/suppliers" &&
+      url.searchParams.get("query") === supplier.supplierCode &&
+      url.searchParams.get("supplier") === supplier.id &&
+      url.searchParams.get("tab") === "overview"
+    );
+    await expect(
+      page.getByRole("dialog", { name: supplier.tradingName ?? supplier.legalName })
+    ).toBeVisible();
+    await expect(page.getByTestId("selected-supplier-workspace")).toContainText(supplier.supplierCode);
+    await expect(page.getByText("Opening supplier…")).toHaveCount(0);
+  });
+}
+
 test("Catalog Apply, Clear, and paging retain register and selected-supplier URL context", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await signInAsAdmin(page);

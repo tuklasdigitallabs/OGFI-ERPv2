@@ -1,4 +1,4 @@
-import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { WASTAGE_MAX_LINES } from "../../lib/workflowLimits";
@@ -22,14 +22,15 @@ import {
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import {
-  listActiveOperationalReasonCodes,
-  requireActiveOperationalReasonCode
+  listActiveWastageReasonCodes,
+  requireActiveWastageReasonCode
 } from "./operationalReasonCodes";
 import {
   getInventoryLotExpiryPolicy,
   inventoryItemLotExpiryRequirements
 } from "./policySettings";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import { lockLiveInventoryActionAuthority } from "./inventoryActionAuthority";
 import {
   dashboardTaskAfterWhere,
   type DashboardTaskCursor,
@@ -115,6 +116,7 @@ type WastagePolicyEvaluationInput = {
   totalEstimatedCost: number;
   evidenceReference: string | null | undefined;
   categoryPhotoRequired: boolean;
+  reasonCodeRequiresEvidence?: boolean;
   repeatItemLocationPriorCount: number;
   repeatReporterPriorCount: number;
 };
@@ -141,6 +143,7 @@ export function buildWastagePolicyEvaluation({
   totalEstimatedCost,
   evidenceReference,
   categoryPhotoRequired,
+  reasonCodeRequiresEvidence = false,
   repeatItemLocationPriorCount,
   repeatReporterPriorCount
 }: WastagePolicyEvaluationInput) {
@@ -171,7 +174,10 @@ export function buildWastagePolicyEvaluation({
     flags.add("REPEAT_REPORTER");
   }
 
-  const evidenceRequired = categoryPhotoRequired || Boolean(policy?.requiresEvidence);
+  const evidenceRequired =
+    categoryPhotoRequired ||
+    reasonCodeRequiresEvidence ||
+    Boolean(policy?.requiresEvidence);
   const evidenceSatisfied = !evidenceRequired || Boolean(evidenceReference);
   if (evidenceRequired) {
     flags.add("EVIDENCE_REQUIRED");
@@ -196,6 +202,7 @@ export function buildWastagePolicyEvaluation({
       repeatReporterCount: repeatReporterThreshold,
       totalEstimatedCost,
       categoryPhotoRequired,
+      reasonCodeRequiresEvidence,
       repeatItemLocationPriorCount,
       repeatReporterPriorCount,
       evaluatedAt: new Date().toISOString()
@@ -284,6 +291,7 @@ async function evaluateWastagePolicy(input: {
   evidenceReference?: string | null;
   estimatedTotalCost: number;
   categoryPhotoRequired: boolean;
+  reasonCodeRequiresEvidence?: boolean;
 }) {
   const db = input.db ?? prisma;
   const policy = await db.wastagePolicy.findFirst({
@@ -369,6 +377,7 @@ async function evaluateWastagePolicy(input: {
     totalEstimatedCost: input.estimatedTotalCost,
     evidenceReference: input.evidenceReference,
     categoryPhotoRequired: input.categoryPhotoRequired,
+    reasonCodeRequiresEvidence: input.reasonCodeRequiresEvidence ?? false,
     repeatItemLocationPriorCount,
     repeatReporterPriorCount
   });
@@ -740,6 +749,17 @@ async function assertFreshWastageCancellationAuthority(
   }
 }
 
+async function assertFreshWastageInventoryAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { inventoryLocationId: string; permissionCode: string }
+) {
+  return lockLiveInventoryActionAuthority(tx, session, {
+    ...input,
+    staleErrorCode: "WASTAGE_AUTHORITY_STALE",
+  });
+}
+
 async function lockPendingWastageApproval(
   tx: TransactionClient,
   session: SessionContext,
@@ -989,7 +1009,7 @@ export async function listWastageFormOptions(session: SessionContext) {
       },
       orderBy: { itemName: "asc" }
     }),
-    listActiveOperationalReasonCodes(session, "WASTAGE")
+    listActiveWastageReasonCodes(session)
   ]);
 
   return {
@@ -1004,7 +1024,8 @@ export async function listWastageFormOptions(session: SessionContext) {
       baseUomCode: item.baseUom.uomCode,
       trackLot: item.trackLot,
       trackExpiry: item.trackExpiry,
-      defaultWastageRequiresPhoto: item.category.defaultWastageRequiresPhoto
+      defaultWastageRequiresPhoto: item.category.defaultWastageRequiresPhoto,
+      inventoryClass: item.category.inventoryClass
     })),
     wastageTypes,
     reasonCodes
@@ -1013,9 +1034,19 @@ export async function listWastageFormOptions(session: SessionContext) {
 
 export async function listWastageReports(
   session: SessionContext,
-  profile?: WastageDashboardProfile
+  profile?: WastageDashboardProfile,
+  input: { maxRows?: number } = {}
 ) {
   await requireWastageRead(session);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("WASTAGE_EXPORT_MAX_ROWS_INVALID");
+  }
 
   const reports = await prisma.wastageReport.findMany({
     where: profile
@@ -1029,8 +1060,13 @@ export async function listWastageReports(
       reversedBy: true,
       lines: true
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    take: maxRows + 1
   });
+
+  if (reports.length > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   return reports.map(mapWastageReport);
 }
@@ -1292,13 +1328,6 @@ export async function createWastageReport(formData: FormData) {
   }
   assertAuthorizedLocation(session, inventoryLocation.locationId);
 
-  const controlledReasonCode = await requireActiveOperationalReasonCode(
-    session,
-    "WASTAGE",
-    values.reasonCode,
-    values.wastageType
-  );
-
   const itemIds = Array.from(new Set(lineValues.map((line) => line.itemId)));
   const items = await prisma.item.findMany({
     where: {
@@ -1317,6 +1346,15 @@ export async function createWastageReport(formData: FormData) {
   if (items.length !== itemIds.length) {
     throw new Error("WASTAGE_ITEM_NOT_FOUND");
   }
+
+  const controlledReasonCode = await requireActiveWastageReasonCode(
+    session,
+    values.reasonCode,
+    {
+      wastageType: values.wastageType,
+      inventoryClasses: items.map((item) => item.category.inventoryClass),
+    },
+  );
 
   const lineDrafts: WastageLineDraft[] = [];
   const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
@@ -1378,7 +1416,8 @@ export async function createWastageReport(formData: FormData) {
     reasonCode: controlledReasonCode.code,
     evidenceReference,
     estimatedTotalCost,
-    categoryPhotoRequired: lineDrafts.some((line) => line.photoRequired)
+    categoryPhotoRequired: lineDrafts.some((line) => line.photoRequired),
+    reasonCodeRequiresEvidence: controlledReasonCode.requiresEvidence
   });
   if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
     throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
@@ -1967,6 +2006,8 @@ export async function postWastageReport(formData: FormData) {
     )) {
       throw new Error("WASTAGE_LINES_NOT_POSTABLE");
     }
+    const liveMfaSession = await assertFreshWastageInventoryAuthority(tx, session, { inventoryLocationId: lockedSource.inventoryLocationId, permissionCode: permissions.wastagePost });
+    await assertPrivilegedMfaForAction(liveMfaSession, { action: "wastage_report.post", enforcementScope: "all_sensitive", permissionCode: permissions.wastagePost, entityType: "WastageReport", entityId: report.id, reason: "Posting wastage changes inventory balances and requires privileged MFA evidence.", metadata: { wastageType: report.wastageType, inventoryLocationId: lockedSource.inventoryLocationId } }, { transaction: tx });
     const authoritativeReport = await tx.wastageReport.findFirst({
       where: {
         id: report.id,
@@ -2159,16 +2200,25 @@ export async function reverseWastageReport(formData: FormData) {
     )) {
       throw new Error("WASTAGE_LINE_POSTED_MOVEMENT_REQUIRED");
     }
-    await tx.$queryRaw<Array<{ id: string }>>`
+    const postedMovementIds = lockedLineRows
+      .map((line) => line.postedMovementId)
+      .filter((id): id is string => Boolean(id));
+    await tx.$queryRaw`
+      -- InventoryMovement is append-only for the runtime role, so use a
+      -- transaction-scoped advisory lock instead of a row lock that would
+      -- require UPDATE privilege.
       SELECT movement.id
         FROM "InventoryMovement" movement
-        JOIN "WastageLine" line ON line."postedMovementId" = movement.id
-       WHERE line."wastageReportId" = ${report.id}::uuid
-         AND line."tenantId" = ${session.context.tenantId}::uuid
-         AND line."companyId" = ${session.context.companyId}::uuid
+        CROSS JOIN LATERAL (
+          SELECT pg_advisory_xact_lock(hashtextextended(movement.id::text, 0))
+        ) movement_lock
+       WHERE movement.id IN (${Prisma.join(postedMovementIds.map((id) => Prisma.sql`${id}::uuid`))})
+         AND movement."tenantId" = ${session.context.tenantId}::uuid
+         AND movement."companyId" = ${session.context.companyId}::uuid
        ORDER BY movement.id ASC
-       FOR UPDATE OF movement
     `;
+    const liveMfaSession = await assertFreshWastageInventoryAuthority(tx, session, { inventoryLocationId: lockedSource.inventoryLocationId, permissionCode: permissions.wastageReverse });
+    await assertPrivilegedMfaForAction(liveMfaSession, { action: "wastage_report.reverse", enforcementScope: "all_sensitive", permissionCode: permissions.wastageReverse, entityType: "WastageReport", entityId: report.id, reason: "Reversing wastage creates counter-movements and requires privileged MFA evidence.", metadata: { wastageType: report.wastageType, inventoryLocationId: lockedSource.inventoryLocationId } }, { transaction: tx });
     const authoritativeReport = await tx.wastageReport.findFirst({
       where: {
         id: report.id,

@@ -217,6 +217,8 @@ On dispatch:
 1. Validate source stock availability.
 2. Create negative `transfer_out` movements at source.
 3. Set status to `dispatched`.
+
+The stock-affecting dispatch transaction locks the complete inventory-location, transfer-header, and line set, then revalidates the actor's live status, session/privilege epoch, permission, source-location scope, and privileged MFA before any `TRANSFER_OUT`, line roll-up, status, or audit mutation. Each line's inventory-location endpoint must still match the authoritative transfer header.
 4. Notify destination.
 5. Store correlation ID for later `transfer_in` movement.
 
@@ -238,7 +240,7 @@ On receipt:
 5. Mark transfer `received`, `partially_received`, or `disputed`.
 6. Close when all lines resolve.
 
-Implemented Phase I note under `DEC-0025`: destination receipt is event-backed. Partial receipt and discrepancy capture are supported; rejected, damaged, and short/discrepant quantities are recorded without increasing destination stock. Posted receipt events can be reversed only as full events by an authorized user who is neither the dispatcher nor original receiver; correction is performed by posting a replacement receipt event. Final discrepancy settlement is implemented as a non-posting, permissioned, audited closure action that moves a disputed transfer to `DISCREPANCY_SETTLED` with reason, evidence reference, settlement type, and segregation checks. Dispatch reversal, automated replacement transfers, returns, wastage/adjustment linkage, and finance effects remain future controlled decisions.
+Implemented Phase I note under `DEC-0025`: destination receipt is event-backed. Partial receipt and discrepancy capture are supported; rejected, damaged, and short/discrepant quantities are recorded without increasing destination stock. Posted receipt events can be reversed only as full events by an authorized user who is neither the dispatcher nor original receiver; correction is performed by posting a replacement receipt event. A non-posting, permissioned, audited discrepancy-settlement path exists, but its terminality and later-reversal/reopen semantics remain an open policy and must not be treated as final custody closure until Operations, Inventory Control, and Security confirm the contract. Dispatch reversal, automated replacement transfers, returns, wastage/adjustment linkage, and finance effects remain future controlled decisions.
 
 ### 6.5 Transfer discrepancy
 
@@ -248,7 +250,7 @@ Required handling:
 - Record discrepancy and evidence.
 - Notify source manager, destination manager, Warehouse / Operations and Finance as configured.
 - Do not silently erase shortages.
-- Resolve through accepted short receipt, replacement transfer, return, approved adjustment, or investigation closure.
+- Record the discrepancy for operational follow-up. Accepted short receipt, replacement transfer, return, or approved adjustment remain controlled follow-up options; no final settlement/closure claim is available while DEC-0265 remains open.
 - Preserve all source, dispatch, and receipt quantities.
 
 ---

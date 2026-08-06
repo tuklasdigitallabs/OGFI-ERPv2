@@ -2,7 +2,10 @@ events {}
 
 http {
     server {
-        listen 127.0.0.1:3443 ssl;
+        # Docker publishes this namespace-owned listener only on host loopback.
+        # Caddy and the application remain unexposed loopback listeners inside
+        # this same CI-only namespace.
+        listen 3443 ssl;
         server_name 127.0.0.1;
 
         ssl_certificate     /run/secrets/ogfi_production_auth_e2e_tls_cert;

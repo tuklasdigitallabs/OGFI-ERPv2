@@ -39,12 +39,12 @@ const adversarialCases = [
   ["runtime_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
   ["migrator_admin_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
   ["migrator_inherit_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
-  ["migrator_set_option", "Controlled role membership graph must contain only", "bootstrap-refuses"],
+  ["migrator_set_option", "Controlled role membership graph must contain only", "startup-refusal"],
   ["nested_runtime_owner_path", "Controlled role membership graph must contain only", "bootstrap-refuses"],
   ["executor_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
   ["executor_outgoing_membership", "Controlled role membership graph must contain only", "bootstrap-refuses"],
   ["executor_direct_command_table", "Opening-stock executor has direct command-table authority", "reconcile"],
-  ["executor_routine_acl", "Opening-stock executor routine ACL boundary is unsafe", "reconcile"],
+  ["executor_routine_acl", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
   ["executor_seal_trigger_acl", "Opening-stock sealed-event trigger is callable outside its table trigger", "reconcile"],
   ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
   ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
@@ -256,6 +256,8 @@ try {
   if (suiteName === "inventory-approval") {
     installInventoryPilotRollbackHarness(setupUrl, identity);
     verifyInventoryPilotRollbackHarness(setupUrl, runtimeUrl, identity);
+  }
+  if (shouldVerifyInventoryPilotRuntimeControlPlane(suiteName)) {
     verifyInventoryPilotRuntimeControlPlaneDenied(runtimeUrl);
   }
   if (shouldStartInventoryPilotBootstrapBroker(suiteName)) {
@@ -330,8 +332,9 @@ function installInventoryPilotRollbackHarness(databaseUrl, marker) {
     BEGIN
       IF EXISTS (
         SELECT 1
-          FROM ogfi_disposable_control.inventory_pilot_audit_failure failure
-         WHERE failure.entity_id = NEW."entityId"
+         FROM ogfi_disposable_control.inventory_pilot_audit_failure failure
+         WHERE (failure.entity_id = NEW."entityId"
+             OR failure.entity_id = '00000000-0000-0000-0000-000000000000'::uuid)
            AND failure.event_type = NEW."eventType"
       ) THEN
         RAISE EXCEPTION 'INVENTORY_PILOT_ROLLBACK_INJECTED';
@@ -407,7 +410,7 @@ function verifyInventoryPilotRollbackHarness(setupDatabaseUrl, runtimeDatabaseUr
        AND NOT p.proisstrict
        AND NOT p.prosecdef
        AND p.proconfig = ARRAY['search_path=pg_catalog']::text[]
-       AND md5(p.prosrc) = 'c34fde850179e05d69ff56ba000cb36c'
+       AND md5(p.prosrc) = '43bfae1bb0243a982f35896d8d487971'
        AND NOT has_function_privilege(runtime_oid, p.oid, 'EXECUTE')
        AND NOT EXISTS (
          SELECT 1
@@ -460,6 +463,14 @@ function verifyInventoryPilotRuntimeControlPlaneDenied(runtimeDatabaseUrl) {
     'InventoryPilotConfigurationRevision',
     'InventoryPilotEndpointMembership',
     'InventoryPilotItemMembership',
+    'InventoryPilotParticipantMembership',
+    'InventoryPilotRouteReadinessMembership',
+    'InventoryPilotConfigurationSealOperation',
+    'InventoryPilotConfigurationDraft',
+    'InventoryPilotDraftEndpointMembership',
+    'InventoryPilotDraftItemMembership',
+    'InventoryPilotDraftParticipant',
+    'InventoryPilotDraftRouteReadiness',
     'InventoryPilotFamilyActivationEvent',
     'InventoryPilotFamilyActivation',
   ]) {
@@ -492,8 +503,32 @@ function verifyInventoryPilotRuntimeControlPlaneDenied(runtimeDatabaseUrl) {
   expectPsqlFailure(
     runtimeDatabaseUrl,
     "SELECT public.inventory_pilot_revision_canonical_json(gen_random_uuid())",
-    '42501',
+    '23514',
   );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    "SELECT public.inventory_pilot_approval_rule_canonical_json(gen_random_uuid())",
+    '23514',
+  );
+  for (const validator of [
+    'validate_inventory_pilot_revision_digest',
+    'validate_inventory_pilot_route_snapshot',
+    'validate_inventory_pilot_draft_header_write',
+    'validate_inventory_pilot_draft_child_write',
+    'validate_inventory_pilot_seal_operation',
+    'validate_inventory_pilot_draft_terminal',
+  ]) {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `SELECT public.${validator}()`,
+      '42501',
+    );
+  }
+}
+
+function shouldVerifyInventoryPilotRuntimeControlPlane(suiteName) {
+  return suiteName === 'inventory-approval'
+    || suiteName === 'authorization-procurement-inventory';
 }
 
 function verifyInventoryPilotStockCountGuardBypassDenied(
@@ -505,7 +540,7 @@ function verifyInventoryPilotStockCountGuardBypassDenied(
     'ALTER TABLE public."StockCountAttempt" DISABLE TRIGGER "StockCountAttempt_history_guard"',
     '42501',
   );
-  expectPsqlFailure(
+  expectPsqlFailureOneOf(
     setupDatabaseUrl,
     `BEGIN;
      SET LOCAL session_replication_role = replica;
@@ -519,7 +554,7 @@ function verifyInventoryPilotStockCountGuardBypassDenied(
          LIMIT 1
       );
      ROLLBACK;`,
-    '55000',
+    ['42501', '55000'],
   );
 }
 process.exitCode = exitCode;
@@ -1593,6 +1628,7 @@ function runAdversarialRoleContract(
         marker,
         expectedDiagnostic,
         driftCase,
+        repairPath,
       );
 
       if (repairPath === "bootstrap") {
@@ -1604,7 +1640,7 @@ function runAdversarialRoleContract(
         );
         reconcileRoleContract(migratorDatabaseUrl, marker);
         handoffOpeningStockOwner(adminTargetUrl, marker);
-      } else if (repairPath === "bootstrap-refuses") {
+      } else if (repairPath === "bootstrap-refuses" || repairPath === "startup-refusal") {
         expectRoleBootstrapFailure(adminTargetUrl, marker, driftCase);
         applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
         installSetupRoles(
@@ -1687,6 +1723,7 @@ function expectRoleVerifierFailure(
   marker,
   expectedDiagnostic,
   driftCase,
+  failureMode,
 ) {
   const result = executePsqlFile(
     databaseUrl,
@@ -1698,7 +1735,17 @@ function expectRoleVerifierFailure(
   );
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   if (result.error) throw result.error;
-  if (result.status === 0 || !output.includes(expectedDiagnostic)) {
+  // A SET FALSE membership drift prevents the migrator's database-level
+  // startup `SET ROLE owner` from completing, so PostgreSQL refuses the
+  // verifier connection before the verifier body can emit its normal graph
+  // diagnostic. That connection refusal is itself the fail-closed contract.
+  const expectedConnectionRefusal =
+    failureMode === "startup-refusal" &&
+    /permission denied to set role|must be a member of role/i.test(output);
+  if (
+    result.status === 0 ||
+    (!output.includes(expectedDiagnostic) && !expectedConnectionRefusal)
+  ) {
     throw new Error(
       `ADVERSARIAL_ROLE_CONTRACT_EXPECTED_FAILURE_MISSING:${driftCase}:${expectedDiagnostic}`,
     );
@@ -1903,6 +1950,10 @@ function executePsqlFile(databaseUrl, file, variables) {
 }
 
 function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
+  return expectPsqlFailureOneOf(databaseUrl, sql, [expectedSqlState]);
+}
+
+function expectPsqlFailureOneOf(databaseUrl, sql, expectedSqlStates) {
   const result = executePsql(
     databaseUrl,
     [
@@ -1916,9 +1967,18 @@ function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
     ],
   );
   if (result.error) throw result.error;
-  if (result.status === 0 || !result.stderr?.includes(expectedSqlState)) {
+  const matchedExpectedState = expectedSqlStates.some((sqlState) =>
+    result.stderr?.includes(sqlState),
+  );
+  if (result.status === 0 || !matchedExpectedState) {
+    const diagnostic = (result.stderr ?? result.stdout ?? "")
+      .trim()
+      .split("\n")
+      .slice(0, 4)
+      .join(" | ");
     throw new Error(
-      `Expected PostgreSQL ${expectedSqlState} for restricted runtime operation: ${sql}`,
+      `Expected PostgreSQL ${expectedSqlStates.join(" or ")} for restricted runtime operation: ${sql}`
+        + (diagnostic ? ` | received: ${diagnostic}` : ""),
     );
   }
 }

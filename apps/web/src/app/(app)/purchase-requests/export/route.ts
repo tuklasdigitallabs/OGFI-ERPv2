@@ -18,6 +18,7 @@ import {
   resolvePurchaseRequestDashboardProfile,
   type PurchaseRequestStatus
 } from "@/server/services/purchaseRequests";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 
 const statuses: Array<PurchaseRequestStatus | "ALL"> = [
   "ALL",
@@ -60,17 +61,29 @@ export async function GET(request: NextRequest) {
       new Error("PURCHASE_REQUEST_DASHBOARD_PROFILE_UNSUPPORTED")
     )!;
   }
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    dashboardProfile: dashboardProfile ?? null,
+    statusFilterApplied: Boolean(searchParams.get("status")),
+    searchApplied: Boolean(searchParams.get("search"))
+  };
   try {
     await logOperationalExportAudit({
       session,
       reportId: "purchase-request-register",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
     const records = dashboardProfile
-      ? await listPurchaseRequestsDashboardProfile(session, dashboardProfile)
+      ? await listPurchaseRequestsDashboardProfile(session, dashboardProfile, {
+          maxRows: exportPolicy.maxRows
+        })
       : await listPurchaseRequests(session, {
           status: normalizeStatus(searchParams.get("status")),
           search: searchParams.get("search") ?? ""
+        }, {
+          maxRows: exportPolicy.maxRows
         });
     if (!records) {
       return exportErrorResponse(
@@ -106,21 +119,26 @@ export async function GET(request: NextRequest) {
       session,
       reportId: "purchase-request-register",
       eventType: "report.export_completed",
-      rowCount: records.length
+      rowCount: records.length,
+      metadata: auditMetadata
     });
 
     return csvExportResponse(rows, "purchase-requests.csv", {
       metadata: await buildReportCsvMetadata({
         session,
-        reportId: "purchase-request-register"
+        reportId: "purchase-request-register",
+        extra: [["Maximum Rows", exportPolicy.maxRows]]
       })
     });
   } catch (error) {
     await logOperationalExportFailure({
       session,
       reportId: "purchase-request-register",
-      error
+      error,
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

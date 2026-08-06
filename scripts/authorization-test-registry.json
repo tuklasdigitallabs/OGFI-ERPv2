@@ -34,6 +34,21 @@
     "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
     "evidence": "the sign-out POST route rejects an untrusted mutation origin without revoking or mutating the authenticated session"
   },
+  "AUTHZ-TRANSFER-RECEIPT-ROUTE-001": {
+    "kind": "route-contract",
+    "file": "apps/web/tests/transferRouteAuthorization.test.ts",
+    "evidence": "the transfer receipt POST route rejects an untrusted mutation origin before invoking the transactional inventory service"
+  },
+  "AUTHZ-TRANSFER-REVERSAL-ROUTE-001": {
+    "kind": "route-contract",
+    "file": "apps/web/tests/transferRouteAuthorization.test.ts",
+    "evidence": "the transfer reversal POST route rejects a transfer-id mismatch before invoking the transactional reversal service"
+  },
+  "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION": {
+    "kind": "route-contract",
+    "file": "apps/web/tests/shortMutationRouteAuthorization.test.ts",
+    "evidence": "Core Administration, location context, Item Master, and Supplier short-mutation POST routes reject a hostile Origin before invoking any session or domain service and therefore perform no scoped record, audit, or context-cookie mutation"
+  },
   "AUTHZ-EVIDENCE-001": {
     "kind": "database-service-and-route",
     "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",

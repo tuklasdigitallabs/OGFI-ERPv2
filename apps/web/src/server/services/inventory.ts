@@ -696,6 +696,8 @@ export function buildInventoryLedgerVarianceQuery(
   input: {
     page?: number;
     pageSize?: number | null;
+    /** Export-only bounded fetch; ordinary profile pages remain capped at 25. */
+    exportMaxRows?: number;
     query?: string;
     exactKey?: {
       inventoryLocationId: string;
@@ -710,12 +712,22 @@ export function buildInventoryLedgerVarianceQuery(
   }
   const normalizedQuery = normalizeInventorySearchQuery(input.query);
   const searchPattern = inventoryLedgerVarianceSearchPattern(normalizedQuery);
+  if (
+    input.exportMaxRows !== undefined &&
+    (!Number.isInteger(input.exportMaxRows) ||
+      input.exportMaxRows < 1 ||
+      input.exportMaxRows > 100_000)
+  ) {
+    throw new Error("INVENTORY_LEDGER_VARIANCE_EXPORT_MAX_ROWS_INVALID");
+  }
   const requestedPage =
     input.page && Number.isFinite(input.page) && input.page > 0
       ? Math.floor(input.page)
       : 1;
   const pageSize =
-    input.pageSize === null
+    input.exportMaxRows !== undefined
+      ? input.exportMaxRows + 1
+      : input.pageSize === null
       ? null
       : Math.min(Math.max(Math.floor(input.pageSize ?? inventoryLedgerVariancePageSize), 1), 25);
   const pagingSql = pageSize
@@ -943,6 +955,7 @@ async function queryInventoryLedgerVariance(
   input: {
     page?: number;
     pageSize?: number | null;
+    exportMaxRows?: number;
     query?: string;
     exactKey?: {
       inventoryLocationId: string;
@@ -999,14 +1012,26 @@ export async function getInventoryLedgerVarianceDashboardRead(
 
 export async function listInventoryLedgerVarianceExportRows(
   session: SessionContext,
-  input: { query?: string } = {}
+  input: { query?: string; maxRows?: number } = {}
 ) {
   await requireInventoryLedgerVarianceRead(session);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("INVENTORY_LEDGER_VARIANCE_EXPORT_MAX_ROWS_INVALID");
+  }
   const result = await queryInventoryLedgerVariance(session, {
     page: 1,
-    pageSize: null,
+    exportMaxRows: maxRows,
     ...(input.query !== undefined ? { query: input.query } : {})
   });
+  if (result.profileTotalCount > maxRows || result.items.length > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
   return {
     rows: result.items,
     totalItems: result.profileTotalCount,
@@ -1249,17 +1274,32 @@ function ordinaryInventoryBalanceWhere(
 
 export async function listInventoryBalances(
   session: SessionContext,
-  filters: InventoryBalanceFilters = {}
+  filters: InventoryBalanceFilters = {},
+  input: { maxRows?: number } = {}
 ) {
   await requirePermission(session, permissions.inventoryBalanceView);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("INVENTORY_BALANCE_EXPORT_MAX_ROWS_INVALID");
+  }
   const normalizedFilters = normalizeInventoryBalanceFilters(filters);
   const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const balances = await prisma.inventoryBalance.findMany({
     where: ordinaryInventoryBalanceWhere(session, normalizedFilters, expiryCutoff),
     include: inventoryBalanceInclude,
-    orderBy: inventoryBalanceOrderBy
+    orderBy: inventoryBalanceOrderBy,
+    take: maxRows + 1
   });
+
+  if (balances.length > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   return balances.map(mapInventoryBalance);
 }
@@ -1495,7 +1535,7 @@ export async function getInventoryBalanceReconciliation(
   await requireInventoryLedgerVarianceRead(session);
   const result = await queryInventoryLedgerVariance(session, {
     page: 1,
-    pageSize: null
+    pageSize: 1
   });
   return {
     totalRows: result.totalRows,
@@ -1778,9 +1818,19 @@ export async function getInventoryLedgerVarianceTracePage(
 
 export async function listInventoryMovements(
   session: SessionContext,
-  filters: InventoryMovementFilters = {}
+  filters: InventoryMovementFilters = {},
+  input: { maxRows?: number } = {}
 ) {
   await requirePermission(session, permissions.inventoryLedgerView);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("INVENTORY_LEDGER_EXPORT_MAX_ROWS_INVALID");
+  }
   const normalizedFilters = normalizeInventoryMovementFilters(filters);
   if (
     normalizedFilters.inventoryLocationId ||
@@ -1803,8 +1853,11 @@ export async function listInventoryMovements(
       baseUom: true
     },
     orderBy: { occurredAt: "desc" },
-    take: 100
+    take: maxRows + 1
   });
+  if (movements.length > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
   return hydrateInventoryMovements(session, movements);
 }
 

@@ -32,7 +32,7 @@ Use this article to create and post a Receiving Report from an issued Purchase O
 5. Add lot or expiry details when required by the item.
 6. Add a discrepancy reason and evidence reference for rejected, damaged, or short quantities.
 7. Select `Create Draft Receipt` at the bottom of the task page. The action disables itself and announces `Creating Draft Receipt…` while the server request is pending; wait for the result rather than submitting again. This saves a draft only; it does not post inventory.
-8. Review the draft receipt, then select `Post Receipt`.
+8. Review the draft receipt, then select `Post Receipt`. While posting, the button changes to `Posting Receipt…` and is disabled; wait for the result rather than submitting again. The server-side status and transaction controls remain authoritative.
 
  If the browser or network retries the same draft submission, OGFI returns the original draft instead of creating a duplicate. The retry token is handled automatically and is not a business reference you need to copy. If you change the PO, quantities, delivery details, or other receipt values after a failed attempt, submit the changed receipt as a new attempt; the previous retry token cannot be reused for changed data.
 
@@ -57,6 +57,7 @@ Posting rechecks the live PO, receipt header and lines, inventory-location scope
 - Reversal rechecks the live receipt, Purchase Order, receipt lines, and inventory destinations inside one transaction and requires privileged MFA after those records are locked. A stale or competing reversal fails safely without partial counter-movements or PO restoration.
 - Posting does not perform supplier invoice matching, payment release, GL posting, or valuation finalization.
 - A receipt post creates at most one accepted-quantity movement per receipt line. A stale or competing post is rejected or rolled back as a whole; it does not leave partial stock or PO updates.
+- The detail actions show an explicit pending state for posting and reversal to reduce accidental duplicate clicks. This is operator feedback only; it does not replace server-side idempotency and locked status checks.
 
 ## What happens next
 

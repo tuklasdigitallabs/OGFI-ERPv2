@@ -1,0 +1,96 @@
+name: ogfi-production-auth-e2e-private-database
+
+services:
+  postgres:
+    image: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_IMAGE:?Set a digest-pinned PostgreSQL image}
+    pull_policy: never
+    restart: "no"
+    environment:
+      POSTGRES_USER: ogfi_disposable_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/ogfi_private_db_admin_password
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ogfi_disposable_admin -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data:size=1g,mode=0700
+      - /var/run/postgresql:size=1m,mode=3775
+      - /tmp:size=32m,mode=1777
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The official Alpine entrypoint starts as root only to initialize the
+    # tmpfs directories, then drops permanently to PostgreSQL uid 70.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    networks:
+      private_database:
+        aliases:
+          - ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_ALIAS:?Set the private database alias}
+    secrets:
+      - source: ogfi_private_db_admin_password
+        target: ogfi_private_db_admin_password
+        mode: 0400
+
+  lifecycle:
+    image: ${OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE:?Set the immutable lifecycle image ID}
+    pull_policy: never
+    restart: "no"
+    # The exchange root and lifecycle-only admin URL are host-owned 0700/0600
+    # paths. Run with the hosted runner's numeric identity so the container can
+    # traverse them without weakening either permission boundary.
+    user: ${OGFI_PRODUCTION_AUTH_E2E_HOST_UID:?Set the hosted runner UID}:${OGFI_PRODUCTION_AUTH_E2E_HOST_GID:?Set the hosted runner GID}
+    network_mode: service:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - type: bind
+        source: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT:?Set the run-owned exchange root}
+        target: /run/ogfi-private-db-exchange
+      - type: bind
+        source: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_URL_FILE:?Set the lifecycle-only admin URL file}
+        target: /run/secrets/ogfi-private-db-admin-url
+        read_only: true
+    environment:
+      CI: "true"
+      AUTHORIZATION_TEST_RUN_ID: ${AUTHORIZATION_TEST_RUN_ID:?Set the run ID}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set the per-run encryption key}
+      APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+      BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: ${BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED:-false}
+      OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE: ${OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE:?Set the exact candidate image ID}
+      OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_COMMIT: ${OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_COMMIT:?Set the exact candidate commit}
+      OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE: ${OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE:?Set the immutable lifecycle image ID}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_IMAGE: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_IMAGE:?Set the digest-pinned PostgreSQL image}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_CONTAINER_ID:?Set the database container ID}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_ID: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_ID:?Set the private network ID}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME:?Set the private network name}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_ALIAS: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_ALIAS:?Set the private database alias}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN:?Set the per-run stop token}
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT: /run/ogfi-private-db-exchange
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_URL_FILE: /run/secrets/ogfi-private-db-admin-url
+      OGFI_PRODUCTION_AUTH_E2E_DATABASE_LIFETIME_MS: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_LIFETIME_MS:-1800000}
+
+secrets:
+  ogfi_private_db_admin_password:
+    file: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_ADMIN_PASSWORD_FILE:?Set the lifecycle-only database password file}
+
+networks:
+  private_database:
+    name: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK_NAME:?Set the private network name}
+    internal: true

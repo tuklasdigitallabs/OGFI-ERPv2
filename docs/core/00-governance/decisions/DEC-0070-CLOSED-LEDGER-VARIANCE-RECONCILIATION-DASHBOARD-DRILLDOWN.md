@@ -149,3 +149,7 @@ This record confirms the profile contract; it does not prove the profile or Work
 ## Supersession
 
 This decision is not superseded. It adds the closed `ledger-variance-v1` profile under `DEC-0055`; it does not change ledger authority, balance derivation, inventory posting, adjustment, approval, reversal, or ordinary Inventory workspace behavior. Any automatic repair, direct balance mutation, new variance tolerance, broader scope, permission reduction, action-enabled reconciliation surface, or change to block-mode visibility requires a new confirmed decision that explicitly amends or supersedes this record.
+
+### Implementation clarification — July 31, 2026
+
+The diagnostic CSV is an all-or-nothing synchronous export. It uses the configured `reporting.export.max_rows` ceiling and the same canonical selected-location reconciliation statement, fetches at most `maxRows + 1` rows to detect overflow, and returns `REPORT_EXPORT_ROW_LIMIT_EXCEEDED` / HTTP 413 with no partial file when the exact variance population is larger. Ordinary profile pagination remains bounded at 25 rows. Export audit metadata records only the report profile, cap, and whether search was applied; raw search text is not persisted.

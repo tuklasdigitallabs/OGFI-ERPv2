@@ -424,17 +424,17 @@ export default async function PurchaseOrdersPage({
                 Showing {(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + (orders.length ? 1 : 0)}-
                 {(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + orders.length} of {dashboardProfilePage.totalCount} open purchase orders
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {dashboardProfilePage.page > 1 ? (
-                  <ButtonLink href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page - 1}`} tone="secondary">Previous</ButtonLink>
+                  <ButtonLink className="shrink-0 whitespace-nowrap" href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page - 1}`} tone="secondary">Previous</ButtonLink>
                 ) : (
-                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Previous</span>
+                  <span className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Previous</span>
                 )}
-                <span className="font-semibold text-slate-700">Page {dashboardProfilePage.page} of {dashboardProfilePage.totalPages}</span>
+                <span className="whitespace-nowrap font-semibold text-slate-700">Page {dashboardProfilePage.page} of {dashboardProfilePage.totalPages}</span>
                 {dashboardProfilePage.page < dashboardProfilePage.totalPages ? (
-                  <ButtonLink href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page + 1}`} tone="secondary">Next</ButtonLink>
+                  <ButtonLink className="shrink-0 whitespace-nowrap" href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page + 1}`} tone="secondary">Next</ButtonLink>
                 ) : (
-                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>
+                  <span className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>
                 )}
               </div>
             </div>

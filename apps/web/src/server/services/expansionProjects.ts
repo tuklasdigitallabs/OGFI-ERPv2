@@ -3203,6 +3203,7 @@ export async function getExpansionPermitDocuments(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         id: { in: access.projectIds },
+        projectType: { in: [...expansionProjectTypes] },
         archivedAt: null
       },
       include: {

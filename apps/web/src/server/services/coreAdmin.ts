@@ -153,6 +153,36 @@ const createCoreAdminLocationSchema = z.object({
   reason: scopeReasonSchema,
 });
 
+const updateCoreAdminCompanySchema = z.object({
+  companyId: z.string().uuid(),
+  legalName: z.string().trim().min(2).max(255),
+  tradingName: optionalTextSchema,
+  taxIdentifier: optionalTextSchema,
+  currencyCode: z.string().trim().length(3),
+  timezone: z.string().trim().min(3).max(80),
+  reason: scopeReasonSchema,
+});
+
+const updateCoreAdminBrandSchema = z.object({
+  brandId: z.string().uuid(),
+  name: z.string().trim().min(2).max(255),
+  reason: scopeReasonSchema,
+});
+
+const updateCoreAdminDepartmentSchema = z.object({
+  departmentId: z.string().uuid(),
+  name: z.string().trim().min(2).max(255),
+  reason: scopeReasonSchema,
+});
+
+const updateCoreAdminLocationSchema = z.object({
+  locationId: z.string().uuid(),
+  name: z.string().trim().min(2).max(255),
+  address: optionalTextSchema,
+  timezone: z.string().trim().min(3).max(80),
+  reason: scopeReasonSchema,
+});
+
 const coreAdminUserPageInputSchema = z.object({
   page: z.number().int().min(1).max(10_000).default(1),
   pageSize: z.number().int().min(10).max(100).default(25),
@@ -640,6 +670,61 @@ export async function assertCanManageCompanyScope(
   }
 }
 
+/**
+ * Company-owned master data may be read by a user with any live company,
+ * brand, or location assignment inside the selected company. Mutations remain
+ * deliberately narrower: an explicit COMPANY/MANAGE assignment is required.
+ */
+export async function assertCanViewCompanyMasterDataScope(
+  session: SessionContext,
+  companyId: string,
+) {
+  const now = new Date();
+  const assignments = await prisma.userScopeAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      scopeType: { in: ["COMPANY", "BRAND", "LOCATION"] },
+    },
+    select: { scopeType: true, scopeId: true },
+  });
+  if (assignments.some((assignment) => assignment.scopeType === "COMPANY" && assignment.scopeId === companyId)) {
+    return;
+  }
+  const brandIds = assignments.filter((assignment) => assignment.scopeType === "BRAND").map((assignment) => assignment.scopeId);
+  const locationIds = assignments.filter((assignment) => assignment.scopeType === "LOCATION").map((assignment) => assignment.scopeId);
+  const scopedRecord = await prisma.brand.findFirst({
+    where: { id: { in: brandIds }, tenantId: session.context.tenantId, companyId },
+    select: { id: true },
+  }) ?? await prisma.location.findFirst({
+    where: { id: { in: locationIds }, tenantId: session.context.tenantId, companyId },
+    select: { id: true },
+  });
+  if (!scopedRecord) throw new Error("MASTER_DATA_SCOPE_DENIED");
+}
+
+export async function assertCanManageCompanyMasterDataScope(
+  session: SessionContext,
+  companyId: string,
+) {
+  const now = new Date();
+  const assignment = await prisma.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      scopeType: "COMPANY",
+      scopeId: companyId,
+      accessLevel: "MANAGE",
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+    select: { id: true },
+  });
+  if (!assignment) throw new Error("MASTER_DATA_SCOPE_DENIED");
+}
+
 async function assertCanAdministerTenantRoles(session: SessionContext) {
   await requirePermission(session, permissions.tenantRoleAdminister);
 }
@@ -968,6 +1053,7 @@ export type CoreAdminLocationPage = {
     code: string;
     name: string;
     type: string;
+    address: string | null;
     timezone: string;
     status: string;
   }>;
@@ -1013,6 +1099,7 @@ async function listCoreAdminLocationPageAuthorized(
       code: true,
       name: true,
       locationType: true,
+      address: true,
       timezone: true,
       status: true,
       company: { select: { legalName: true, tradingName: true } },
@@ -1032,6 +1119,7 @@ async function listCoreAdminLocationPageAuthorized(
       code: location.code,
       name: location.name,
       type: location.locationType,
+      address: location.address,
       timezone: location.timezone,
       status: location.status,
     })),
@@ -1389,6 +1477,47 @@ export async function listCoreAdminApprovalRulePage(
 export type CoreAdminOverviewTab = "users" | "roles" | "organization" | "approval-rules" | "audit";
 export type CoreAdminOrganizationSection = "companies" | "brands" | "departments" | "locations";
 
+export type CoreAdminOrganizationRecordDetail =
+  | { section: "companies"; id: string; code: string; name: string; legalName: string; tradingName: string | null; taxIdentifier: string | null; currencyCode: string; timezone: string; status: string; companyName: string; brandCount: number; locationCount: number }
+  | { section: "brands"; id: string; code: string; name: string; status: string; companyName: string }
+  | { section: "departments"; id: string; code: string; name: string; status: string; companyName: string; budgetCount: number; budgetLineCount: number; costCenterCount: number }
+  | { section: "locations"; id: string; code: string; name: string; status: string; companyName: string; brandName: string | null; type: string; address: string | null; timezone: string };
+
+/** Reads one selected Organization Scope record under the same server-side scope checks as its register. */
+async function getCoreAdminOrganizationRecordDetail(
+  session: SessionContext,
+  section: CoreAdminOrganizationSection,
+  recordId: string,
+): Promise<CoreAdminOrganizationRecordDetail | null> {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  if (!z.string().uuid().safeParse(recordId).success) return null;
+
+  if (section === "companies") {
+    if (recordId !== session.context.companyId) return null;
+    const company = await prisma.company.findFirst({ where: { id: recordId, tenantId: session.context.tenantId }, select: { id: true, code: true, legalName: true, tradingName: true, taxIdentifier: true, currencyCode: true, timezone: true, status: true, _count: { select: { brands: true, locations: true } } } });
+    if (!company) return null;
+    return { section, id: company.id, code: company.code, name: company.tradingName ?? company.legalName, legalName: company.legalName, tradingName: company.tradingName, taxIdentifier: company.taxIdentifier, currencyCode: company.currencyCode, timezone: company.timezone, status: company.status, companyName: company.tradingName ?? company.legalName, brandCount: company._count.brands, locationCount: company._count.locations };
+  }
+
+  if (section === "brands") {
+    const brand = await prisma.brand.findFirst({ where: { id: recordId, tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true, code: true, name: true, status: true, company: { select: { legalName: true, tradingName: true } } } });
+    if (!brand) return null;
+    return { section, id: brand.id, code: brand.code, name: brand.name, status: brand.status, companyName: brand.company.tradingName ?? brand.company.legalName };
+  }
+
+  if (section === "departments") {
+    const department = await prisma.department.findFirst({ where: { id: recordId, tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true, code: true, name: true, status: true, company: { select: { legalName: true, tradingName: true } }, _count: { select: { budgets: true, budgetLines: true, costCenters: true } } } });
+    if (!department) return null;
+    return { section, id: department.id, code: department.code, name: department.name, status: department.status, companyName: department.company.tradingName ?? department.company.legalName, budgetCount: department._count.budgets, budgetLineCount: department._count.budgetLines, costCenterCount: department._count.costCenters };
+  }
+
+  const location = await prisma.location.findFirst({ where: { id: recordId, tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true, code: true, name: true, status: true, locationType: true, address: true, timezone: true, company: { select: { legalName: true, tradingName: true } }, brand: { select: { name: true } } } });
+  if (!location) return null;
+  return { section, id: location.id, code: location.code, name: location.name, status: location.status, companyName: location.company.tradingName ?? location.company.legalName, brandName: location.brand?.name ?? null, type: location.locationType, address: location.address, timezone: location.timezone };
+}
+
 type CoreAdminRoleOptions = Awaited<ReturnType<typeof listCoreAdminRoleOptionsAuthorized>>;
 
 const emptyCoreAdminUserPage = (): CoreAdminUserPage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
@@ -1406,7 +1535,7 @@ export async function getCoreAdminOverview(
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
   departmentPageInput: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
   approvalRulePageInput: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
-  options: { activeTab?: CoreAdminOverviewTab; organizationSection?: CoreAdminOrganizationSection } = {},
+  options: { activeTab?: CoreAdminOverviewTab; organizationSection?: CoreAdminOrganizationSection; organizationRecordId?: string } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
@@ -1414,6 +1543,9 @@ export async function getCoreAdminOverview(
 
   const activeTab = options.activeTab ?? "users";
   const organizationSection = options.organizationSection ?? "companies";
+  const organizationRecordDetail = activeTab === "organization" && options.organizationRecordId
+    ? await getCoreAdminOrganizationRecordDetail(session, organizationSection, options.organizationRecordId)
+    : null;
   const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage, approvalRulePage] = await Promise.all([
     activeTab === "users" ? listCoreAdminUserPageAuthorized(session, userPageInput) : Promise.resolve(emptyCoreAdminUserPage()),
     activeTab === "roles" ? listCoreAdminRolePageAuthorized(session, rolePageInput) : Promise.resolve(emptyCoreAdminRolePage()),
@@ -1460,6 +1592,8 @@ export async function getCoreAdminOverview(
       code: company.code,
       name: company.tradingName ?? company.legalName,
       legalName: company.legalName,
+      tradingName: company.tradingName,
+      taxIdentifier: company.taxIdentifier,
       currencyCode: company.currencyCode,
       timezone: company.timezone,
       status: company.status,
@@ -1470,6 +1604,7 @@ export async function getCoreAdminOverview(
     departmentPage,
     locations: locationPage.items,
     locationPage,
+    organizationRecordDetail,
     approvalRules: approvalRulePage.items.map((rule) => ({
       ...rule,
       stepSummary: rule.stepPreview.join(", "),
@@ -2011,6 +2146,87 @@ export async function createCoreAdminLocation(formData: FormData) {
         brandName: brand?.name ?? null,
       },
     },
+  });
+}
+
+export async function updateCoreAdminCompany(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  const values = updateCoreAdminCompanySchema.parse(Object.fromEntries(formData));
+  if (values.companyId !== session.context.companyId) {
+    throw new Error("ADMIN_SCOPE_DENIED");
+  }
+  await assertCanManageCompanyScope(session, values.companyId);
+  const company = await prisma.company.findFirst({ where: { id: values.companyId, tenantId: session.context.tenantId } });
+  if (!company) throw new Error("COMPANY_NOT_FOUND");
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.company.update({
+      where: { id: company.id },
+      data: { legalName: values.legalName, tradingName: values.tradingName ?? null, taxIdentifier: values.taxIdentifier ?? null, currencyCode: values.currencyCode.toUpperCase(), timezone: values.timezone },
+    });
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: company.id, actorUserId: session.user.id,
+      eventType: "core_admin.company.updated", entityType: "Company", entityId: company.id,
+      beforeData: { legalName: company.legalName, tradingName: company.tradingName, taxIdentifier: company.taxIdentifier, currencyCode: company.currencyCode, timezone: company.timezone },
+      afterData: { legalName: updated.legalName, tradingName: updated.tradingName, taxIdentifier: updated.taxIdentifier, currencyCode: updated.currencyCode, timezone: updated.timezone },
+      metadata: { reason: values.reason },
+    } });
+  });
+}
+
+export async function updateCoreAdminBrand(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  const values = updateCoreAdminBrandSchema.parse(Object.fromEntries(formData));
+  const brand = await prisma.brand.findFirst({ where: { id: values.brandId, tenantId: session.context.tenantId } });
+  if (!brand) throw new Error("BRAND_NOT_FOUND");
+  await assertCanManageCompanyScope(session, brand.companyId);
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.brand.update({ where: { id: brand.id }, data: { name: values.name } });
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: brand.companyId, actorUserId: session.user.id,
+      eventType: "core_admin.brand.updated", entityType: "Brand", entityId: brand.id,
+      beforeData: { name: brand.name }, afterData: { name: updated.name }, metadata: { reason: values.reason },
+    } });
+  });
+}
+
+export async function updateCoreAdminDepartment(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  const values = updateCoreAdminDepartmentSchema.parse(Object.fromEntries(formData));
+  const department = await prisma.department.findFirst({ where: { id: values.departmentId, tenantId: session.context.tenantId } });
+  if (!department) throw new Error("DEPARTMENT_NOT_FOUND");
+  await assertCanManageCompanyScope(session, department.companyId);
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.department.update({ where: { id: department.id }, data: { name: values.name } });
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: department.companyId, actorUserId: session.user.id,
+      eventType: "core_admin.department.updated", entityType: "Department", entityId: department.id,
+      beforeData: { name: department.name }, afterData: { name: updated.name }, metadata: { reason: values.reason },
+    } });
+  });
+}
+
+export async function updateCoreAdminLocation(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  const values = updateCoreAdminLocationSchema.parse(Object.fromEntries(formData));
+  const location = await prisma.location.findFirst({ where: { id: values.locationId, tenantId: session.context.tenantId } });
+  if (!location) throw new Error("LOCATION_NOT_FOUND");
+  await assertCanManageCompanyScope(session, location.companyId);
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.location.update({ where: { id: location.id }, data: { name: values.name, address: values.address ?? null, timezone: values.timezone } });
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: location.companyId, actorUserId: session.user.id,
+      eventType: "core_admin.location.updated", entityType: "Location", entityId: location.id,
+      beforeData: { name: location.name, address: location.address, timezone: location.timezone },
+      afterData: { name: updated.name, address: updated.address, timezone: updated.timezone }, metadata: { reason: values.reason },
+    } });
   });
 }
 
@@ -4123,10 +4339,6 @@ export async function getCoreAdminLocationDetail(
     status: "ACTIVE" as const,
     startsAt: { lte: effectiveNow },
     OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
-    role: {
-      status: "ACTIVE" as const,
-      OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
-    },
     user: {
       tenantId: session.context.tenantId,
       status: "ACTIVE" as const,

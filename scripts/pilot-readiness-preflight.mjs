@@ -14,6 +14,8 @@ const outputDir =
   process.env.PILOT_READINESS_OUTPUT_DIR ?? "release-evidence/pilot-readiness";
 const outputFile = join(outputDir, `pilot-readiness-preflight-${timestamp}.txt`);
 const runId = evidenceRunId(process.env, timestamp);
+const readinessProfile = process.env.PILOT_READINESS_PROFILE ?? "combined";
+const allowedReadinessProfiles = new Set(["combined", "inventory_control"]);
 
 const thresholdNames = [
   "PILOT_MIN_COMPANIES",
@@ -67,6 +69,7 @@ const invalidBooleanThresholds = booleanThresholdNames.filter((name) => {
 const checks = [
   ["DATABASE_URL configured", Boolean(process.env.DATABASE_URL)],
   ["psql available or PSQL_BIN configured", isPostgresToolAvailable("psql")],
+  ["pilot readiness profile allowlisted", allowedReadinessProfiles.has(readinessProfile)],
   ["pilot threshold overrides valid", invalidThresholds.length === 0],
   ["pilot boolean overrides valid", invalidBooleanThresholds.length === 0]
 ];
@@ -81,6 +84,8 @@ const lines = [
   "OGFI ERP Phase I / Phase 1.5 pilot readiness preflight",
   `Generated UTC: ${timestamp}`,
   `Evidence run ID: ${runId}`,
+  `Readiness profile: ${readinessProfile}`,
+  `Deferred modules: ${readinessProfile === "inventory_control" ? "Phase 1.5 Projects & Implementation Tracker (no pilot credit)" : "none"}`,
   `Database URL fingerprint: ${databaseUrlFingerprint(process.env.DATABASE_URL)}`,
   `Threshold snapshot: ${thresholdSnapshot()}`,
   "No database URLs, credentials, or raw command outputs are recorded by this preflight.",

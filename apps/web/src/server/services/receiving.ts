@@ -1201,9 +1201,19 @@ export async function buildReceivingReportExportRows(
   profile?: ReceivingDashboardProfile,
   query?: string,
   tab: ReceivingRegisterTab = "all",
-  filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string; receivedByUserId?: string } = {}
+  filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string; receivedByUserId?: string } = {},
+  input: { maxRows?: number } = {}
 ) {
   await requireReceivingRead(session);
+  const maxRows = input.maxRows ?? 100_000;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("RECEIVING_EXPORT_MAX_ROWS_INVALID");
+  }
 
   if (filters.status && !receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus)) throw new Error("RECEIVING_STATUS_FILTER_INVALID");
   const supplierId = parseReceivingFilterId(filters.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
@@ -1228,10 +1238,11 @@ export async function buildReceivingReportExportRows(
         supplier: { select: { legalName: true, tradingName: true } },
         receivingLocation: { select: { name: true } }
       },
-      orderBy: [{ receivedAt: "desc" }, { id: "desc" }]
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      take: maxRows + 1
     });
 
-    return [
+    const rows = [
       [
         "Reference",
         "Status",
@@ -1253,6 +1264,10 @@ export async function buildReceivingReportExportRows(
         receipt.createdAt.toISOString()
       ])
     ] satisfies CsvRow[];
+    if (rows.length - 1 > maxRows) {
+      throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    }
+    return rows;
   }
 
   const receipts = await prisma.goodsReceipt.findMany({
@@ -1287,7 +1302,8 @@ export async function buildReceivingReportExportRows(
         }
       }
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    take: maxRows + 1
   });
 
   const rows: CsvRow[] = [
@@ -1360,6 +1376,10 @@ export async function buildReceivingReportExportRows(
         line.postedMovementId ?? ""
       ]);
     }
+  }
+
+  if (rows.length - 1 > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
   }
 
   return rows;

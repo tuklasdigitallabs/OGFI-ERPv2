@@ -16,6 +16,10 @@ import {
 import { requireSessionContext, type SessionContext } from "./context";
 import { getControlledEvidenceStoragePolicy } from "./policySettings";
 import {
+  approvalReviewSourceFrozenError,
+  assertApprovalReviewEvidenceSourceMutable,
+} from "./approvalReviewAggregateFence";
+import {
   classifyEvidenceStorageEnvironment,
   readEvidenceStorageConfig,
   type EvidenceStorageConfig,
@@ -264,6 +268,12 @@ export async function issueEvidenceUploadIntentForSession(
   const attachmentId = randomUUID();
 
   const created = await prisma.$transaction(async (tx) => {
+    await assertApprovalReviewEvidenceSourceMutable(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      sourceType: input.sourceType,
+      sourceRecordId: input.sourceRecordId,
+    });
     const quota = await lockCompanyQuota(
       tx,
       session.context.tenantId,
@@ -614,6 +624,15 @@ async function finalizeDurableEvidenceUpload(input: {
   const { intent, exact, config } = input;
   assertStoredVersionMatchesIntent(intent, exact, config.production);
   await prisma.$transaction(async (tx) => {
+    const reviewSource = intent.attachment.controlledEvidenceLinks[0];
+    if (reviewSource) {
+      await assertApprovalReviewEvidenceSourceMutable(tx, {
+        tenantId: intent.tenantId,
+        companyId: intent.companyId,
+        sourceType: reviewSource.sourceType,
+        sourceRecordId: reviewSource.sourceRecordId,
+      });
+    }
     const quota = await lockCompanyQuota(
       tx,
       intent.tenantId,
@@ -724,6 +743,15 @@ async function acquireUploadLease(
     uploadStartedAt.getTime() + config.uploadLeaseSeconds * 1000,
   );
   await prisma.$transaction(async (tx) => {
+    const reviewSource = intent.attachment.controlledEvidenceLinks[0];
+    if (reviewSource) {
+      await assertApprovalReviewEvidenceSourceMutable(tx, {
+        tenantId: intent.tenantId,
+        companyId: intent.companyId,
+        sourceType: reviewSource.sourceType,
+        sourceRecordId: reviewSource.sourceRecordId,
+      });
+    }
     const leased = await tx.attachmentUploadIntent.updateMany({
       where: {
         id: intent.id,
@@ -875,6 +903,15 @@ export async function storeEvidenceUploadContent(
     }
     if (intent.expiresAt > new Date()) {
       await prisma.$transaction(async (tx) => {
+        const reviewSource = intent.attachment.controlledEvidenceLinks[0];
+        if (reviewSource) {
+          await assertApprovalReviewEvidenceSourceMutable(tx, {
+            tenantId: intent.tenantId,
+            companyId: intent.companyId,
+            sourceType: reviewSource.sourceType,
+            sourceRecordId: reviewSource.sourceRecordId,
+          });
+        }
         const released = await tx.attachmentUploadIntent.updateMany({
           where: {
             id: intent.id,
@@ -976,7 +1013,11 @@ export async function recoverDurableEvidenceUploads(
       });
       recovered += 1;
     } catch (error) {
-      if (!(error instanceof Error) || !error.message.endsWith("_RACE")) {
+      if (
+        !(error instanceof Error) ||
+        (!error.message.endsWith("_RACE") &&
+          error.message !== approvalReviewSourceFrozenError)
+      ) {
         throw error;
       }
     }
@@ -1040,69 +1081,87 @@ export async function expireEvidenceUploadIntents(
         if (!absent) throw error;
       }
     }
-    await prisma.$transaction(async (tx) => {
-      const quota = await lockCompanyQuota(
-        tx,
-        intent.tenantId,
-        intent.companyId,
-        intent.storageEnvironment,
-        config.defaultCompanyQuotaBytes,
-      );
-      const changed = await tx.attachmentUploadIntent.updateMany({
-        where: {
-          id: intent.id,
-          OR: [
-            { status: "ISSUED", expiresAt: { lte: new Date() } },
-            {
-              status: "UPLOADING",
-              uploadLeaseExpiresAt: { lte: new Date() },
-            },
-          ],
-        },
-        data: {
-          status: "EXPIRED",
-          uploadLeaseOwner: null,
-          uploadLeaseExpiresAt: null,
-          invalidatedAt: new Date(),
-          invalidationReason: "EVIDENCE_UPLOAD_INTENT_EXPIRED",
-          rowVersion: { increment: 1 },
-        },
+    try {
+      await prisma.$transaction(async (tx) => {
+        const reviewSource = intent.attachment.controlledEvidenceLinks[0];
+        if (reviewSource) {
+          await assertApprovalReviewEvidenceSourceMutable(tx, {
+            tenantId: intent.tenantId,
+            companyId: intent.companyId,
+            sourceType: reviewSource.sourceType,
+            sourceRecordId: reviewSource.sourceRecordId,
+          });
+        }
+        const quota = await lockCompanyQuota(
+          tx,
+          intent.tenantId,
+          intent.companyId,
+          intent.storageEnvironment,
+          config.defaultCompanyQuotaBytes,
+        );
+        const changed = await tx.attachmentUploadIntent.updateMany({
+          where: {
+            id: intent.id,
+            OR: [
+              { status: "ISSUED", expiresAt: { lte: new Date() } },
+              {
+                status: "UPLOADING",
+                uploadLeaseExpiresAt: { lte: new Date() },
+              },
+            ],
+          },
+          data: {
+            status: "EXPIRED",
+            uploadLeaseOwner: null,
+            uploadLeaseExpiresAt: null,
+            invalidatedAt: new Date(),
+            invalidationReason: "EVIDENCE_UPLOAD_INTENT_EXPIRED",
+            rowVersion: { increment: 1 },
+          },
+        });
+        if (changed.count !== 1) return;
+        if (quota.reservedBytes < BigInt(intent.expectedSizeBytes)) {
+          throw new Error("EVIDENCE_UPLOAD_QUOTA_RESERVATION_INVALID");
+        }
+        await tx.attachmentCompanyQuotaUsage.update({
+          where: { id: quota.id },
+          data: {
+            reservedBytes: { decrement: BigInt(intent.expectedSizeBytes) },
+            rowVersion: { increment: 1 },
+          },
+        });
+        await tx.attachment.updateMany({
+          where: {
+            id: intent.attachmentId,
+            uploadState: { in: ["INTENT_ISSUED", "UPLOADING"] },
+            availabilityState: "QUARANTINED",
+          },
+          data: {
+            uploadState: "EXPIRED",
+            availabilityState: "EXPIRED",
+            rowVersion: { increment: 1 },
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: intent.tenantId,
+            companyId: intent.companyId,
+            eventType: "controlled_evidence_upload.intent_expired",
+            entityType: "Attachment",
+            entityId: intent.attachmentId,
+            metadata: { noSourceMutation: true, reservationReleased: true },
+          },
+        });
+        expired += 1;
       });
-      if (changed.count !== 1) return;
-      if (quota.reservedBytes < BigInt(intent.expectedSizeBytes)) {
-        throw new Error("EVIDENCE_UPLOAD_QUOTA_RESERVATION_INVALID");
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== approvalReviewSourceFrozenError
+      ) {
+        throw error;
       }
-      await tx.attachmentCompanyQuotaUsage.update({
-        where: { id: quota.id },
-        data: {
-          reservedBytes: { decrement: BigInt(intent.expectedSizeBytes) },
-          rowVersion: { increment: 1 },
-        },
-      });
-      await tx.attachment.updateMany({
-        where: {
-          id: intent.attachmentId,
-          uploadState: { in: ["INTENT_ISSUED", "UPLOADING"] },
-          availabilityState: "QUARANTINED",
-        },
-        data: {
-          uploadState: "EXPIRED",
-          availabilityState: "EXPIRED",
-          rowVersion: { increment: 1 },
-        },
-      });
-      await tx.auditEvent.create({
-        data: {
-          tenantId: intent.tenantId,
-          companyId: intent.companyId,
-          eventType: "controlled_evidence_upload.intent_expired",
-          entityType: "Attachment",
-          entityId: intent.attachmentId,
-          metadata: { noSourceMutation: true, reservationReleased: true },
-        },
-      });
-      expired += 1;
-    });
+    }
   }
   return { examined: candidates.length, expired, recovered };
 }

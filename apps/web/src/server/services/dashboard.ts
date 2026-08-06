@@ -13,7 +13,12 @@ import {
   requirePermission,
   permissions
 } from "./authorization";
-import { type ApprovalQueueItem } from "./approvals";
+import {
+  getBoundedInventoryUatApprovalWorklistDetail,
+  listBoundedInventoryUatApprovalWorklistPage,
+  type ApprovalQueueItem,
+} from "./approvals";
+import { approvalWorklistMode } from "./boundedApprovalWorklist";
 import type { SessionContext } from "./context";
 import {
   branchOperationsDashboardProfileHref,
@@ -234,6 +239,7 @@ export type OperationalDashboard = {
 export type OperationalDashboardSource = {
   approvals?: ApprovalQueueItem[];
   approvalPreviewUnavailable?: boolean;
+  approvalPreviewPartial?: boolean;
   hasUnavailableSource?: boolean;
   unavailableSources?: DashboardUnavailableSource[];
   purchaseRequests?: PurchaseRequest[];
@@ -1291,6 +1297,11 @@ export function buildOperationalDashboardModel(
     );
     approvalQueueContract.unavailableDetail =
       "Approval preview and the Approval Inbox queue are unavailable while routing safeguards are active. Pending approval work may still exist. If available to your role, Scan Approvals in Notifications can create current-user reminders only for your eligible due or overdue work. It is not a complete queue, and its approval links remain unavailable until Inbox activation.";
+  } else if (source.approvalPreviewPartial) {
+    approvalQueueContract.completeness = "PARTIAL";
+    approvalQueueContract.totalCount = null;
+    approvalQueueContract.unavailableDetail =
+      "Only the eligible Inventory Control UAT approval families are previewed here. Open the worklist for the current, server-authorized queue.";
   }
   const exceptionObservations = source.sourceObservations?.filter(
     (observation) => exceptionQueueContributorIds.has(observation.id)
@@ -1661,10 +1672,36 @@ export function getOperationalDashboardSourceDescriptors(
           id: "approvals" as const,
           label: "Approvals",
           href: "/approvals",
-          read: async () => ({
-            availability: "UNAVAILABLE" as const,
-            patch: { approvalPreviewUnavailable: true }
-          })
+          read: async () => {
+            if (approvalWorklistMode() !== "BOUNDED_UAT") {
+              return {
+                availability: "UNAVAILABLE" as const,
+                patch: { approvalPreviewUnavailable: true },
+              };
+            }
+            const page = await listBoundedInventoryUatApprovalWorklistPage(session, {
+              page: 1,
+              pageSize: approvalQueueDisplayLimit,
+            });
+            const details = await Promise.all(
+              page.items.map((item) =>
+                getBoundedInventoryUatApprovalWorklistDetail(
+                  session,
+                  item.approvalInstanceId,
+                ),
+              ),
+            );
+            const approvals: ApprovalQueueItem[] = [];
+            for (const detail of details) {
+              if (detail) approvals.push(detail);
+            }
+            return {
+              patch: {
+                approvals,
+                approvalPreviewPartial: true,
+              },
+            };
+          }
         }]
       : []),
     ...(canUsePurchaseRequests(session.permissionCodes)

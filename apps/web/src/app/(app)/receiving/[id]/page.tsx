@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { PendingActionButton } from "@/components/PendingActionButton";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -328,9 +329,10 @@ export default async function ReceivingDetailPage({
             {receipt.status === "DRAFT" && canPostReceiving ? (
               <form action={postReceiptAction}>
                 <input name="id" type="hidden" value={receipt.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
-                  Post Receipt
-                </button>
+                <PendingActionButton
+                  label="Post Receipt"
+                  pendingLabel="Posting Receipt…"
+                />
               </form>
             ) : null}
           </div>
@@ -360,9 +362,12 @@ export default async function ReceivingDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 sm:w-fit">
-                      Reverse Receipt
-                    </button>
+                    <PendingActionButton
+                      label="Reverse Receipt"
+                      pendingLabel="Reversing Receipt…"
+                      tone="danger"
+                      confirmation="Reverse this receipt and create linked counter-movements?"
+                    />
                   </form>
                 </EntryModal>
               </div>

@@ -1,4 +1,5 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import {
@@ -8,13 +9,91 @@ import {
 import { type SessionContext } from "./context";
 import {
   deliverAccountActivation,
+  hashPassword,
   issueAccountActivationInTransaction,
+  revokeApplicationSessions,
 } from "./authentication";
+import { isSensitivePermissionCode } from "./rolePermissionCatalog";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 const issueActivationSchema = z.object({
   targetUserId: z.string().uuid(),
 });
+const issueTemporaryPasswordSchema = z.object({ targetUserId: z.string().uuid() });
+
+function temporaryPassword() {
+  // Random, one-time credentials are deliberately returned only to the
+  // initiating server action; neither the raw value nor a derivative is audited.
+  return `Ogfi-${randomBytes(18).toString("base64url")}`;
+}
+
+async function assertTemporaryPasswordTargetAllowed(tx: TransactionClient, session: SessionContext, targetUserId: string) {
+  const target = await tx.user.findFirst({
+    where: { id: targetUserId, tenantId: session.context.tenantId, status: "ACTIVE" },
+    select: {
+      roleAssignments: {
+        where: { status: "ACTIVE" },
+        select: {
+          role: {
+            select: {
+              systemRole: true,
+              permissions: {
+                select: { permission: { select: { code: true } } },
+              },
+            },
+          },
+        },
+      },
+      scopeAssignments: {
+        where: { status: "ACTIVE" },
+        select: {
+          accessLevel: true,
+          scopeType: true,
+          scopeId: true,
+        },
+      },
+    },
+  });
+  if (!target) throw new Error("AUTH_ACCOUNT_SCOPE_DENIED");
+  const privileged = target.roleAssignments.some(({ role }) => role.systemRole || role.permissions.some(({ permission }) => isSensitivePermissionCode(permission.code) || /approve/i.test(permission.code)));
+  const locationScopeIds = target.scopeAssignments
+    .filter((scope) => scope.scopeType === "LOCATION")
+    .map((scope) => scope.scopeId);
+  const locations = locationScopeIds.length
+    ? await tx.location.findMany({
+        where: { id: { in: locationScopeIds }, tenantId: session.context.tenantId },
+        select: { locationType: true },
+      })
+    : [];
+  const highRiskScope = target.scopeAssignments.some((scope) => scope.accessLevel === "MANAGE")
+    || locations.some(({ locationType }) => ["WAREHOUSE", "COMMISSARY", "CENTRAL_KITCHEN", "HEAD_OFFICE", "PROJECT_SITE", "TEMPORARY_SITE"].includes(locationType));
+  if (privileged || highRiskScope) throw new Error("AUTH_TEMPORARY_PASSWORD_PRIVILEGED_TARGET_DENIED");
+}
+
+export async function issueTemporaryPassword(session: SessionContext, formData: FormData) {
+  await assertCanManageAuthentication(session);
+  const values = issueTemporaryPasswordSchema.parse(Object.fromEntries(formData));
+  if (values.targetUserId === session.user.id) throw new Error("AUTH_TEMPORARY_PASSWORD_SELF_ISSUE_BLOCKED");
+  await assertPrivilegedMfaForAction(session, { action: "ISSUE_TEMPORARY_PASSWORD", permissionCode: permissions.coreAdminister, enforcementScope: "admin_security", entityType: "User", entityId: values.targetUserId });
+  const password = temporaryPassword();
+  const passwordHash = await hashPassword(password);
+  const expiresAt = new Date(Date.now() + 30 * 60_000);
+  await prisma.$transaction(async (tx) => {
+    await assertTargetUserInCompanyScope(tx, session, values.targetUserId);
+    await assertTemporaryPasswordTargetAllowed(tx, session, values.targetUserId);
+    const target = await tx.user.findFirst({ where: { id: values.targetUserId, tenantId: session.context.tenantId, status: "ACTIVE" }, select: { email: true } });
+    if (!target) throw new Error("AUTH_ACCOUNT_SCOPE_DENIED");
+    const normalizedIdentifier = target.email.trim().toLowerCase();
+    const existing = await tx.authIdentity.findUnique({ where: { tenantId_provider_normalizedIdentifier: { tenantId: session.context.tenantId, provider: "LOCAL", normalizedIdentifier } }, select: { id: true, userId: true } });
+    if (existing && existing.userId !== values.targetUserId) throw new Error("AUTH_IDENTITY_CONFLICT");
+    const identity = existing ? await tx.authIdentity.update({ where: { id: existing.id }, data: { status: "ACTIVE" } }) : await tx.authIdentity.create({ data: { tenantId: session.context.tenantId, userId: values.targetUserId, provider: "LOCAL", normalizedIdentifier } });
+    await tx.passwordCredential.upsert({ where: { authIdentityId: identity.id }, create: { authIdentityId: identity.id, passwordHash, requiresChange: true, temporaryPasswordExpiresAt: expiresAt }, update: { passwordHash, hashAlgorithm: "ARGON2ID", requiresChange: true, temporaryPasswordExpiresAt: expiresAt, temporaryPasswordUsedAt: null, passwordChangedAt: new Date() } });
+    await touchUserPrivilegeEpoch(tx, values.targetUserId, { companyId: session.context.companyId, requestedByUserId: session.user.id, reason: "Administrator issued a one-use temporary password; revoke prior sessions.", sourceEventType: "auth.temporary_password.issued", sourceRecordId: values.targetUserId });
+    await revokeApplicationSessions(tx, { userId: values.targetUserId, reason: "Temporary password issued by administrator." });
+    await tx.auditEvent.create({ data: { tenantId: session.context.tenantId, companyId: session.context.companyId, actorUserId: session.user.id, eventType: "auth.temporary_password.issued", entityType: "User", entityId: values.targetUserId, afterData: { requiresPasswordChange: true, expiresAt: expiresAt.toISOString() }, metadata: { sourceDecisionId: "DEC-0040", delivery: "MANUAL" } } });
+  });
+  return { password, expiresAt: expiresAt.toISOString() };
+}
 const retryActivationSchema = z.object({
   activationTokenId: z.string().uuid(),
 });

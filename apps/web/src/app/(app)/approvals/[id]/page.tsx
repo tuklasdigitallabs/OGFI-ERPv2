@@ -7,8 +7,9 @@ import {
   type ApprovalDecisionActionState
 } from "@/components/ApprovalDecisionComposer";
 import { AppShell } from "@/components/AppShell";
+import { BoundedApprovalReviewPanel } from "@/components/BoundedApprovalReviewPanel";
 import {
-  actionErrorRedirectPath,
+  actionSuccessRedirectPath,
   getActionErrorFeedback,
   getActionFeedback
 } from "@/server/services/actionFeedback";
@@ -18,16 +19,18 @@ import {
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
-  executeCanonicalApprovalDecision,
+  executeEligibleApprovalDecision,
   getApprovalDetail
 } from "@/server/services/approvals";
+import { getBoundedInventoryUatApprovalReview } from "@/server/services/boundedApprovalReview";
+import { assertTrustedServerActionOrigin } from "@/server/services/authentication";
 import { getApprovalDecisionFieldErrors } from "@/server/services/approvalDecisionCommands";
 import {
-  assertNormalizedApprovalDecisionAvailable,
   getApprovalDecisionSurfaceContract
 } from "@/server/services/approvalDecisionCapabilities";
-import { normalizedApprovalRoutingEnabled } from "@/server/services/approvalRouting";
-import { addPurchaseRequestComment } from "@/server/services/purchaseRequests";
+import {
+  approvalWorklistMode,
+} from "@/server/services/boundedApprovalWorklist";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +41,13 @@ type ApprovalDetailPageProps = {
 
 function revalidateApprovalTargets() {
   revalidatePath("/approvals");
+  revalidatePath("/purchase-requests");
+  revalidatePath("/quotes");
   revalidatePath("/purchase-orders");
   revalidatePath("/receiving");
+  revalidatePath("/transfers");
+  revalidatePath("/counts");
+  revalidatePath("/wastage");
   revalidatePath("/adjustments");
   revalidatePath("/workforce");
 }
@@ -51,24 +59,24 @@ async function reviewApproval(
   "use server";
 
   const approvalInstanceId = String(formData.get("approvalInstanceId"));
-  const approvalKind = String(formData.get("approvalKind") ?? "");
   const decision = String(formData.get("decision") ?? "");
   try {
-    if (!normalizedApprovalRoutingEnabled()) {
-      throw new Error("APPROVAL_ROUTING_V1_DISABLED");
+    await assertTrustedServerActionOrigin();
+    const mode = approvalWorklistMode();
+    if (mode === "DISABLED") {
+      throw new Error("APPROVAL_WORKLIST_ITEM_UNAVAILABLE");
     }
-    assertNormalizedApprovalDecisionAvailable(approvalKind, decision);
-    const surface = getApprovalDecisionSurfaceContract(approvalKind);
     const remarks = String(formData.get("remarks") ?? "").trim();
     const evidenceReference = String(
       formData.get("evidenceReference") ?? ""
     ).trim();
-    await executeCanonicalApprovalDecision({
+    const reviewToken = String(formData.get("reviewToken") ?? "").trim();
+    await executeEligibleApprovalDecision({
       approvalInstanceId,
-      family: approvalKind,
       decision: decision.toUpperCase(),
+      ...(reviewToken ? { reviewToken } : {}),
       ...(remarks ? { remarks } : {}),
-      ...(surface.supportsSupplementalEvidence && evidenceReference
+      ...(evidenceReference
         ? { evidenceReference }
         : {}),
     });
@@ -83,19 +91,12 @@ async function reviewApproval(
     };
   }
   revalidateApprovalTargets();
-  redirect("/approvals");
-}
-
-async function addComment(formData: FormData) {
-  "use server";
-
-  const approvalInstanceId = String(formData.get("approvalInstanceId"));
-  try {
-    await addPurchaseRequestComment(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
-  }
-  revalidatePath(`/approvals/${approvalInstanceId}`);
+  const successCode = decision.toUpperCase() === "APPROVE"
+    ? "APPROVAL_DECISION_APPROVED"
+    : decision.toUpperCase() === "RETURN"
+      ? "APPROVAL_DECISION_RETURNED"
+      : "APPROVAL_DECISION_REJECTED";
+  redirect(actionSuccessRedirectPath("/approvals", successCode));
 }
 
 export default async function ApprovalDetailPage({
@@ -109,17 +110,46 @@ export default async function ApprovalDetailPage({
   if (!canUseApprovals(session.permissionCodes)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
-  if (!normalizedApprovalRoutingEnabled()) {
+  const worklistMode = approvalWorklistMode();
+  if (worklistMode === "DISABLED") {
     redirect("/approvals?error=APPROVAL_ROUTING_V1_DISABLED");
   }
 
   const { id } = await params;
-  const approval = await getApprovalDetail(session, id);
-  if (!approval) {
-    redirect(getDefaultAppRoute(session.permissionCodes));
-  }
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
+
+  if (worklistMode === "BOUNDED_UAT") {
+    let review;
+    try {
+      review = await getBoundedInventoryUatApprovalReview(session, id);
+    } catch {
+      redirect("/approvals?error=APPROVAL_WORKLIST_ITEM_UNAVAILABLE&stale=1");
+    }
+    const boundedDecisionPresentation = getApprovalDecisionSurfaceContract(
+      review.family,
+    );
+    return (
+      <AppShell
+        session={session}
+        title="Inventory Control UAT Approval Review"
+        subtitle={`${review.presentation.publicReference} / ${review.family}`}
+        activeNav="approvals"
+      >
+        <ActionFeedbackBanner feedback={actionFeedback} />
+        <BoundedApprovalReviewPanel
+          action={reviewApproval}
+          decisionPresentation={boundedDecisionPresentation}
+          review={review}
+        />
+      </AppShell>
+    );
+  }
+
+  const approval = await getApprovalDetail(session, id);
+  if (!approval) {
+    redirect("/approvals?error=APPROVAL_WORKLIST_ITEM_UNAVAILABLE&stale=1");
+  }
   const decisionPresentation = getApprovalDecisionSurfaceContract(
     approval.approvalKind
   );
@@ -238,27 +268,9 @@ export default async function ApprovalDetailPage({
           <Panel className="ogfi-detail-card">
             <h2 className="text-lg font-bold text-slate-950">Comments</h2>
             <p className="text-sm text-slate-500">Scoped operational discussion</p>
-            {approval.approvalKind === "PurchaseRequest" ? (
-              <form action={addComment} className="mt-4 grid gap-2">
-                <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
-                <input name="purchaseRequestId" type="hidden" value={approval.documentId} />
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Add comment
-                  <textarea
-                    className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                    name="body"
-                    required
-                  />
-                </label>
-                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                  Add Comment
-                </button>
-              </form>
-            ) : (
-              <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                Comments are read-only here for this approval type. Add discussion in the authoritative source workspace.
-              </p>
-            )}
+            <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              Comments are read-only here for this approval type. Add discussion in the authoritative source workspace.
+            </p>
             <div className="mt-4 space-y-3">
               {approval.comments.length === 0 ? (
                 <p className="text-sm text-slate-500">No comments yet.</p>
@@ -276,7 +288,7 @@ export default async function ApprovalDetailPage({
 
           <Panel className="ogfi-detail-card">
             <h2 className="text-lg font-bold text-slate-950">Audit History</h2>
-            <p className="text-sm text-slate-500">Append-only activity for this request</p>
+            <p className="text-sm text-slate-500">Append-only activity for this controlled record</p>
             {approval.auditEvents.length === 0 ? (
               <p className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                 No audit events recorded yet.

@@ -144,6 +144,19 @@ describe("opening inventory cutover foundation", () => {
     expect(evidenceWhere).not.toContain("requestedCohortId");
   });
 
+  test("does not present a cohort configuration as creatable without preparation scope at every endpoint", () => {
+    const source = readFileSync(resolve(__dirname, "openingInventoryCutovers.ts"), "utf8");
+    const optionsStart = source.indexOf("export async function getOpeningInventoryFormOptions");
+    const optionsEnd = source.indexOf("const preparationFormOptionsSchema", optionsStart);
+    const options = source.slice(optionsStart, optionsEnd);
+
+    expect(options).toContain("const [candidateEvaluation, attempts, cohorts]");
+    expect(options).toContain("const revisions = (");
+    expect(options).toContain("candidateEvaluation.revisions.map");
+    expect(options).toContain("for (const endpoint of revision.endpointMemberships)");
+    expect(options).toContain("permissions.openingInventoryPrepare");
+  });
+
   test("derives shared detail scope from every sealed revision endpoint and fails closed on malformed evidence", () => {
     const source = readFileSync(resolve(__dirname, "openingInventoryCutovers.ts"), "utf8");
     const detailStart = source.indexOf("export async function getOpeningInventoryCutoverDetail");

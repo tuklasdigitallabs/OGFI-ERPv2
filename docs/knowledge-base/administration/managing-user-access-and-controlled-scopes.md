@@ -34,6 +34,7 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 - The Users registry is server-filtered by name/email and status and paginates the authorized tenant users. Search and status values remain in the URL while paging; they do not widen company or tenant scope. An empty page means no users match the current filters, not that another company has no users. The Administration overview shows organization records for the selected company only, with tenant-wide approval rules where applicable. User detail first verifies current selected-company membership; if the user is not authorized in that company, the page returns to the Users workspace without disclosing another company's account or scopes.
 - The Users registry's `Current effective roles` column is a bounded preview of active, currently effective tenant-local or global roles. It shows up to eight role names and an `8+ roles` marker when the preview is capped; inactive users and users without a current role are labeled accordingly. Scope assignments are reviewed from User Access detail, not copied into the tenant-level Users list.
 - Organization Scope is a selected-company workspace, not a tenant-wide company directory. The header names the selected company; its Brand, Department, and Location registries and create actions stay within that company. Use User Access to assign or review who receives those scopes.
+- To review or edit an Organization Scope record, first select `Open company details`, `Open brand details`, `Open department details`, or `Open location details`. The selected-detail panel is read-only; its contextual edit and audit actions are the only record actions. Changing the sub-tab, filters, or page clears that selection.
 - Brand, Department, and Location lists are server-paginated with URL-backed filters and stale-page recovery. A changed result set resolves an outdated page to the last available page rather than presenting a misleading empty register.
 - The Roles & Permissions registry is server-filtered by role name/code and status and paginates the tenant-global role catalog. Each row shows a permission count and a short preview only; open the role detail to review or change its controlled permission set. Viewing a role never grants its permissions. The initial-role onboarding selector is a separate bounded convenience list; when it reports more roles, use the Roles workspace to find the complete catalog.
 
@@ -217,8 +218,10 @@ or Audit Trail. Only the selected register and its required option catalogs are
 loaded; inactive sections are explicitly not loaded in the current view.
 
 Organization Scope uses nested Companies / Summary, Brands, Departments, and
-Locations tabs. Open the register needed for the task; inactive registers are
-not loaded in the current view, and filters and page context remain in the URL.
+Locations tabs. Open the register needed for the task, then open the required
+record's details before using contextual edit or audit actions; inactive
+registers are not loaded in the current view, and filters, page context, and one
+selected record remain in the URL.
 
 Controlled Scope and Role Requests, including review actions, open in a focused
 task sheet with contained scrolling. Confirm the target user, requester,

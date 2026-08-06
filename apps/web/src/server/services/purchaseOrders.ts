@@ -881,6 +881,7 @@ async function listPurchaseOrdersWithOptions(
   options: {
     dashboardProfile?: PurchaseOrderDashboardProfile;
     pagination?: { page: number; pageSize: number };
+    maxRows?: number;
   } = {},
 ) {
   await requirePurchaseOrderRead(session);
@@ -914,8 +915,14 @@ async function listPurchaseOrdersWithOptions(
           skip: (options.pagination.page - 1) * options.pagination.pageSize,
           take: options.pagination.pageSize,
         }
-      : {}),
+      : options.maxRows !== undefined
+        ? { take: options.maxRows + 1 }
+        : {}),
   });
+
+  if (options.maxRows !== undefined && orders.length > options.maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   const approvalInstances =
     orders.length > 0
@@ -1102,8 +1109,13 @@ async function listPurchaseOrdersWithOptions(
 export async function listPurchaseOrders(
   session: SessionContext,
   filters: PurchaseOrderListFilters = {},
+  input: { maxRows?: number } = {}
 ) {
-  return listPurchaseOrdersWithOptions(session, filters);
+  const maxRows = input.maxRows;
+  if (maxRows !== undefined && (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 100_000)) {
+    throw new Error("PURCHASE_ORDER_EXPORT_MAX_ROWS_INVALID");
+  }
+  return listPurchaseOrdersWithOptions(session, filters, { ...(maxRows !== undefined ? { maxRows } : {}) });
 }
 
 export async function listPurchaseOrderPage(
@@ -1163,12 +1175,20 @@ export async function listPurchaseOrdersDashboardProfilePage(
 export async function listPurchaseOrdersDashboardProfile(
   session: SessionContext,
   profileValue: string | undefined,
+  input: { maxRows?: number } = {}
 ) {
   const profile = resolvePurchaseOrderDashboardProfile(profileValue);
   if (!profile) {
     return null;
   }
-  return listPurchaseOrdersWithOptions(session, {}, { dashboardProfile: profile });
+  const maxRows = input.maxRows;
+  if (maxRows !== undefined && (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 100_000)) {
+    throw new Error("PURCHASE_ORDER_EXPORT_MAX_ROWS_INVALID");
+  }
+  return listPurchaseOrdersWithOptions(session, {}, {
+    dashboardProfile: profile,
+    ...(maxRows !== undefined ? { maxRows } : {})
+  });
 }
 
 export async function getPurchaseOrder(session: SessionContext, id: string) {

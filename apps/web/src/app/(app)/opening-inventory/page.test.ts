@@ -38,7 +38,19 @@ describe("opening inventory cutover queue", () => {
 
   it("uses 44px pagination controls", () => {
     expect(primitivesSource).toContain(
-      '"inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border',
+      '"inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-[var(--radius-control)] border',
     );
+  });
+
+  it("keeps preparation-option failures distinct and retryable without leaking internals", () => {
+    expect(source).toContain('kind: "denied"');
+    expect(source).toContain('kind: "no_eligible_revision"');
+    expect(source).toContain('kind: "ineligible"');
+    expect(source).toContain('kind: "not_found"');
+    expect(source).toContain('kind: "load_error"');
+    expect(source).toContain("Retry preparation options");
+    expect(source).toContain("configurationLiveReadinessBlocked");
+    expect(source).toContain("configurationEvidenceInvalid");
+    expect(source).not.toContain("getOpeningInventoryFormOptions(session).catch(() => null)");
   });
 });

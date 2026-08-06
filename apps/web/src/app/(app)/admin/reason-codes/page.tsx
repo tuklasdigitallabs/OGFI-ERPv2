@@ -1,23 +1,21 @@
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Search, SlidersHorizontal } from "lucide-react";
 import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ShortMutationForm } from "@/components/OrganizationEditForm";
 import { TaskSheet } from "@/components/TaskSheet";
 import {
-  actionErrorRedirectPath,
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
-  createOperationalReasonCode,
-  deactivateOperationalReasonCode,
   getOperationalReasonCodeDetail,
   listOperationalReasonCodePage,
-  operationalReasonWorkflows
+  operationalReasonWorkflows,
+  wastageReasonTypes
 } from "@/server/services/operationalReasonCodes";
 
 export const dynamic = "force-dynamic";
@@ -52,39 +50,6 @@ function normalizeReasonWorkflow(value: string | undefined) {
   )
     ? (value as (typeof operationalReasonWorkflows)[number])
     : "all";
-}
-
-async function createReasonCodeAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createOperationalReasonCode(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/reason-codes", error));
-  }
-  revalidatePath("/admin/reason-codes");
-  redirect("/admin/reason-codes");
-}
-
-async function deactivateReasonCodeAction(formData: FormData) {
-  "use server";
-
-  try {
-    await deactivateOperationalReasonCode(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(buildReasonCodeReturnPath(formData), error));
-  }
-  revalidatePath("/admin/reason-codes");
-  redirect(buildReasonCodeReturnPath(formData));
-}
-
-function buildReasonCodeReturnPath(formData: FormData) {
-  const query = new URLSearchParams();
-  for (const key of ["workflow", "status", "q", "page", "pageSize"]) {
-    const value = formData.get(key);
-    if (typeof value === "string" && value) query.set(key, value);
-  }
-  return query.toString() ? `/admin/reason-codes?${query.toString()}` : "/admin/reason-codes";
 }
 
 export default async function AdminReasonCodesPage({
@@ -224,7 +189,7 @@ export default async function AdminReasonCodesPage({
           </p>
         </div>
         <EntryModal title="Create Reason Code" triggerLabel="Create Reason Code">
-          <form action={createReasonCodeAction} className="ogfi-form-shell mt-4 grid gap-4">
+          <ShortMutationForm endpoint="/api/admin/reason-codes/create" pendingLabel="Creating…" submitLabel="Create Reason Code" className="gap-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Workflow
@@ -261,11 +226,11 @@ export default async function AdminReasonCodesPage({
             </label>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Applies to
+                Legacy applicability (non-wastage only)
                 <input
                   className="rounded-md border border-slate-300 px-3 py-2"
                   name="appliesTo"
-                  placeholder="Optional type, e.g. SPOILAGE_EXPIRY"
+                  placeholder="Optional workflow-specific value"
                 />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -278,6 +243,14 @@ export default async function AdminReasonCodesPage({
                   type="number"
                 />
               </label>
+            </div>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">Wastage applicability</p>
+              <p className="mt-1 text-xs leading-5">For Wastage, configure both comma-separated lists. A code is selectable only when it matches the report type and every selected item class. Leave these blank for other workflows.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Wastage event types<input className="rounded-md border border-slate-300 px-3 py-2" name="wastageTypes" placeholder={wastageReasonTypes.join(", ")} /></label>
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Inventory classes<input className="rounded-md border border-slate-300 px-3 py-2" name="inventoryClasses" placeholder="FOOD, PACKAGING" /></label>
+              </div>
             </div>
             <label className="grid gap-1 text-sm font-medium text-slate-700">
               Notes
@@ -301,10 +274,7 @@ export default async function AdminReasonCodesPage({
                 <span className="h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5 peer-checked:bg-blue-600" />
               </span>
             </label>
-            <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create Reason Code
-            </button>
-          </form>
+          </ShortMutationForm>
         </EntryModal>
       </div>
 
@@ -343,20 +313,30 @@ export default async function AdminReasonCodesPage({
             <ButtonLink href={`/admin/reason-codes?${reasonCodeContext.toString()}`} tone="ghost" className="min-h-10">Close detail</ButtonLink>
           </div>
           <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div><p className="text-xs font-semibold uppercase text-slate-500">Applies to</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.appliesTo ?? "All types"}</p></div>
+            <div><p className="text-xs font-semibold uppercase text-slate-500">Legacy applicability</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.appliesTo ?? "Not used for new Wastage selection"}</p></div>
             <div><p className="text-xs font-semibold uppercase text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.requiresEvidence ? "Required" : "Optional"}</p></div>
             <div><p className="text-xs font-semibold uppercase text-slate-500">Sort order</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.sortOrder}</p></div>
             <div><p className="text-xs font-semibold uppercase text-slate-500">History</p><p className="mt-1 font-semibold text-slate-900">Inactive codes remain for historical records.</p></div>
           </div>
           {selectedReasonCode.notes ? <p className="mt-4 text-sm text-slate-700">{selectedReasonCode.notes}</p> : null}
+          {selectedReasonCode.workflow === "WASTAGE" ? <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-white p-4 text-sm sm:grid-cols-2"><div><p className="text-xs font-semibold uppercase text-slate-500">Wastage event types</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.wastageTypes.length ? selectedReasonCode.wastageTypes.join(", ") : "Configuration required"}</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Inventory classes</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.inventoryClasses.length ? selectedReasonCode.inventoryClasses.join(", ") : "Configuration required"}</p></div></div> : null}
+          <EntryModal title={`Edit ${selectedReasonCode.code}`} triggerLabel="Edit Reason Code">
+            <ShortMutationForm endpoint="/api/admin/reason-codes/update" pendingLabel="Saving…" submitLabel="Save Reason Code" className="gap-4">
+              <input name="id" type="hidden" value={selectedReasonCode.id} />
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Label<input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.label} name="label" required /></label>
+              {selectedReasonCode.workflow === "WASTAGE" ? <div className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700">Wastage event types<input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.wastageTypes.join(", ")} name="wastageTypes" placeholder={wastageReasonTypes.join(", ")} required /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Inventory classes<input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.inventoryClasses.join(", ")} name="inventoryClasses" placeholder="FOOD, PACKAGING" required /></label></div> : null}
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Sort order<input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.sortOrder} min="0" name="sortOrder" type="number" /></label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Notes<textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.notes ?? ""} name="notes" /></label>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input defaultChecked={selectedReasonCode.requiresEvidence} name="requiresEvidence" type="checkbox" /> Require evidence for this reason</label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Reason for change<textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
+            </ShortMutationForm>
+          </EntryModal>
           {selectedReasonCode.status === "ACTIVE" ? (
             <TaskSheet title={`Deactivate ${selectedReasonCode.code}`} defaultOpen description="Deactivation is a controlled, auditable action. The server rechecks company scope and active status before committing.">
-              <form action={deactivateReasonCodeAction} className="grid gap-4">
+              <ShortMutationForm endpoint="/api/admin/reason-codes/deactivate" pendingLabel="Deactivating…" submitLabel="Deactivate Reason Code" className="gap-4">
                 <input name="id" type="hidden" value={selectedReasonCode.id} />
-                {Array.from(reasonCodeContext.entries()).map(([key, value]) => <input key={key} name={key} type="hidden" value={value} />)}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
-                <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-rose-600 px-4 text-sm font-semibold text-white">Deactivate Reason Code</button>
-              </form>
+              </ShortMutationForm>
             </TaskSheet>
           ) : null}
         </section>
@@ -464,7 +444,11 @@ export default async function AdminReasonCodesPage({
                     Applies to
                   </p>
                   <p className="text-xs text-slate-500">
-                    {reason.appliesTo ?? "All types"}
+                    {reason.workflow === "WASTAGE"
+                      ? reason.wastageTypes.length && reason.inventoryClasses.length
+                        ? `${reason.wastageTypes.join(", ")} / ${reason.inventoryClasses.join(", ")}`
+                        : "Configuration required"
+                      : reason.appliesTo ?? "All types"}
                   </p>
                 </div>
                 <div>

@@ -55,3 +55,22 @@ test("core administration workspaces remain usable at desktop and mobile widths"
     }
   }
 });
+
+test("organization pagination controls stay readable inside narrow workspace panels", async ({ page }) => {
+  await signInAsAdmin(page);
+
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/admin?tab=organization&organizationSection=brands");
+    await expect(page.getByRole("heading", { name: "Brands", level: 3 })).toBeVisible();
+    for (const label of ["Previous", "Next"]) {
+      const control = page.getByText(label, { exact: true }).last();
+      await expect(control).toBeVisible();
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      expect(await control.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("nowrap");
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+});

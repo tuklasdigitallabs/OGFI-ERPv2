@@ -14,6 +14,7 @@ By the end of this module, participants can:
 - Dispatch a transfer from the authorized source location.
 - Receive a transfer at the destination location.
 - Run and submit a stock count.
+- Explain that immutable recount recovery is currently default-off. Reviewers may see append-only attempt history, but prior evidence must never be overwritten and a free-text reference is not controlled evidence.
 - Log wastage and understand when Stock Adjustment is required.
 - Distinguish Inventory Control Pilot work from visible `Deferred` workflows without treating a label as permission or production approval.
 - Explain the conditional pilot approval route without treating its local implementation as enabled UAT or production behavior.
@@ -26,9 +27,11 @@ By the end of this module, participants can:
 4. Open `Inventory Ledger` and trace a posted source movement.
 5. Open `Transfers` and explain the current default-off path: a submitted request becomes `REQUESTED` before controlled source dispatch. Explain the conditional future pilot route: an admitted transfer becomes `PENDING_APPROVAL`, waits in Approval Inbox, and becomes `REQUESTED` only after final approval.
 6. Switch to the destination location and receive the dispatched transfer.
-7. Schedule, start, enter, and submit a stock count. Explain that the conditional future pilot route sends an admitted count to an independent, approve-only Approval Inbox review; direct page review is not an alternative route. If an authorized cancellation is needed while that review is pending, demonstrate the required reason and confirm that the session, immutable attempt, and pending approval close together without changing count evidence or posting stock.
-8. Log a wastage report with reason and evidence reference.
-9. Review a Stock Adjustment and explain approval, posting, and reversal boundaries.
+7. After posting the receipt, wait for the action to complete and the detail page to reload. Continue only when the committed status and posted receipt event are visible; do not repeat the post while the action is pending.
+8. Schedule, start, enter, and submit a stock count. Explain that the conditional future pilot route sends an admitted count to an independent, approve-only Approval Inbox review; direct page review is not an alternative route. If an authorized cancellation is needed while that review is pending, demonstrate the required reason and confirm that the session, immutable attempt, and pending approval close together without changing count evidence or posting stock.
+   Recount recovery is not enabled until the controlled-evidence policy/adapter, exact review cohort, MFA, segregation, browser, and UAT gates are approved; escalate an unresolved variance rather than changing stock outside the ERP workflow.
+9. Log a wastage report with reason and evidence reference. Select the wastage type and item before choosing the reason: only codes that match both the type and the item's inventory class are available. If no code is offered, stop and ask an authorized administrator to review the configuration; do not select a different reason to bypass the control.
+10. Review a Stock Adjustment and explain approval, posting, and reversal boundaries.
 
 ## Practice exercise
 
@@ -46,6 +49,8 @@ During pilot training, repeat the critical warehouse/storekeeper actions on a ph
 - receive a transfer at the destination location and preserve accepted, rejected, damaged, and short quantities;
 - enter stock count, wastage, and adjustment evidence without losing the item or line context;
 - capture denied states for unauthorized source/destination, posting, reversal, export, or approval attempts.
+- During dispatch, confirm the source and destination endpoints before posting. If the action is denied after locking because live permission, scope, session, or MFA changed, refresh the record and escalate rather than bypassing the control.
+- Wastage and Stock Adjustment posting/reversal applies the same live authority fence: a role, scope, session, or MFA revocation can cause a safe denial while the action is waiting. Retry only after access is restored and the record is reloaded.
 
 If a mobile action is confusing or cramped, record it in the pilot defect log with device/browser, screenshot, source record ID, and the workflow step.
 
@@ -60,6 +65,7 @@ If a mobile action is confusing or cramped, record it in the pilot defect log wi
 - Treating an emergency release disable as permission to bypass approval: it can deny new pilot admissions but cannot downgrade an admitted record to an uncontrolled route.
 - Trying to edit posted inventory records: use reversal or approved correction workflow.
 - Treating the pilot or `Deferred` label as access authority: confirm the assigned role, location, workflow state, and release decision separately.
+- Choosing a reason code that does not fit the item: select the correct wastage type and item first. If the reason list reports that no configured code matches the type and item class, do not create the report with a substitute reason; escalate the mapping gap to an authorized administrator.
 
 ## Completion check
 

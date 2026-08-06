@@ -183,9 +183,9 @@ function QueueList({
         <p className="font-semibold text-slate-900">
           {isPartial ? "No items shown from available sources" : "Nothing waiting right now"}
         </p>
-        <p className="mt-1 text-sm text-slate-600">
-          {isPartial
-            ? "One or more authorized sources were unavailable, so this is not confirmation that no work is waiting. Open the affected source workspace in Dashboard source status."
+            <p className="mt-1 text-sm text-slate-600">
+            {isPartial
+            ? "This is a partial preview, so it is not confirmation that no work is waiting. Open the affected source workspace in Dashboard source status."
             : emptyDetail}
         </p>
       </div>

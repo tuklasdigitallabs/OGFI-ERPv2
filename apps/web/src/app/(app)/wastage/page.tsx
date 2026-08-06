@@ -184,7 +184,7 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
               {canExportWastage ? (
                 <ButtonLink
                   href={profile ? `/wastage/export?dashboard=${profile}` : "/wastage/export"}
-                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                  className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
                 </ButtonLink>

@@ -659,6 +659,11 @@ describe("receiving foundation rules", () => {
     expect(reversalWriter).toContain("purchaseOrderId: currentPurchaseOrder.id");
     expect(detailPage).toContain("Reverse Receipt");
     expect(detailPage).toContain("reverseGoodsReceipt");
+    expect(detailPage).toContain('import { PendingActionButton } from "@/components/PendingActionButton";');
+    expect(detailPage).toContain('label="Reverse Receipt"');
+    expect(detailPage).toContain('label="Post Receipt"');
+    expect(detailPage).toContain('pendingLabel="Posting Receipt…"');
+    expect(detailPage).toContain('pendingLabel="Reversing Receipt…"');
   });
 
   test("receipt reversal migration hardens status and movement links", () => {

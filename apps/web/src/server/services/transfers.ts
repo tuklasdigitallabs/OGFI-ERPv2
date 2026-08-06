@@ -36,6 +36,11 @@ import {
   inventoryPilotCanonicalJson
 } from "./inventoryPilotApprovalPolicy";
 
+// Settlement finality/reopen semantics remain an owner-confirmed policy gap.
+// Keep the existing implementation dormant and fail closed until DEC-0265 is
+// resolved; this flag is not positive authority.
+export const TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_ENABLED = false;
+
 const optionalDateSchema = z
   .string()
   .optional()
@@ -1272,9 +1277,19 @@ export async function listInventoryTransfersDashboardProfilePage(
 
 export async function buildInventoryTransferExportRows(
   session: SessionContext,
-  profile?: TransferDashboardProfile
+  profile?: TransferDashboardProfile,
+  input: { maxRows?: number } = {}
 ) {
   await requireTransferRead(session);
+  const maxRows = input.maxRows;
+  if (
+    typeof maxRows !== "number" ||
+    !Number.isInteger(maxRows) ||
+    maxRows < 1 ||
+    maxRows > 100_000
+  ) {
+    throw new Error("TRANSFER_EXPORT_MAX_ROWS_INVALID");
+  }
 
   const transfers = await prisma.inventoryTransfer.findMany({
     where: profile
@@ -1306,7 +1321,8 @@ export async function buildInventoryTransferExportRows(
         }
       }
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    take: maxRows + 1
   });
   const settlementEvents =
     transfers.length > 0
@@ -1445,6 +1461,9 @@ export async function buildInventoryTransferExportRows(
     }
   }
 
+  if (rows.length - 1 > maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
   return rows;
 }
 
@@ -1819,7 +1838,23 @@ export async function submitInventoryTransfer(formData: FormData) {
       }
       return;
     }
+    if (lockedTransfer.status === "PENDING_APPROVAL" && values.idempotencyKey) {
+      throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+    }
     if (lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED") {
+      const priorSubmissionIntent = values.idempotencyKey
+        ? await tx.inventoryTransferApprovalSubmissionIntent.findFirst({
+            where: {
+              tenantId: lockedTransfer.tenantId,
+              companyId: lockedTransfer.companyId,
+              inventoryTransferId: lockedTransfer.id
+            },
+            select: { id: true }
+          })
+        : null;
+      if (priorSubmissionIntent) {
+        throw new Error("TRANSFER_APPROVAL_SUBMISSION_IDEMPOTENCY_CONFLICT");
+      }
       throw new Error("TRANSFER_NOT_DRAFT_FOR_SUBMIT");
     }
 
@@ -2315,7 +2350,7 @@ export async function dispatchInventoryTransfer(formData: FormData) {
           ])
         }
       },
-      select: { id: true }
+      select: { id: true, locationId: true }
     });
     const expectedInventoryLocationIds = new Set(
       authoritativeTransfer.lines.flatMap((line) => [
@@ -2323,9 +2358,37 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         line.destinationInventoryLocationId
       ])
     );
-    if (activeInventoryLocations.length !== expectedInventoryLocationIds.size) {
+    const activeInventoryLocationById = new Map(
+      activeInventoryLocations.map((location) => [location.id, location.locationId])
+    );
+    if (
+      activeInventoryLocations.length !== expectedInventoryLocationIds.size ||
+      authoritativeTransfer.lines.some(
+        (line) =>
+          activeInventoryLocationById.get(line.sourceInventoryLocationId) !==
+            authoritativeTransfer.sourceLocationId ||
+          activeInventoryLocationById.get(line.destinationInventoryLocationId) !==
+            authoritativeTransfer.destinationLocationId
+      )
+    ) {
       throw new Error("TRANSFER_DISPATCH_SCOPE_CONFLICT");
     }
+
+    await assertFreshTransferReceiptAuthority(
+      tx,
+      session,
+      permissions.transferDispatch,
+      authoritativeTransfer.sourceLocationId,
+    );
+    await assertPrivilegedMfaForAction(session, {
+      action: "inventory_transfer.dispatch",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.transferDispatch,
+      entityType: "InventoryTransfer",
+      entityId: authoritativeTransfer.id,
+      reason: "Transfer dispatch changes source inventory and requires privileged MFA evidence.",
+      metadata: { sourceLocationId: authoritativeTransfer.sourceLocationId }
+    }, { transaction: tx });
 
     if (lockedTransfer.status === "DISPATCHED") {
       const movementKeys = authoritativeTransfer.lines.map((line) => `dispatch:${line.id}`);
@@ -2901,6 +2964,9 @@ export async function receiveInventoryTransfer(formData: FormData) {
 export async function settleInventoryTransferDiscrepancy(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.transferDiscrepancySettle);
+  if (!TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_ENABLED) {
+    throw new Error("TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_UNCONFIRMED");
+  }
   const values = settleTransferDiscrepancySchema.parse(Object.fromEntries(formData));
 
   const transfer = await prisma.inventoryTransfer.findFirst({

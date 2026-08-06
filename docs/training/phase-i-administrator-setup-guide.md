@@ -33,6 +33,7 @@ By the end of this module, participants can:
 9. Open **Admin > Break-Glass Access** and explain the bounded queue filters, selected-record action sheet, request, separate approval, expiry, revocation, and post-review controls.
 10. Open **Admin > Session Invalidation** and demonstrate status/search/UTC date filters, tenant-wide versus selected-company labels, and completion only from a selected pending record with separate provider evidence.
 11. Open **Admin > MFA Enrollment** and demonstrate effective-population search/status filters, exact company totals, bounded target options, and selected-record Verify/Revoke actions. Reiterate that the register does not replace runtime MFA or external-provider enforcement.
+12. Open **Admin > Reason Codes > Wastage**. Select a code and confirm that its Wastage event types and Inventory classes are separate required mappings. Demonstrate that an unmapped or incompatible code must remain unavailable for new Wastage entry until an authorized mapping is configured; do not use legacy applicability to broaden Wastage selection.
 10. Open **Admin > Admin Settings**, use category/search/pagination to find a policy, and review recommended versus overridden DEC-0036 defaults.
 11. In **Purchasing controls**, explain the recommended approval bands: standard approval from PHP 10,000, high-value review from PHP 50,000, senior/executive review from PHP 200,000, emergency cap PHP 5,000, and 3 quotes from PHP 50,000 estimated request value when quotation comparison is required.
 12. In **Security and continuity**, explain the readable retention and backup/restore summaries, then show that raw JSON remains editable only through a reasoned audited override.
@@ -44,7 +45,7 @@ By the end of this module, participants can:
     - `external-security/idp-session-invalidation-proof.*`
     - `external-security/vault-or-artifact-storage-index.*`
     - `external-security/break-glass-review-and-revocation-proof.*`
-17. Export permitted audit events and the readiness register as CSV. Confirm the CSV metadata includes report ID, selected scope, trust-gate mode, and `DEC-0036`.
+17. Export permitted audit events and the readiness register as CSV. Confirm the CSV metadata includes report ID, selected scope, trust-gate mode, and `DEC-0036`. Where shown, also confirm the maximum synchronous row limit; if an export exceeds that limit, narrow filters and retry, and do not distribute a partial file.
 18. Open **Admin > Evidence Retention**, confirm the company-scoped metadata-only boundary, and compare view-only access with the separately authorized `Place Legal Hold` action.
 19. Explain the current privileged-MFA requirement and the preservation-only boundary: no hold release or physical purge is available.
 
@@ -157,7 +158,13 @@ reviewable.
 
 In Organization Scope, use the nested Companies / Summary, Brands, Departments,
 and Locations tabs. Locations exposes only its bounded active-brand catalog;
-switch to Brands to review the full paginated brand register.
+switch to Brands to review the full paginated brand register. To inspect or
+correct a Company, Brand, Department, or Location, select its `Open … details`
+action first. Review the read-only selected panel, then use its contextual
+`Edit …` action and enter a reason for an available descriptive correction. Use
+`View audit history` to verify the recorded change. Changing the sub-tab,
+filters, or page closes the selection; a safe unavailable message does not
+confirm whether a record exists outside the current authorized company scope.
 
 ## Common errors and recovery
 
@@ -179,6 +186,7 @@ switch to Brands to review the full paginated brand register.
 - Retrying a stale Item-name correction without review: return to the refreshed register, reopen the Item, and confirm the correction is still needed.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
 - Deactivating a reason code: open the selected row’s details, confirm the workflow and code, enter the reason, and submit from the action sheet. If another administrator already handled it, refresh and do not retry by creating a replacement code.
+- Making an incompatible Wastage reason selectable: confirm the selected company, active status, event/type mapping, and inventory-class mapping. Do not map a code broadly to bypass a missing approved classification; historic records keep their existing recorded reason.
 - Recovering an account: use Authentication → Recovery, page or filter the bounded queue, open one request, and have a different MFA-assured administrator approve or reject it. First-time identities belong in Activation; approved/rejected history is read-only.
 
 ## Completion check
@@ -191,3 +199,5 @@ switch to Brands to review the full paginated brand register.
 - Participant can explain Supplier confidential clearance as additional—not standalone—authority, demonstrate **Restricted** fields, and avoid recommending it to `CONFIGURED_ADMIN` by default.
 - Participant can create an ordinary Supplier Item link without confidential values, use the responsive URL-preserved Catalog, verify exact selected-record context, and explain retained history and one-winner deactivation audit behavior.
 - Participant can explain which release-readiness evidence belongs in the ERP register and which external-security proof references must remain in the approved provider or evidence repository.
+- Participant can select an Organization Scope record before reviewing its audit history or making an available reasoned descriptive correction, and can explain why protected ownership, codes, relationships, and Location type are not changed in that form.
+- For local/test-data UAT without SMTP, use the Authentication workspace's manual temporary-password control only for active non-privileged users. Complete fresh MFA, relay the one-use credential through an approved private channel, and have the user change it immediately. Never use this fallback for administrators, approvers, sensitive roles, or high-risk scopes; those accounts require local TOTP and MFA-assured recovery.

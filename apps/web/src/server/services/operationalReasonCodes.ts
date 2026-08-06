@@ -18,6 +18,17 @@ export const operationalReasonWorkflows = [
 
 export type OperationalReasonWorkflow = (typeof operationalReasonWorkflows)[number];
 
+export const wastageReasonTypes = [
+  "SPOILAGE_EXPIRY",
+  "RECEIVING_QUALITY",
+  "PREPARATION_LOSS",
+  "DAMAGE",
+  "AUTHORIZED_CONSUMPTION",
+  "CUSTOMER_SERVICE",
+  "OPERATIONAL",
+  "OTHER"
+] as const;
+
 const reasonWorkflowSchema = z.enum(operationalReasonWorkflows);
 const reasonCodeSchema = z
   .string()
@@ -34,6 +45,31 @@ const optionalAppliesToSchema = z
   .optional()
   .transform((value) => value || undefined);
 
+const applicabilityTokensSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .transform((value) =>
+    Array.from(
+      new Set(
+        (value ?? "")
+          .split(",")
+          .map((token) => token.trim().toUpperCase())
+          .filter(Boolean)
+          .filter((token) => /^[A-Z0-9_]+$/.test(token)),
+      ),
+    ),
+  );
+
+const wastageReasonTypesSchema = z
+  .array(z.enum(wastageReasonTypes))
+  .min(1, "Select at least one wastage event type.");
+
+function normalizeInventoryClass(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+}
+
 const checkboxSchema = z
   .union([z.literal("on"), z.literal("true"), z.literal("false")])
   .optional()
@@ -44,9 +80,22 @@ const createReasonCodeSchema = z.object({
   code: reasonCodeSchema,
   label: z.string().trim().min(2).max(160),
   appliesTo: optionalAppliesToSchema,
+  wastageTypes: applicabilityTokensSchema,
+  inventoryClasses: applicabilityTokensSchema,
   requiresEvidence: checkboxSchema,
   sortOrder: z.coerce.number().int().min(0).max(9999).default(100),
   notes: z.string().trim().max(500).optional()
+});
+
+const updateReasonCodeSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().trim().min(2).max(160),
+  wastageTypes: applicabilityTokensSchema,
+  inventoryClasses: applicabilityTokensSchema,
+  requiresEvidence: checkboxSchema,
+  sortOrder: z.coerce.number().int().min(0).max(9999).default(100),
+  notes: z.string().trim().max(500).optional(),
+  reason: z.string().trim().min(5).max(500),
 });
 
 const deactivateReasonCodeSchema = z.object({
@@ -77,6 +126,8 @@ function projectReasonCode(code: {
   code: string;
   label: string;
   appliesTo: string | null;
+  wastageTypes: string[];
+  inventoryClasses: string[];
   requiresEvidence: boolean;
   status: string;
   sortOrder: number;
@@ -88,6 +139,8 @@ function projectReasonCode(code: {
     code: code.code,
     label: code.label,
     appliesTo: code.appliesTo,
+    wastageTypes: code.wastageTypes,
+    inventoryClasses: code.inventoryClasses,
     requiresEvidence: code.requiresEvidence,
     status: code.status,
     sortOrder: code.sortOrder,
@@ -112,6 +165,8 @@ export async function listOperationalReasonCodePage(
             { code: { contains: query, mode: "insensitive" } },
             { label: { contains: query, mode: "insensitive" } },
             { appliesTo: { contains: query, mode: "insensitive" } },
+            { wastageTypes: { hasSome: [query.toUpperCase()] } },
+            { inventoryClasses: { hasSome: [query.toUpperCase()] } },
             { notes: { contains: query, mode: "insensitive" } },
             { workflow: { contains: query, mode: "insensitive" } },
           ],
@@ -183,6 +238,8 @@ export async function getOperationalReasonCodeDetail(
       code: true,
       label: true,
       appliesTo: true,
+      wastageTypes: true,
+      inventoryClasses: true,
       requiresEvidence: true,
       status: true,
       sortOrder: true,
@@ -239,6 +296,69 @@ export async function listActiveOperationalReasonCodes(
   }));
 }
 
+export async function listActiveWastageReasonCodes(session: SessionContext) {
+  const codes = await prisma.operationalReasonCode.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      workflow: "WASTAGE",
+      status: "ACTIVE",
+      wastageTypes: { isEmpty: false },
+      inventoryClasses: { isEmpty: false },
+    },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+  });
+
+  return codes.map((code) => ({
+    id: code.id,
+    code: code.code,
+    label: code.label,
+    wastageTypes: code.wastageTypes,
+    inventoryClasses: code.inventoryClasses,
+    requiresEvidence: code.requiresEvidence,
+  }));
+}
+
+export async function requireActiveWastageReasonCode(
+  session: SessionContext,
+  code: string,
+  input: { wastageType: string; inventoryClasses: string[] },
+) {
+  const normalizedCode = reasonCodeSchema.parse(code);
+  const normalizedClasses = Array.from(
+    new Set(input.inventoryClasses.map(normalizeInventoryClass).filter(Boolean)),
+  );
+  const reasonCode = await prisma.operationalReasonCode.findFirst({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      workflow: "WASTAGE",
+      code: normalizedCode,
+      status: "ACTIVE",
+    },
+  });
+
+  if (
+    !reasonCode ||
+    !reasonCode.wastageTypes.includes(input.wastageType) ||
+    normalizedClasses.length === 0 ||
+    !normalizedClasses.every((inventoryClass) =>
+      reasonCode.inventoryClasses.includes(inventoryClass),
+    )
+  ) {
+    throw new Error("OPERATIONAL_REASON_CODE_INVALID");
+  }
+
+  return {
+    id: reasonCode.id,
+    code: reasonCode.code,
+    label: reasonCode.label,
+    wastageTypes: reasonCode.wastageTypes,
+    inventoryClasses: reasonCode.inventoryClasses,
+    requiresEvidence: reasonCode.requiresEvidence,
+  };
+}
+
 export async function getActiveOperationalReasonCode(
   session: SessionContext,
   workflow: OperationalReasonWorkflow,
@@ -287,6 +407,12 @@ export async function createOperationalReasonCode(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReasonCodes(session);
   const values = createReasonCodeSchema.parse(Object.fromEntries(formData));
+  const wastageTypes = values.workflow === "WASTAGE"
+    ? wastageReasonTypesSchema.parse(values.wastageTypes)
+    : [];
+  const inventoryClasses = values.workflow === "WASTAGE"
+    ? z.array(z.string().min(1)).min(1, "Select at least one inventory class.").parse(values.inventoryClasses)
+    : [];
 
   const code = await prisma.$transaction(async (tx) => {
     const existing = await tx.operationalReasonCode.findFirst({
@@ -310,6 +436,8 @@ export async function createOperationalReasonCode(formData: FormData) {
         code: values.code,
         label: values.label,
         appliesTo: values.appliesTo ?? null,
+        wastageTypes,
+        inventoryClasses,
         requiresEvidence: values.requiresEvidence,
         sortOrder: values.sortOrder,
         notes: values.notes ?? null
@@ -329,6 +457,8 @@ export async function createOperationalReasonCode(formData: FormData) {
           code: created.code,
           label: created.label,
           appliesTo: created.appliesTo,
+          wastageTypes: created.wastageTypes,
+          inventoryClasses: created.inventoryClasses,
           requiresEvidence: created.requiresEvidence,
           status: created.status
         },
@@ -340,6 +470,68 @@ export async function createOperationalReasonCode(formData: FormData) {
   });
 
   return code.id;
+}
+
+export async function updateOperationalReasonCode(formData: FormData) {
+  const session = await requireSessionContext();
+  await assertCanManageReasonCodes(session);
+  const values = updateReasonCodeSchema.parse(Object.fromEntries(formData));
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.operationalReasonCode.findFirst({
+      where: {
+        id: values.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
+    });
+    if (!existing) throw new Error("OPERATIONAL_REASON_CODE_NOT_FOUND");
+
+    const wastageTypes = existing.workflow === "WASTAGE"
+      ? wastageReasonTypesSchema.parse(values.wastageTypes)
+      : [];
+    const inventoryClasses = existing.workflow === "WASTAGE"
+      ? z.array(z.string().min(1)).min(1, "Select at least one inventory class.").parse(values.inventoryClasses)
+      : [];
+    const updated = await tx.operationalReasonCode.update({
+      where: { id: existing.id },
+      data: {
+        label: values.label,
+        wastageTypes,
+        inventoryClasses,
+        requiresEvidence: values.requiresEvidence,
+        sortOrder: values.sortOrder,
+        notes: values.notes || null,
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "operational_reason_code.updated",
+        entityType: "OperationalReasonCode",
+        entityId: updated.id,
+        beforeData: {
+          label: existing.label,
+          wastageTypes: existing.wastageTypes,
+          inventoryClasses: existing.inventoryClasses,
+          requiresEvidence: existing.requiresEvidence,
+          sortOrder: existing.sortOrder,
+          notes: existing.notes,
+        },
+        afterData: {
+          label: updated.label,
+          wastageTypes: updated.wastageTypes,
+          inventoryClasses: updated.inventoryClasses,
+          requiresEvidence: updated.requiresEvidence,
+          sortOrder: updated.sortOrder,
+          notes: updated.notes,
+        },
+        metadata: { reason: values.reason },
+      },
+    });
+  });
 }
 
 export async function deactivateOperationalReasonCode(formData: FormData) {

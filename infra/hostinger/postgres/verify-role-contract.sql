@@ -18,6 +18,7 @@ DECLARE
   protected_table text;
   destructive_privilege text;
   obj record;
+  draft_contract record;
   owner_oid oid;
   migrator_oid oid;
   runtime_oid oid;
@@ -438,13 +439,31 @@ BEGIN
         'f7b95ffbba4f5410e1d24acd0c50ce0a', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure,
-        '7248e42819c1a191866e7cb7076aa8da', 'plpgsql', false,
+        '15e7211afa9693173201f2aadc0e1047', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.inventory_pilot_approval_rule_canonical_json(uuid)'::regprocedure,
+        '26a7ccfa386bca89aa85a05d3f5c05a2', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.validate_inventory_pilot_revision_insert()'::regprocedure,
         '73d6b2530a5b911b444b5674e107ee22', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.validate_inventory_pilot_revision_digest()'::regprocedure,
-        'd827ae0ee6a34a492d5ee536ceace0a1', 'plpgsql', false,
+        'c5481edeef39bc7642a3dbfe78350ab9', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_route_snapshot()'::regprocedure,
+        'a471652aa7edae60b6bb252c6c75d336', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_draft_header_write()'::regprocedure,
+        '40243c24ccc2d3e4835b802bd2a21e2a', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_draft_child_write()'::regprocedure,
+        'd446e2bb5866007231eee395005fc328', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_seal_operation()'::regprocedure,
+        'c832ec621a51e7eb0c3ab01632c22b55', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_inventory_pilot_draft_terminal()'::regprocedure,
+        '42af03abdc2b4ea4699f8ac43707bf5f', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.validate_inventory_pilot_activation_event()'::regprocedure,
         '59ecb014ee3181498456e81281aca3fa', 'plpgsql', false,
@@ -525,7 +544,8 @@ BEGIN
     'PettyCashApprovalStepIntent',
     'AttachmentScanAttempt',
     'ControlledEvidenceActionQualification',
-    'ControlledEvidenceActionSelection'
+    'ControlledEvidenceActionSelection',
+    'StockCountRecountTransition'
   ]
   LOOP
     PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -938,14 +958,16 @@ BEGIN
      AND proconfig = ARRAY['search_path=pg_catalog']::text[];
   IF NOT FOUND THEN RAISE EXCEPTION 'Controlled-evidence canonicalizer properties drifted'; END IF;
   IF NOT has_function_privilege(runtime_role, 'public.inventory_pilot_canonical_json(jsonb)', 'EXECUTE')
-     OR has_function_privilege(runtime_role, 'public.inventory_pilot_revision_canonical_json(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege(runtime_role, 'public.inventory_pilot_revision_canonical_json(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege(runtime_role, 'public.inventory_pilot_approval_rule_canonical_json(uuid)', 'EXECUTE')
      OR EXISTS (
        SELECT 1
        FROM pg_proc p,
          LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
        WHERE p.oid IN (
          'public.inventory_pilot_canonical_json(jsonb)'::regprocedure,
-         'public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure
+         'public.inventory_pilot_revision_canonical_json(uuid)'::regprocedure,
+         'public.inventory_pilot_approval_rule_canonical_json(uuid)'::regprocedure
        )
          AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
      ) THEN
@@ -961,11 +983,21 @@ BEGIN
      AND provolatile = 's' AND proisstrict AND NOT prosecdef
      AND proconfig = ARRAY['search_path=pg_catalog']::text[];
   IF NOT FOUND THEN RAISE EXCEPTION 'Inventory-pilot revision canonicalizer properties drifted'; END IF;
+  PERFORM 1 FROM pg_proc
+   WHERE oid = 'public.inventory_pilot_approval_rule_canonical_json(uuid)'::regprocedure
+     AND provolatile = 's' AND proisstrict AND NOT prosecdef
+     AND proconfig = ARRAY['search_path=pg_catalog']::text[];
+  IF NOT FOUND THEN RAISE EXCEPTION 'Inventory-pilot approval-rule canonicalizer properties drifted'; END IF;
   IF EXISTS (
     SELECT 1
     FROM (VALUES
       ('public.validate_inventory_pilot_revision_insert()'::regprocedure),
       ('public.validate_inventory_pilot_revision_digest()'::regprocedure),
+      ('public.validate_inventory_pilot_route_snapshot()'::regprocedure),
+      ('public.validate_inventory_pilot_draft_header_write()'::regprocedure),
+      ('public.validate_inventory_pilot_draft_child_write()'::regprocedure),
+      ('public.validate_inventory_pilot_seal_operation()'::regprocedure),
+      ('public.validate_inventory_pilot_draft_terminal()'::regprocedure),
       ('public.validate_inventory_pilot_activation_event()'::regprocedure),
       ('public.validate_inventory_pilot_activation_transition()'::regprocedure),
       ('public.validate_inventory_pilot_activation_event_acceptance()'::regprocedure),
@@ -1001,6 +1033,46 @@ BEGIN
         'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
       ('InventoryPilotItemMembership', 'InventoryPilotItemMembership_digest_trg', 5::smallint,
         'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotConfigurationDraft', 'InventoryPilotConfigurationDraft_write_trg', 23::smallint,
+        'public.validate_inventory_pilot_draft_header_write()'::regprocedure, false, false, false),
+      ('InventoryPilotConfigurationDraft', 'InventoryPilotConfigurationDraft_terminal_trg', 21::smallint,
+        'public.validate_inventory_pilot_draft_terminal()'::regprocedure, true, true, true),
+      ('InventoryPilotConfigurationDraft', 'InventoryPilotConfigurationDraft_no_hard_delete_trg', 42::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftEndpointMembership', 'InventoryPilotDraftEndpointMembership_write_trg', 23::smallint,
+        'public.validate_inventory_pilot_draft_child_write()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftEndpointMembership', 'InventoryPilotDraftEndpointMembership_no_hard_delete_trg', 42::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftItemMembership', 'InventoryPilotDraftItemMembership_write_trg', 23::smallint,
+        'public.validate_inventory_pilot_draft_child_write()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftItemMembership', 'InventoryPilotDraftItemMembership_no_hard_delete_trg', 42::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftParticipant', 'InventoryPilotDraftParticipant_write_trg', 23::smallint,
+        'public.validate_inventory_pilot_draft_child_write()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftParticipant', 'InventoryPilotDraftParticipant_no_hard_delete_trg', 42::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftRouteReadiness', 'InventoryPilotDraftRouteReadiness_write_trg', 23::smallint,
+        'public.validate_inventory_pilot_draft_child_write()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftRouteReadiness', 'InventoryPilotDraftRouteReadiness_snapshot_trg', 23::smallint,
+        'public.validate_inventory_pilot_route_snapshot()'::regprocedure, false, false, false),
+      ('InventoryPilotDraftRouteReadiness', 'InventoryPilotDraftRouteReadiness_no_hard_delete_trg', 42::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotParticipantMembership', 'InventoryPilotParticipantMembership_digest_trg', 5::smallint,
+        'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotParticipantMembership', 'InventoryPilotParticipantMembership_append_only_guard_trg', 58::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotRouteReadinessMembership', 'InventoryPilotRouteReadinessMembership_snapshot_trg', 7::smallint,
+        'public.validate_inventory_pilot_route_snapshot()'::regprocedure, false, false, false),
+      ('InventoryPilotRouteReadinessMembership', 'InventoryPilotRouteReadinessMembership_digest_trg', 5::smallint,
+        'public.validate_inventory_pilot_revision_digest()'::regprocedure, true, true, true),
+      ('InventoryPilotRouteReadinessMembership', 'InventoryPilotRouteReadinessMembership_append_only_guard_trg', 58::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
+      ('InventoryPilotConfigurationSealOperation', 'InventoryPilotConfigurationSealOperation_validate_trg', 5::smallint,
+        'public.validate_inventory_pilot_seal_operation()'::regprocedure, true, true, true),
+      ('InventoryPilotConfigurationSealOperation', 'InventoryPilotConfigurationSealOperation_draft_terminal_trg', 5::smallint,
+        'public.validate_inventory_pilot_draft_terminal()'::regprocedure, true, true, true),
+      ('InventoryPilotConfigurationSealOperation', 'InventoryPilotConfigurationSealOperation_append_only_guard_trg', 58::smallint,
+        'public.reject_inventory_pilot_history_mutation()'::regprocedure, false, false, false),
       ('InventoryPilotFamilyActivationEvent', 'InventoryPilotFamilyActivationEvent_lineage_trg', 7::smallint,
         'public.validate_inventory_pilot_activation_event()'::regprocedure, false, false, false),
       ('InventoryPilotFamilyActivation', 'InventoryPilotFamilyActivation_transition_trg', 23::smallint,
@@ -1045,6 +1117,9 @@ BEGIN
       ('InventoryPilotConfigurationRevision'),
       ('InventoryPilotEndpointMembership'),
       ('InventoryPilotItemMembership'),
+      ('InventoryPilotParticipantMembership'),
+      ('InventoryPilotRouteReadinessMembership'),
+      ('InventoryPilotConfigurationSealOperation'),
       ('InventoryPilotFamilyActivationEvent'),
       ('InventoryTransferApprovalSubmissionIntent'),
       ('StockCountReviewSubmissionIntent')
@@ -1088,9 +1163,6 @@ BEGIN
   END IF;
 
   FOREACH protected_table IN ARRAY ARRAY[
-    'InventoryPilotConfigurationRevision',
-    'InventoryPilotEndpointMembership',
-    'InventoryPilotItemMembership',
     'InventoryPilotFamilyActivationEvent',
     'InventoryPilotFamilyActivation'
   ]
@@ -1119,6 +1191,107 @@ BEGIN
     LOOP
       IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
         RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryPilotConfigurationRevision',
+    'InventoryPilotEndpointMembership',
+    'InventoryPilotItemMembership',
+    'InventoryPilotParticipantMembership',
+    'InventoryPilotRouteReadinessMembership',
+    'InventoryPilotConfigurationSealOperation'
+  ]
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', protected_table; END IF;
+    IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT')
+       OR NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'INSERT') THEN
+      RAISE EXCEPTION '% required runtime seal append privileges are missing', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
+        LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains privileges on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_attribute a, LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped AND acl.grantee IN (0, runtime_oid)
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC or runtime retains a column ACL on %', protected_table;
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  FOR draft_contract IN
+    SELECT * FROM (VALUES
+      ('InventoryPilotConfigurationDraft',
+        ARRAY['id','tenantId','companyId','schemaVersion','status','version','predecessorRevisionId','predecessorRevisionNumber','predecessorDigest','sourceDecisionId','createdByUserId','lastEditedByUserId','createdAt','updatedAt']::text[],
+        ARRAY['status','version','lastEditedByUserId','sealedRevisionId','sealedRevisionNumber','sealedRevisionDigest','sealedAt','abandonedByUserId','abandonedAt','abandonmentReason','updatedAt']::text[]),
+      ('InventoryPilotDraftEndpointMembership',
+        ARRAY['id','draftId','tenantId','companyId','inventoryLocationId','locationId','capability','isIncluded','createdAt','updatedAt']::text[],
+        ARRAY['isIncluded','updatedAt']::text[]),
+      ('InventoryPilotDraftItemMembership',
+        ARRAY['id','draftId','tenantId','companyId','itemId','isIncluded','createdAt','updatedAt']::text[],
+        ARRAY['isIncluded','updatedAt']::text[]),
+      ('InventoryPilotDraftParticipant',
+        ARRAY['id','draftId','tenantId','companyId','responsibility','userId','roleAssignmentId','roleId','isIncluded','createdAt','updatedAt']::text[],
+        ARRAY['userId','roleAssignmentId','roleId','isIncluded','updatedAt']::text[]),
+      ('InventoryPilotDraftRouteReadiness',
+        ARRAY['id','draftId','tenantId','companyId','family','approvalRuleId','approvalRuleLineageId','approvalRuleVersion','ruleDefinitionCanonicalJson','ruleDefinitionDigest','resolverEvidenceCanonicalJson','resolverEvidenceDigest','readinessCheckedAt','isIncluded','createdAt','updatedAt']::text[],
+        ARRAY['approvalRuleId','approvalRuleLineageId','approvalRuleVersion','ruleDefinitionCanonicalJson','ruleDefinitionDigest','resolverEvidenceCanonicalJson','resolverEvidenceDigest','readinessCheckedAt','isIncluded','updatedAt']::text[])
+    ) AS rows(table_name, insert_columns, update_columns)
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = draft_contract.table_name AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', draft_contract.table_name; END IF;
+    IF NOT has_table_privilege(runtime_role, format('public.%I', draft_contract.table_name), 'SELECT')
+       OR has_table_privilege(runtime_role, format('public.%I', draft_contract.table_name), 'INSERT')
+       OR has_table_privilege(runtime_role, format('public.%I', draft_contract.table_name), 'UPDATE') THEN
+      RAISE EXCEPTION '% runtime draft table-level privilege boundary is unsafe', draft_contract.table_name;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM unnest(draft_contract.insert_columns) column_name
+      WHERE NOT has_column_privilege(runtime_role, format('public.%I', draft_contract.table_name), column_name, 'INSERT')
+    ) OR EXISTS (
+      SELECT 1 FROM unnest(draft_contract.update_columns) column_name
+      WHERE NOT has_column_privilege(runtime_role, format('public.%I', draft_contract.table_name), column_name, 'UPDATE')
+    ) THEN
+      RAISE EXCEPTION '% runtime draft column grant is incomplete', draft_contract.table_name;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      CROSS JOIN LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', draft_contract.table_name)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND acl.grantee = runtime_oid
+        AND (
+          (acl.privilege_type = 'INSERT' AND NOT (a.attname = ANY(draft_contract.insert_columns)))
+          OR (acl.privilege_type = 'UPDATE' AND NOT (a.attname = ANY(draft_contract.update_columns)))
+          OR acl.privilege_type NOT IN ('INSERT', 'UPDATE')
+        )
+    ) OR EXISTS (
+      SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', draft_contract.table_name)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION '% runtime/PUBLIC draft column ACL exceeds reviewed contract', draft_contract.table_name;
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', draft_contract.table_name), destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, draft_contract.table_name;
       END IF;
     END LOOP;
   END LOOP;
@@ -1615,6 +1788,11 @@ BEGIN
         AND pg_get_function_identity_arguments(p.oid) = 'revision_id uuid'
       )
       AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'inventory_pilot_approval_rule_canonical_json'
+        AND pg_get_function_identity_arguments(p.oid) = 'rule_id uuid'
+      )
+      AND NOT (
         p.oid = to_regprocedure(
           'public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'
         )
@@ -1759,6 +1937,25 @@ BEGIN
   IF has_table_privilege(opening_stock_executor_role, 'public."InventoryMovement"', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
     RAISE EXCEPTION 'Opening-stock executor has direct inventory-movement authority';
   END IF;
+  FOREACH protected_table IN ARRAY ARRAY[
+    'InventoryPilotConfigurationDraft',
+    'InventoryPilotDraftEndpointMembership',
+    'InventoryPilotDraftItemMembership',
+    'InventoryPilotDraftParticipant',
+    'InventoryPilotDraftRouteReadiness',
+    'InventoryPilotParticipantMembership',
+    'InventoryPilotRouteReadinessMembership',
+    'InventoryPilotConfigurationSealOperation'
+  ]
+  LOOP
+    IF has_table_privilege(
+      opening_stock_executor_role,
+      format('public.%I', protected_table),
+      'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'Opening-stock executor has direct inventory-pilot configuration authority on %', protected_table;
+    END IF;
+  END LOOP;
   IF EXISTS (
     SELECT 1
     FROM pg_default_acl d
@@ -1768,7 +1965,7 @@ BEGIN
     RAISE EXCEPTION 'Opening-stock executor receives unsafe owner default privileges';
   END IF;
 
-  FOREACH protected_table IN ARRAY ARRAY['OpeningInventoryCohort','OpeningInventoryCutover','OpeningInventoryCutoverLine','StockCountAttempt','StockCountAttemptLine','StockCountSession','InventoryPilotConfigurationRevision','InventoryPilotEndpointMembership','InventoryPilotItemMembership','CompanyPolicySetting','AuthSession','User','Role','UserRoleAssignment','RolePermission','Permission','UserScopeAssignment','InventoryLocation','ControlledEvidenceAttachment','Attachment','AttachmentScanAttempt','ApprovalInstance','ApprovalInstanceStep','OpeningInventoryApprovalAttestation','OpeningInventoryExecutionCommand','OpeningInventoryCohortEvent','InventoryMovement','InventoryBalance'] LOOP
+  FOREACH protected_table IN ARRAY ARRAY['OpeningInventoryCohort','OpeningInventoryCutover','OpeningInventoryCutoverLine','StockCountAttempt','StockCountAttemptLine','StockCountSession','CompanyPolicySetting','AuthSession','User','Role','UserRoleAssignment','RolePermission','Permission','UserScopeAssignment','InventoryLocation','ControlledEvidenceAttachment','Attachment','AttachmentScanAttempt','ApprovalInstance','ApprovalInstanceStep','OpeningInventoryApprovalAttestation','OpeningInventoryExecutionCommand','OpeningInventoryCohortEvent','InventoryMovement','InventoryBalance'] LOOP
     IF NOT has_table_privilege(opening_stock_owner_role, format('public.%I', protected_table), 'SELECT') THEN
       RAISE EXCEPTION 'Opening-stock owner is missing reviewed SELECT on %', protected_table;
     END IF;

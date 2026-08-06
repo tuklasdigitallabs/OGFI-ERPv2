@@ -52,7 +52,7 @@ Show:
 
 Count Variance review facts remain reviewer-gated, but Count Variance adjustment generation and dashboard/task activation are disabled during the immutable recount-recovery rollout. The count detail must explain this disabled state; no replacement adjustment action may be shown. Do not post variance directly from count entry.
 
-The count list, page, and detail projections include the validated current immutable attempt identity. Detail shows the current attempt number as lineage context; it does not expose prior-attempt protected facts or enable recount actions while recovery remains gated.
+The count list, page, and detail projections include the validated current immutable attempt identity. Detail shows the current attempt number and reviewer-only immutable attempt history, including any linked prior adjustment reference/status. A blind counter receives no historic adjustment or variance linkage. When a successor is `RECOUNT_REQUESTED`, the assigned counter sees a state-aware `Start Recount` action only when the recovery feature and permissions are active; otherwise the page explains the disabled reason. The separate protected recovery request remains disabled until the exact controlled-evidence qualification, approval-cohort, MFA, segregation, and UAT gates pass.
 
 ## 5. Statuses
 

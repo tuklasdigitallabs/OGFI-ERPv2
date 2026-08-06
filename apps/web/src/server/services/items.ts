@@ -1,8 +1,12 @@
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { runWithItemOptionCatalogAdmission } from "./itemOptionCatalogAdmission";
-import { permissions, requirePermission } from "./authorization";
-import { assertCanManageCompanyScope } from "./coreAdmin";
+import { permissions, requireAnyPermission, requirePermission } from "./authorization";
+import {
+  assertCanManageCompanyMasterDataScope,
+  assertCanManageCompanyScope,
+  assertCanViewCompanyMasterDataScope,
+} from "./coreAdmin";
 import { requireSessionContext, type SessionContext } from "./context";
 
 export const itemInventoryClasses = [
@@ -279,6 +283,21 @@ async function assertAdminCanManageMasterData(session: SessionContext) {
   await assertCanManageCompanyScope(session, session.context.companyId);
 }
 
+async function assertItemMasterView(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.itemMasterView]);
+  await assertCanViewCompanyMasterDataScope(session, session.context.companyId);
+}
+
+async function assertItemMasterCreate(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.itemMasterCreate]);
+  await assertCanManageCompanyMasterDataScope(session, session.context.companyId);
+}
+
+async function assertItemMasterEdit(session: SessionContext) {
+  await requireAnyPermission(session, [permissions.coreAdminister, permissions.itemMasterEdit]);
+  await assertCanManageCompanyMasterDataScope(session, session.context.companyId);
+}
+
 const itemMasterPageInputSchema = z.object({
   activeTab: z.enum(["items", "categories", "uoms", "conversions"]).default("items"),
   query: z.string().trim().max(120).default(""),
@@ -306,7 +325,7 @@ const itemMasterOptionCatalogInputSchema = z.object({
 const itemMasterRecordIdSchema = z.string().uuid();
 
 export async function getItemMasterRecord(session: SessionContext, itemId: string) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const id = itemMasterRecordIdSchema.parse(itemId);
   const item = await prisma.item.findFirst({
     where: {
@@ -354,7 +373,7 @@ export async function getItemMasterRecord(session: SessionContext, itemId: strin
 }
 
 export async function getItemCategoryRecord(session: SessionContext, categoryId: string) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const id = itemMasterRecordIdSchema.parse(categoryId);
   return prisma.itemCategory.findFirst({
     where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId }
@@ -362,7 +381,7 @@ export async function getItemCategoryRecord(session: SessionContext, categoryId:
 }
 
 export async function getUomRecord(session: SessionContext, uomId: string) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const id = itemMasterRecordIdSchema.parse(uomId);
   return prisma.uom.findFirst({
     where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId }
@@ -370,7 +389,7 @@ export async function getUomRecord(session: SessionContext, uomId: string) {
 }
 
 export async function getItemUomConversionRecord(session: SessionContext, conversionId: string) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const id = itemMasterRecordIdSchema.parse(conversionId);
   return prisma.itemUomConversion.findFirst({
     where: {
@@ -387,7 +406,7 @@ export async function listItemMasterOptionCatalog(
   session: SessionContext,
   input: z.input<typeof itemMasterOptionCatalogInputSchema>
 ) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const values = itemMasterOptionCatalogInputSchema.parse(input);
   return runWithItemOptionCatalogAdmission(values.kind, async () => {
     const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
@@ -448,7 +467,7 @@ export async function listItemMasterData(
   session: SessionContext,
   input: z.input<typeof itemMasterPageInputSchema> = {},
 ) {
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterView(session);
   const values = itemMasterPageInputSchema.parse(input);
   const loadItems = values.activeTab === "items";
   const loadCategories = values.activeTab === "categories";
@@ -621,7 +640,7 @@ export async function listItemMasterData(
 export async function createItemCategory(formData: FormData) {
   const session = await requireSessionContext();
   const values = createCategorySchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterCreate(session);
 
   const existing = await prisma.itemCategory.findFirst({
     where: {
@@ -671,7 +690,7 @@ export async function createItemCategory(formData: FormData) {
 export async function createUom(formData: FormData) {
   const session = await requireSessionContext();
   const values = createUomSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterCreate(session);
 
   const existing = await prisma.uom.findFirst({
     where: {
@@ -719,7 +738,7 @@ export async function createUom(formData: FormData) {
 export async function createItem(formData: FormData) {
   const session = await requireSessionContext();
   const values = createItemSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterCreate(session);
 
   const existing = await prisma.item.findFirst({
     where: {
@@ -775,7 +794,7 @@ export async function createItem(formData: FormData) {
 export async function createItemUomConversion(formData: FormData) {
   const session = await requireSessionContext();
   const values = createConversionSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterCreate(session);
   assertDistinctConversionUoms(values.fromUomId, values.toUomId);
 
   const [item, fromUom, toUom, existing] = await Promise.all([
@@ -870,7 +889,7 @@ export async function createItemUomConversion(formData: FormData) {
 export async function updateItemCategory(formData: FormData) {
   const session = await requireSessionContext();
   const values = updateCategorySchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterEdit(session);
 
   const category = await prisma.itemCategory.findFirst({
     where: {
@@ -929,7 +948,7 @@ export async function updateItemCategory(formData: FormData) {
 export async function updateUom(formData: FormData) {
   const session = await requireSessionContext();
   const values = updateUomSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterEdit(session);
 
   const uom = await prisma.uom.findFirst({
     where: {
@@ -982,7 +1001,7 @@ export async function updateUom(formData: FormData) {
 export async function updateItem(formData: FormData) {
   const session = await requireSessionContext();
   const values = updateItemSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterEdit(session);
 
   return prisma.$transaction(async (tx) => {
     const items = await tx.$queryRaw<LockedItemRow[]>`
@@ -1051,7 +1070,7 @@ export async function updateItem(formData: FormData) {
 export async function updateItemUomConversion(formData: FormData) {
   const session = await requireSessionContext();
   const values = updateConversionSchema.parse(Object.fromEntries(formData));
-  await assertAdminCanManageMasterData(session);
+  await assertItemMasterEdit(session);
 
   const conversion = await prisma.itemUomConversion.findFirst({
     where: {

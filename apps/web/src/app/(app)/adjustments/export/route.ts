@@ -11,6 +11,7 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportStockAdjustments } from "@/server/services/exportAuthorization";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 import {
   listStockAdjustments,
   resolveStockAdjustmentDashboardProfile
@@ -40,14 +41,22 @@ export async function GET(request: Request) {
       new Error("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED")
     )!;
   }
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    profileApplied: Boolean(profile)
+  };
 
   try {
     await logOperationalExportAudit({
       session,
       reportId: "stock-adjustment-report",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
-    const adjustments = await listStockAdjustments(session, profile ?? undefined);
+    const adjustments = await listStockAdjustments(session, profile ?? undefined, {
+      maxRows: exportPolicy.maxRows
+    });
     const rows = [
       [
         "Reference",
@@ -91,7 +100,8 @@ export async function GET(request: Request) {
       session,
       reportId: "stock-adjustment-report",
       eventType: "report.export_completed",
-      rowCount: adjustments.length
+      rowCount: adjustments.length,
+      metadata: auditMetadata
     });
 
     return csvExportResponse(
@@ -100,7 +110,8 @@ export async function GET(request: Request) {
       {
         metadata: await buildReportCsvMetadata({
           session,
-          reportId: "stock-adjustment-report"
+          reportId: "stock-adjustment-report",
+          extra: [["Maximum Rows", exportPolicy.maxRows]]
         })
       }
     );
@@ -108,8 +119,11 @@ export async function GET(request: Request) {
     await logOperationalExportFailure({
       session,
       reportId: "stock-adjustment-report",
-      error
+      error,
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

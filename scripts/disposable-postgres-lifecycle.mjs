@@ -3,12 +3,22 @@ import { createHash, randomBytes } from "node:crypto";
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const forbiddenDatabaseToken =
   /(?:^|[_-])(prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:[_-]|$)/i;
-const disposableDatabasePattern = /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/;
+const disposableDatabasePattern =
+  /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/;
 const dockerContainerNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const inventoryPilotBootstrapSuites = new Set([
   "inventory-approval",
+  "reviewseven",
   "opening-inventory-cutover",
   "authorization-procurement-inventory",
+  // The full authorization matrix invokes the procurement/inventory lane as
+  // a nested child. Keep the broker scoped to this explicitly approved
+  // aggregate suite so its opaque socket/token are inherited by that child.
+  "authorization-all",
+  // The production-authenticated browser lane uses only an opaque local
+  // broker request to create its controlled sealed-v2 fixture. The setup
+  // credentials remain confined to the broker process.
+  "production-authenticated-e2e",
 ]);
 
 export function assertSafePsqlDockerContainer(value) {
@@ -18,7 +28,10 @@ export function assertSafePsqlDockerContainer(value) {
   return value;
 }
 
-export function createDisposablePostgresIdentity(runId, nonce = randomBytes(32).toString("hex")) {
+export function createDisposablePostgresIdentity(
+  runId,
+  nonce = randomBytes(32).toString("hex"),
+) {
   if (!/^[A-Za-z0-9._-]{6,128}$/.test(runId ?? "")) {
     throw new Error("DISPOSABLE_DATABASE_RUN_ID_INVALID");
   }
@@ -85,7 +98,10 @@ export function assertAdversarialRoleBinding({
 
 export function assertSafeAdminUrl(rawUrl) {
   if (!rawUrl) throw new Error("DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED");
-  const parsed = parsePostgresUrl(rawUrl, "DISPOSABLE_DATABASE_ADMIN_URL_INVALID");
+  const parsed = parsePostgresUrl(
+    rawUrl,
+    "DISPOSABLE_DATABASE_ADMIN_URL_INVALID",
+  );
   if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
     throw new Error("DISPOSABLE_DATABASE_ADMIN_URL_INVALID");
   }
@@ -110,7 +126,10 @@ export function assertSafeDisposableTarget({
     runtimeUrl,
     "DISPOSABLE_DATABASE_RUNTIME_URL_INVALID",
   );
-  if (!disposableDatabasePattern.test(databaseName) || forbiddenDatabaseToken.test(databaseName)) {
+  if (
+    !disposableDatabasePattern.test(databaseName) ||
+    forbiddenDatabaseToken.test(databaseName)
+  ) {
     throw new Error("DISPOSABLE_DATABASE_NAME_UNSAFE");
   }
   if (
@@ -119,14 +138,18 @@ export function assertSafeDisposableTarget({
   ) {
     throw new Error("DISPOSABLE_DATABASE_HOST_MISMATCH");
   }
-  if (decodeURIComponent(parsedRuntime.pathname.replace(/^\//, "")) !== databaseName) {
+  if (
+    decodeURIComponent(parsedRuntime.pathname.replace(/^\//, "")) !==
+    databaseName
+  ) {
     throw new Error("DISPOSABLE_DATABASE_URL_NAME_MISMATCH");
   }
   if (decodeURIComponent(parsedRuntime.username) !== runtimeRole) {
     throw new Error("DISPOSABLE_DATABASE_RUNTIME_ROLE_MISMATCH");
   }
   if (
-    decodeURIComponent(parsedRuntime.username) === decodeURIComponent(parsedAdmin.username) ||
+    decodeURIComponent(parsedRuntime.username) ===
+      decodeURIComponent(parsedAdmin.username) ||
     comparableUrl(parsedRuntime) === comparableUrl(parsedAdmin)
   ) {
     throw new Error("DISPOSABLE_DATABASE_URL_OVERLAP");
@@ -146,7 +169,12 @@ export function assertMarkerRow(row, identity) {
   return true;
 }
 
-export function buildRuntimeEnvironment(sourceEnv, runtimeUrl, identity, adminUrl) {
+export function buildRuntimeEnvironment(
+  sourceEnv,
+  runtimeUrl,
+  identity,
+  adminUrl,
+) {
   const parsedAdmin = assertSafeAdminUrl(adminUrl);
   const env = scrubDatabaseCredentialEnvironment(sourceEnv);
   return {
@@ -176,7 +204,10 @@ export function buildRuntimeEnvironment(sourceEnv, runtimeUrl, identity, adminUr
  * environment only for its dedicated suite; the generic runtime environment
  * must never carry that credential.
  */
-export function buildOpeningStockExecutorTestEnvironment(suiteName, executorUrl) {
+export function buildOpeningStockExecutorTestEnvironment(
+  suiteName,
+  executorUrl,
+) {
   if (suiteName !== "opening-inventory-cutover") {
     if (executorUrl !== undefined) {
       throw new Error("OPENING_STOCK_EXECUTOR_ENVIRONMENT_SUITE_FORBIDDEN");
@@ -237,7 +268,10 @@ export function buildSeedRepeatabilityEnvironment(
 }
 
 export function shouldRunSeedRepeatability(suiteName) {
-  return suiteName === "authorization-all" || suiteName === "opening-inventory-cutover";
+  return (
+    suiteName === "authorization-all" ||
+    suiteName === "opening-inventory-cutover"
+  );
 }
 
 export function shouldRunAdversarialRoleContract(suiteName) {
@@ -261,13 +295,18 @@ export function scrubDatabaseCredentialEnvironment(sourceEnv) {
         "OGFI_DISPOSABLE_DATABASE_NONCE",
       ].includes(key) ||
       (/(?:DATABASE|POSTGRES)/i.test(key) &&
-        /(?:URL|URI|DSN|CONNECTION|PASSWORD|SECRET|TOKEN|CREDENTIAL|FILE)/i.test(key)) ||
+        /(?:URL|URI|DSN|CONNECTION|PASSWORD|SECRET|TOKEN|CREDENTIAL|FILE)/i.test(
+          key,
+        )) ||
       (/DISPOSABLE/i.test(key) && /(?:NONCE|CONFIRMATION)/i.test(key)) ||
       /^POSTGRES/i.test(key) ||
       /^PG/i.test(key) ||
       (/(?:ADMIN|MIGRAT|OWNER|SETUP)/i.test(key) &&
-        /(?:PASSWORD|SECRET|TOKEN|CREDENTIAL|URL|URI|DSN|CONNECTION|FILE)/i.test(key)) ||
-      (/(?:ADMIN|MIGRAT|OWNER|SETUP)/i.test(key) && /DATABASE|POSTGRES/i.test(key))
+        /(?:PASSWORD|SECRET|TOKEN|CREDENTIAL|URL|URI|DSN|CONNECTION|FILE)/i.test(
+          key,
+        )) ||
+      (/(?:ADMIN|MIGRAT|OWNER|SETUP)/i.test(key) &&
+        /DATABASE|POSTGRES/i.test(key))
     ) {
       delete env[key];
     }
@@ -300,7 +339,10 @@ export function buildPsqlEnvironment(sourceEnv, rawUrl) {
 }
 
 export function targetDatabaseUrl(baseUrl, databaseName, credentials) {
-  const parsed = parsePostgresUrl(baseUrl, "DISPOSABLE_DATABASE_BASE_URL_INVALID");
+  const parsed = parsePostgresUrl(
+    baseUrl,
+    "DISPOSABLE_DATABASE_BASE_URL_INVALID",
+  );
   parsed.pathname = `/${databaseName}`;
   parsed.searchParams.delete("schema");
   if (credentials) {

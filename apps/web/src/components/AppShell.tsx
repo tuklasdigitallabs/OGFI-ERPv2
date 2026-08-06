@@ -1,5 +1,3 @@
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { Bell, LogOut, ShieldCheck } from "lucide-react";
 import { Badge, Kicker } from "@ogfi/ui";
 import {
@@ -7,6 +5,8 @@ import {
   type ShellActiveNav,
 } from "@/components/ShellNavigation";
 import { ThemeModeSelect } from "@/components/ThemeModeSelect";
+import { ActionToastProvider } from "@/components/ActionToastProvider";
+import { LocationContextSwitch } from "@/components/LocationContextSwitch";
 import {
   canReadPurchaseOrders,
   canConfigureProjectTemplates,
@@ -25,44 +25,13 @@ import {
   canUseStockCounts,
   canUseTransfers,
   canUseWastageReports,
-  getDefaultAppRoute,
   permissions,
 } from "@/server/services/authorization";
 import {
-  getSessionContext,
   type SessionContext,
 } from "@/server/services/context";
 import { getAuthMode } from "@/server/services/authentication";
 import { isInventoryControlPilot } from "@/server/services/releaseProfile";
-
-async function switchLocationContext(formData: FormData) {
-  "use server";
-
-  const session = await getSessionContext();
-  if (!session) {
-    redirect("/sign-in");
-  }
-
-  const requestedLocationId = String(formData.get("locationId") ?? "");
-  const authorizedLocation = session.authorizedLocations.find(
-    (location) => location.locationId === requestedLocationId,
-  );
-  const locationId =
-    authorizedLocation?.locationId ?? session.context.locationId;
-  const cookieStore = await cookies();
-  cookieStore.set("ogfi_demo_location", locationId, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-  });
-
-  const headerStore = await headers();
-  const referer = headerStore.get("referer");
-  if (referer) {
-    redirect(new URL(referer).pathname);
-  }
-  redirect(getDefaultAppRoute(session.permissionCodes));
-}
 
 export function AppShell({
   session,
@@ -124,6 +93,7 @@ export function AppShell({
   const inventoryControlPilot = isInventoryControlPilot();
 
   return (
+    <ActionToastProvider>
     <ShellNavigation
       activeNav={activeNav}
       canAdminister={canAdminister}
@@ -183,29 +153,10 @@ export function AppShell({
                 Security
               </a>
             ) : null}
-            <form action={switchLocationContext} className="flex gap-2">
-              <select
-                aria-label="Location context"
-                className="h-10 min-w-52 rounded-[var(--radius-control)] border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-800 shadow-sm focus:ring-2 focus:ring-blue-500"
-                defaultValue={session.context.locationId}
-                name="locationId"
-              >
-                {session.authorizedLocations.map((location) => (
-                  <option
-                    key={location.scopeAssignmentId}
-                    value={location.locationId}
-                  >
-                    {location.locationName}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="h-10 rounded-[var(--radius-control)] border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 shadow-sm transition-colors hover:bg-blue-100"
-                type="submit"
-              >
-                Switch
-              </button>
-            </form>
+            <LocationContextSwitch
+              locations={session.authorizedLocations}
+              selectedLocationId={session.context.locationId}
+            />
             <a
               aria-label="Open notifications"
               className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -244,5 +195,6 @@ export function AppShell({
         {children}
       </main>
     </ShellNavigation>
+    </ActionToastProvider>
   );
 }

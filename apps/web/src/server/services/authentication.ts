@@ -7,6 +7,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { isIP } from "node:net";
+import { isExplicitHardenedUatAuthenticationRuntime } from "./runtimeEnvironment";
 import { cookies, headers } from "next/headers";
 import { hash, verify } from "@node-rs/argon2";
 import { prisma, type TransactionClient } from "@ogfi/database";
@@ -140,7 +141,7 @@ export function getTrustedRequestFingerprint(requestHeaders: Headers): RequestFi
       userAgent: requestHeaders.get("user-agent") ?? "unknown",
     };
   }
-  if (isProduction()) {
+  if (isHardenedAuthenticationRuntime()) {
     throw new Error("AUTH_TRUSTED_PROXY_MODE_INVALID");
   }
   return {
@@ -149,15 +150,22 @@ export function getTrustedRequestFingerprint(requestHeaders: Headers): RequestFi
   };
 }
 
-function isProduction() {
+/**
+ * Authentication security posture is intentionally separate from environment
+ * identity. Controlled/demo UAT stays non-hardened unless the exact evidence
+ * lane opts in; production and staging always remain hardened.
+ */
+export function isHardenedAuthenticationRuntime() {
   const applicationEnvironment = process.env.APP_ENV?.trim().toLowerCase();
   if (
     applicationEnvironment === "development" ||
     applicationEnvironment === "test" ||
-    applicationEnvironment === "uat" ||
     applicationEnvironment === "controlled-uat"
   ) {
     return false;
+  }
+  if (applicationEnvironment === "uat") {
+    return isExplicitHardenedUatAuthenticationRuntime();
   }
   return (
     applicationEnvironment === "production" ||
@@ -168,11 +176,11 @@ function isProduction() {
 
 export function getAuthMode(): AuthMode {
   const configured =
-    process.env.AUTH_MODE ?? (isProduction() ? "local" : "demo");
+    process.env.AUTH_MODE ?? (isHardenedAuthenticationRuntime() ? "local" : "demo");
   if (!authModes.includes(configured as AuthMode)) {
     throw new Error("AUTH_MODE_INVALID");
   }
-  if (isProduction() && configured !== "local") {
+  if (isHardenedAuthenticationRuntime() && configured !== "local") {
     throw new Error("PRODUCTION_DEMO_AUTH_FORBIDDEN");
   }
   return configured as AuthMode;
@@ -180,7 +188,7 @@ export function getAuthMode(): AuthMode {
 
 function requireAuthSecret() {
   const value = process.env.AUTH_SECRET ?? "";
-  if (isProduction() && value.length < 32) {
+  if (isHardenedAuthenticationRuntime() && value.length < 32) {
     throw new Error("AUTH_SECRET_INVALID");
   }
   return value || "ogfi-development-auth-secret-not-for-production";
@@ -191,7 +199,7 @@ function decodeEncryptionKey(configured: string, variableName: string) {
   if (decoded.length === 32) {
     return decoded;
   }
-  if (isProduction()) {
+  if (isHardenedAuthenticationRuntime()) {
     throw new Error(`${variableName}_INVALID`);
   }
   return createHash("sha256")
@@ -232,7 +240,7 @@ function activationDeliveryConfiguration() {
   ) {
     throw new Error("AUTH_ACTIVATION_DELIVERY_CONFIGURATION_INVALID");
   }
-  if (isProduction() && !appUrl.startsWith("https://")) {
+  if (isHardenedAuthenticationRuntime() && !appUrl.startsWith("https://")) {
     throw new Error("AUTH_ACTIVATION_DELIVERY_URL_INSECURE");
   }
   return { host, port, username, password, from, appUrl, security };
@@ -256,7 +264,7 @@ function encryptionKeyForVersion(version: number) {
   throw new Error("APP_ENCRYPTION_KEY_VERSION_UNAVAILABLE");
 }
 
-export function assertProductionAuthConfiguration() {
+export function assertProductionAuthRuntimeConfiguration() {
   getAuthMode();
   requireAuthSecret();
   Object.values(authIntegerSettings).forEach(readBoundedAuthInteger);
@@ -287,11 +295,34 @@ export function assertProductionAuthConfiguration() {
     }
     decodeEncryptionKey(previousKey, "APP_ENCRYPTION_PREVIOUS_KEY");
   }
-  if (isProduction()) {
+  if (isHardenedAuthenticationRuntime()) {
+    const appUrl = process.env.APP_URL?.trim() ?? "";
+    try {
+      if (new URL(appUrl).protocol !== "https:") {
+        throw new Error("AUTH_APP_URL_HTTPS_REQUIRED");
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "AUTH_APP_URL_HTTPS_REQUIRED"
+      ) throw error;
+      throw new Error("AUTH_APP_URL_INVALID");
+    }
     if (!["caddy_single_hop", "nginx_single_hop"].includes(process.env.AUTH_TRUSTED_PROXY_MODE ?? "")) {
       throw new Error("AUTH_TRUSTED_PROXY_MODE_INVALID");
     }
     loadAuthenticationThrottleConfig();
+  }
+}
+
+// Link-based activation and recovery retain a separate SMTP fail-closed gate.
+export function assertProductionAuthConfiguration() {
+  assertProductionAuthRuntimeConfiguration();
+  if (
+    getAuthMode() === "local" &&
+    isHardenedAuthenticationRuntime() &&
+    !isExplicitHardenedUatAuthenticationRuntime()
+  ) {
     activationDeliveryConfiguration();
   }
 }
@@ -389,17 +420,25 @@ export function assertAuthIdentityOwnership(
   }
 }
 
-function sessionCookieName() {
-  return isProduction() ? productionCookieName : developmentCookieName;
+export function authenticationSessionCookiePolicy() {
+  const hardened = isHardenedAuthenticationRuntime();
+  return {
+    name: hardened ? productionCookieName : developmentCookieName,
+    httpOnly: true as const,
+    secure: hardened,
+    sameSite: "lax" as const,
+    path: "/" as const,
+  };
 }
 
 async function setSessionCookie(token: string, absoluteExpiresAt: Date) {
   const store = await cookies();
-  store.set(sessionCookieName(), token, {
-    httpOnly: true,
-    secure: isProduction(),
-    sameSite: "lax",
-    path: "/",
+  const policy = authenticationSessionCookiePolicy();
+  store.set(policy.name, token, {
+    httpOnly: policy.httpOnly,
+    secure: policy.secure,
+    sameSite: policy.sameSite,
+    path: policy.path,
     expires: absoluteExpiresAt,
   });
 }
@@ -581,7 +620,7 @@ async function createSessionRecord(
   tenantId: string;
   userId: string;
   authIdentityId?: string | null;
-  status: "ACTIVE" | "PENDING_MFA" | "MFA_ENROLLMENT_REQUIRED";
+  status: "ACTIVE" | "PENDING_MFA" | "MFA_ENROLLMENT_REQUIRED" | "PASSWORD_CHANGE_REQUIRED";
   assuranceLevel: "PASSWORD" | "MFA";
   mfaAuthenticatedAt?: Date | null;
   privilegeEpoch: number;
@@ -787,6 +826,8 @@ export async function finalizePasswordAuthenticationInTransaction(
   },
 ) {
   const identity = await lockAndReloadPasswordIdentity(tx, input);
+  const passwordCredential = identity.passwordCredential;
+  if (!passwordCredential) throw new Error("LOGIN_CREDENTIALS_INVALID");
   if (
     input.reservation.attemptType !== "PASSWORD" ||
     input.reservation.tenantId !== identity.tenantId ||
@@ -795,6 +836,14 @@ export async function finalizePasswordAuthenticationInTransaction(
     throw new Error("AUTH_THROTTLE_RESERVATION_SCOPE_MISMATCH");
   }
   const mfaRequired = await userRequiresMfaInTransaction(tx, identity.userId);
+  if (
+    passwordCredential.requiresChange &&
+    (!passwordCredential.temporaryPasswordExpiresAt ||
+      passwordCredential.temporaryPasswordExpiresAt <= new Date() ||
+      passwordCredential.temporaryPasswordUsedAt)
+  ) {
+    throw new Error("LOGIN_CREDENTIALS_INVALID");
+  }
   const activeAuthenticator = mfaRequired
     ? await tx.mfaAuthenticator.findFirst({
         where: {
@@ -804,12 +853,18 @@ export async function finalizePasswordAuthenticationInTransaction(
         },
       })
     : null;
-  const status = mfaRequired
+  const status = passwordCredential.requiresChange
+    ? "PASSWORD_CHANGE_REQUIRED"
+    : mfaRequired
     ? activeAuthenticator
       ? "PENDING_MFA"
       : "MFA_ENROLLMENT_REQUIRED"
     : "ACTIVE";
   const now = new Date();
+  if (passwordCredential.requiresChange) {
+    const consumed = await tx.passwordCredential.updateMany({ where: { authIdentityId: identity.id, requiresChange: true, temporaryPasswordExpiresAt: { gt: now }, temporaryPasswordUsedAt: null }, data: { temporaryPasswordUsedAt: now } });
+    if (consumed.count !== 1) throw new Error("LOGIN_CREDENTIALS_INVALID");
+  }
   const createdSession = await createSessionRecord(tx, {
     tenantId: identity.tenantId,
     userId: identity.userId,
@@ -851,7 +906,7 @@ export async function authenticatePassword(input: {
   password: string;
   fingerprint: RequestFingerprint;
 }) {
-  assertProductionAuthConfiguration();
+  assertProductionAuthRuntimeConfiguration();
   if (getAuthMode() !== "local") {
     throw new Error("LOCAL_AUTH_NOT_ENABLED");
   }
@@ -933,7 +988,7 @@ export async function authenticatePassword(input: {
     ? "/mfa-challenge"
     : status === "MFA_ENROLLMENT_REQUIRED"
       ? "/account/security"
-      : "/";
+      : status === "PASSWORD_CHANGE_REQUIRED" ? "/account/password-change" : "/";
 }
 
 async function findSessionByToken(statuses: string[]) {
@@ -962,7 +1017,7 @@ async function expireSession(sessionId: string, reason: string) {
 }
 
 export async function getValidatedSessionPrincipal() {
-  assertProductionAuthConfiguration();
+  assertProductionAuthRuntimeConfiguration();
   if (getAuthMode() !== "local") {
     return null;
   }
@@ -1010,6 +1065,24 @@ export async function getValidatedSessionPrincipal() {
     mfaAuthenticatedAt: session.mfaAuthenticatedAt,
     absoluteExpiresAt: session.absoluteExpiresAt,
   };
+}
+
+export async function changeRequiredPassword(input: { password: string; passwordConfirmation: string }) {
+  assertProductionAuthRuntimeConfiguration();
+  if (input.password !== input.passwordConfirmation) throw new Error("PASSWORD_CONFIRMATION_MISMATCH");
+  assertPasswordPolicy(input.password);
+  const session = await findSessionByToken(["PASSWORD_CHANGE_REQUIRED"]);
+  if (!session || !session.authIdentityId) throw new Error("PASSWORD_CHANGE_SESSION_NOT_FOUND");
+  const passwordHash = await runAuthenticationArgon2(() => hashPassword(input.password));
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.authSession.updateMany({ where: { id: session.id, status: "PASSWORD_CHANGE_REQUIRED", absoluteExpiresAt: { gt: new Date() }, idleExpiresAt: { gt: new Date() } }, data: { status: "ACTIVE", assuranceLevel: "PASSWORD", lastSeenAt: new Date() } });
+    if (updated.count !== 1) throw new Error("PASSWORD_CHANGE_SESSION_NOT_FOUND");
+    const credential = await tx.passwordCredential.updateMany({ where: { authIdentityId: session.authIdentityId!, requiresChange: true, temporaryPasswordExpiresAt: { gt: new Date() }, temporaryPasswordUsedAt: { not: null } }, data: { passwordHash, hashAlgorithm: "ARGON2ID", requiresChange: false, temporaryPasswordExpiresAt: null, temporaryPasswordUsedAt: null, passwordChangedAt: new Date() } });
+    if (credential.count !== 1) throw new Error("PASSWORD_CHANGE_SESSION_NOT_FOUND");
+    await revokeApplicationSessions(tx, { userId: session.userId, exceptSessionId: session.id, reason: "Temporary password was replaced." });
+    await tx.auditEvent.create({ data: { tenantId: session.tenantId, actorUserId: session.userId, eventType: "auth.password.changed", entityType: "AuthSession", entityId: session.id, afterData: { temporaryPasswordCleared: true }, metadata: { sourceDecisionId: "DEC-0040" } } });
+  });
+  return "/";
 }
 
 function mfaAttemptIdentifierHash(session: {
@@ -2140,7 +2213,7 @@ export async function revokeApplicationSessions(
     where: {
       userId: input.userId,
       ...(input.exceptSessionId ? { id: { not: input.exceptSessionId } } : {}),
-      status: { in: ["ACTIVE", "PENDING_MFA", "MFA_ENROLLMENT_REQUIRED"] },
+      status: { in: ["ACTIVE", "PENDING_MFA", "MFA_ENROLLMENT_REQUIRED", "PASSWORD_CHANGE_REQUIRED"] },
     },
     data: {
       status: "REVOKED",
@@ -2183,17 +2256,17 @@ export async function assertTrustedServerActionOrigin() {
     requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const protocol =
     requestHeaders.get("x-forwarded-proto") ??
-    (isProduction() ? "https" : "http");
+    (isHardenedAuthenticationRuntime() ? "https" : "http");
   const requestUrl = host
     ? `${protocol}://${host}/`
     : process.env.APP_URL ?? "http://localhost/";
-  if (
-    !isTrustedMutationOrigin({
-      origin: requestHeaders.get("origin"),
-      requestUrl,
-      appUrl: process.env.APP_URL,
-    })
-  ) {
+  const origin = requestHeaders.get("origin");
+  const trusted = isTrustedMutationOrigin({
+    origin,
+    requestUrl,
+    appUrl: process.env.APP_URL,
+  });
+  if (!trusted) {
     throw new Error("ORIGIN_DENIED");
   }
 }

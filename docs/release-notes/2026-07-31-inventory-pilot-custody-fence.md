@@ -1,0 +1,7 @@
+# Inventory Control Pilot — Wastage and Adjustment Custody Fence (Local)
+
+Wastage and manual stock-adjustment posting/reversal now revalidate the live actor, session/privilege epoch, current permission, exact inventory-location scope, and privileged MFA evidence after the source and ledger facts are locked, before any stock movement is claimed or written. Stock-adjustment submission remains non-posting and no longer demands posting MFA authority.
+
+Detail actions show explicit pending labels (`Posting Wastage…`, `Reversing Wastage…`, `Posting Adjustment…`, and `Reversing Adjustment…`) and prevent duplicate submission. The server-side fence remains authoritative when permissions, scope, session, or MFA change while an action is waiting.
+
+Local evidence currently includes focused custody tests (116/116), wastage and adjustment tests (41/41), authorization manifest coverage (21/21), web typecheck, lint, and a fresh responsive browser run passing **6/6** across wastage, stock adjustments, stock counts, reconciliation, receiving, and draft-receipt surfaces. The custody fence now also locks the active role-permission grant, exact scope grant, and MFA policy/evidence rows inside the posting/reversal transaction. Disposable-PostgreSQL race/revocation, production-authenticated desktop/mobile UAT, hosted deployment, and release approval remain pending. No VPS deployment or origin push is included.

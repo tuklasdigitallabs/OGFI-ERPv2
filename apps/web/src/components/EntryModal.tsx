@@ -1,13 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@ogfi/ui";
+import { useActionToast } from "@/components/ActionToastProvider";
+import type { ActionFeedback } from "@/server/services/actionFeedback";
+
+type EntryModalFeedbackController = {
+  reportFeedback: (feedback: ActionFeedback) => void;
+};
+
+const EntryModalFeedbackContext = createContext<EntryModalFeedbackController | null>(null);
+
+export function useEntryModalFeedback() {
+  return useContext(EntryModalFeedbackContext);
+}
 
 type EntryModalProps = {
   title: string;
   triggerLabel: string;
   triggerClassName?: string;
+  pending?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   children: ReactNode;
@@ -17,6 +30,7 @@ export function EntryModal({
   title,
   triggerLabel,
   triggerClassName,
+  pending = false,
   disabled = false,
   disabledReason,
   children
@@ -25,6 +39,7 @@ export function EntryModal({
   const [isHydrated, setIsHydrated] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showActionToast } = useActionToast();
   const titleId = useId();
   const disabledReasonId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -35,13 +50,18 @@ export function EntryModal({
       triggerClassName ?? ""
     );
   const triggerDisabled = disabled || !isHydrated;
+  const isBusy = isSubmitting || pending;
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
 
+  useEffect(() => {
+    if (!pending) setIsSubmitting(false);
+  }, [pending]);
+
   const closeModal = useCallback(() => {
-    if (isSubmitting) {
+    if (isBusy) {
       return;
     }
     if (isDirty && !window.confirm("Discard the information entered in this form?")) {
@@ -53,7 +73,18 @@ export function EntryModal({
     window.setTimeout(() => {
       triggerRef.current?.focus();
     }, 0);
-  }, [isDirty, isSubmitting]);
+  }, [isBusy, isDirty]);
+
+  const reportFeedback = useCallback((feedback: ActionFeedback) => {
+    showActionToast(feedback);
+    setIsSubmitting(false);
+    if (feedback.tone !== "success") return;
+    setIsDirty(false);
+    setIsOpen(false);
+    window.setTimeout(() => {
+      triggerRef.current?.focus();
+    }, 0);
+  }, [showActionToast]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -156,25 +187,27 @@ export function EntryModal({
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
                 type="button"
                 aria-label="Close modal"
-                disabled={isSubmitting}
+                disabled={isBusy}
                 onClick={closeModal}
               >
                 <X aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
-            <div
-              data-modal-body
-              aria-busy={isSubmitting}
-              className="min-h-0 overflow-y-auto bg-white px-4 pb-5 sm:px-6 sm:pb-6"
-              onInputCapture={() => setIsDirty(true)}
-              onChangeCapture={() => setIsDirty(true)}
-              onSubmitCapture={() => {
-                setIsSubmitting(true);
-                setIsDirty(false);
-              }}
-            >
-              {children}
-            </div>
+            <EntryModalFeedbackContext.Provider value={{ reportFeedback }}>
+              <div
+                data-modal-body
+                aria-busy={isBusy}
+                className="min-h-0 overflow-y-auto bg-white px-4 pb-5 sm:px-6 sm:pb-6"
+                onInputCapture={() => setIsDirty(true)}
+                onChangeCapture={() => setIsDirty(true)}
+                onSubmitCapture={() => {
+                  setIsSubmitting(true);
+                  setIsDirty(false);
+                }}
+              >
+                {children}
+              </div>
+            </EntryModalFeedbackContext.Provider>
           </section>
         </div>
       ) : null}

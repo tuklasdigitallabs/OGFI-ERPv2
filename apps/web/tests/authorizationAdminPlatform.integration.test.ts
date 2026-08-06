@@ -103,6 +103,8 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
   let getValidatedSessionPrincipal: typeof import("../src/server/services/authentication").getValidatedSessionPrincipal;
   let signOutCurrentSession: typeof import("../src/server/services/authentication").signOutCurrentSession;
   let startMfaEnrollment: typeof import("../src/server/services/authentication").startMfaEnrollment;
+  let changeRequiredPassword: typeof import("../src/server/services/authentication").changeRequiredPassword;
+  let issueTemporaryPassword: typeof import("../src/server/services/authenticationAdmin").issueTemporaryPassword;
   let createOperationalReasonCode: typeof import("../src/server/services/operationalReasonCodes").createOperationalReasonCode;
   let deactivateOperationalReasonCode: typeof import("../src/server/services/operationalReasonCodes").deactivateOperationalReasonCode;
   let recordPrivilegedMfaEnrollment: typeof import("../src/server/services/privilegedMfa").recordPrivilegedMfaEnrollment;
@@ -157,6 +159,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     ({
       approveAuthRecovery,
       issueAuthenticationActivation,
+      issueTemporaryPassword,
       listAuthenticationAccounts,
       rejectAuthRecovery,
       requestAuthRecovery,
@@ -168,6 +171,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       authenticatePassword,
       beginMfaStepUp,
       clearAuthenticationCookies,
+      changeRequiredPassword,
       completeMfaChallenge,
       completeMfaEnrollment,
       deliverAccountActivation,
@@ -2827,6 +2831,156 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     });
     await clearAuthenticationCookies();
     clearAuthenticatedRequest();
+  });
+
+  it("AUTHZ-AUTH-TEMPORARY-PASSWORD-ISSUE-SELF-DENIED-NO-MUTATION", async () => {
+    configureAuthenticatedRequest({
+      sessionToken: actorSessionToken,
+      selectedLocationId: ids.locationId,
+    });
+    const session = await getConfiguredContext(actorEmail);
+    const before = await prisma.$transaction([
+      prisma.authIdentity.count({ where: { tenantId: ids.tenantId } }),
+      prisma.passwordCredential.count({ where: { authIdentity: { tenantId: ids.tenantId } } }),
+      prisma.auditEvent.count({ where: { tenantId: ids.tenantId, eventType: "auth.temporary_password.issued" } }),
+    ]);
+    const values = new FormData();
+    values.set("targetUserId", ids.actorUserId);
+    try {
+      await expect(issueTemporaryPassword(session, values)).rejects.toThrow(
+        "AUTH_TEMPORARY_PASSWORD_SELF_ISSUE_BLOCKED",
+      );
+      expect(
+        await prisma.$transaction([
+          prisma.authIdentity.count({ where: { tenantId: ids.tenantId } }),
+          prisma.passwordCredential.count({ where: { authIdentity: { tenantId: ids.tenantId } } }),
+          prisma.auditEvent.count({ where: { tenantId: ids.tenantId, eventType: "auth.temporary_password.issued" } }),
+        ]),
+      ).toEqual(before);
+    } finally {
+      clearAuthenticatedRequest();
+    }
+  });
+
+  it("AUTHZ-AUTH-TEMPORARY-PASSWORD-CHANGE-SESSION-CAS-NO-MUTATION", async () => {
+    const passwordChangeSessionId = randomUUID();
+    const siblingSessionId = randomUUID();
+    const passwordChangeToken = `authz-password-change-token-${suffix}`;
+    const now = new Date();
+    const actorSessionBefore = await prisma.authSession.findUniqueOrThrow({
+      where: { id: ids.authSessionId },
+      select: { status: true, revokedAt: true, revocationReason: true },
+    });
+    await prisma.passwordCredential.create({
+      data: {
+        authIdentityId: ids.authIdentityId,
+        passwordHash: "fixture-temporary-password-hash",
+        requiresChange: true,
+        temporaryPasswordExpiresAt: new Date(now.getTime() + 30 * 60_000),
+        temporaryPasswordUsedAt: now,
+      },
+    });
+    await prisma.authSession.createMany({
+      data: [
+        {
+          id: passwordChangeSessionId,
+          tenantId: ids.tenantId,
+          userId: ids.actorUserId,
+          authIdentityId: ids.authIdentityId,
+          tokenHash: authenticationSessionTokenHash(passwordChangeToken),
+          status: "PASSWORD_CHANGE_REQUIRED",
+          assuranceLevel: "PASSWORD",
+          privilegeEpochAtIssue: 0,
+          idleExpiresAt: new Date(now.getTime() + 60 * 60_000),
+          absoluteExpiresAt: new Date(now.getTime() + 4 * 60 * 60_000),
+        },
+        {
+          id: siblingSessionId,
+          tenantId: ids.tenantId,
+          userId: ids.actorUserId,
+          authIdentityId: ids.authIdentityId,
+          tokenHash: authenticationSessionTokenHash(`authz-password-sibling-${suffix}`),
+          status: "ACTIVE",
+          assuranceLevel: "PASSWORD",
+          privilegeEpochAtIssue: 0,
+          idleExpiresAt: new Date(now.getTime() + 60 * 60_000),
+          absoluteExpiresAt: new Date(now.getTime() + 4 * 60 * 60_000),
+        },
+      ],
+    });
+    configureAuthenticatedRequest({
+      sessionToken: passwordChangeToken,
+      selectedLocationId: ids.locationId,
+    });
+    const auditBefore = await prisma.auditEvent.count({
+      where: { tenantId: ids.tenantId, eventType: "auth.password.changed" },
+    });
+    try {
+      await expect(
+        changeRequiredPassword({
+          password: "weak",
+          passwordConfirmation: "weak",
+        }),
+      ).rejects.toThrow("PASSWORD_POLICY_NOT_MET");
+      expect(
+        await prisma.authSession.findUniqueOrThrow({
+          where: { id: passwordChangeSessionId },
+        }),
+      ).toMatchObject({ status: "PASSWORD_CHANGE_REQUIRED" });
+      await expect(
+        changeRequiredPassword({
+          password: "TemporaryPassword-123",
+          passwordConfirmation: "TemporaryPassword-123",
+        }),
+      ).resolves.toBe("/");
+      expect(
+        await prisma.authSession.findUniqueOrThrow({
+          where: { id: ids.authSessionId },
+          select: { status: true, revokedAt: true, revocationReason: true },
+        }),
+      ).toMatchObject({
+        status: "REVOKED",
+        revocationReason: "Temporary password was replaced.",
+      });
+      expect(
+        await prisma.authSession.findUniqueOrThrow({
+          where: { id: passwordChangeSessionId },
+        }),
+      ).toMatchObject({ status: "ACTIVE", assuranceLevel: "PASSWORD" });
+      expect(
+        await prisma.authSession.findUniqueOrThrow({
+          where: { id: siblingSessionId },
+        }),
+      ).toMatchObject({ status: "REVOKED", revocationReason: "Temporary password was replaced." });
+      expect(
+        await prisma.passwordCredential.findUniqueOrThrow({
+          where: { authIdentityId: ids.authIdentityId },
+        }),
+      ).toMatchObject({ requiresChange: false, temporaryPasswordExpiresAt: null, temporaryPasswordUsedAt: null });
+      expect(
+        await prisma.auditEvent.count({
+          where: { tenantId: ids.tenantId, eventType: "auth.password.changed" },
+        }),
+      ).toBe(auditBefore + 1);
+      await expect(
+        changeRequiredPassword({
+          password: "TemporaryPassword-123",
+          passwordConfirmation: "TemporaryPassword-123",
+        }),
+      ).rejects.toThrow("PASSWORD_CHANGE_SESSION_NOT_FOUND");
+    } finally {
+      clearAuthenticatedRequest();
+      await prisma.authSession.deleteMany({
+        where: { id: { in: [passwordChangeSessionId, siblingSessionId] } },
+      });
+      await prisma.passwordCredential.delete({
+        where: { authIdentityId: ids.authIdentityId },
+      });
+      await prisma.authSession.update({
+        where: { id: ids.authSessionId },
+        data: actorSessionBefore,
+      });
+    }
   });
 
   it("AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS", async () => {

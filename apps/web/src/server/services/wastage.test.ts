@@ -76,7 +76,9 @@ describe("wastage foundation rules", () => {
     expect(page).toContain("listWastageReportPage(session");
     expect(page).toContain("workspacePage.totalItems");
     expect(page).toContain("This read-only");
-    expect(route).toContain("listWastageReports(session, profile ?? undefined)");
+    expect(route).toContain("listWastageReports(session, profile ?? undefined, {");
+    expect(route).toContain("maxRows: exportPolicy.maxRows");
+    expect(route).toContain("exportErrorResponse(error)");
     expect(route).toContain("WASTAGE_DASHBOARD_PROFILE_UNSUPPORTED");
   });
 
@@ -159,6 +161,8 @@ describe("wastage foundation rules", () => {
     expect(action.indexOf("lockWastageSourceForPosting")).toBeLessThan(
       action.indexOf("lockInventoryLocationsForPosting")
     );
+    expect(action).toContain("assertFreshWastageInventoryAuthority");
+    expect(action).toContain('{ transaction: tx }');
     expect(action).toContain('sourceEventKey: `wastage_line:${line.id}:post`');
   });
 
@@ -168,12 +172,13 @@ describe("wastage foundation rules", () => {
     const action = source.slice(start);
     expect(action).toContain("withApprovalProducerTransaction");
     expect(action).toContain("lockWastageSourceForReversal");
-    expect(action).toContain("FOR UPDATE OF movement");
+    expect(action).toContain("pg_advisory_xact_lock");
     expect(action.indexOf("lockWastageSourceForReversal")).toBeLessThan(
       action.indexOf("lockInventoryLocationsForPosting")
     );
     expect(action).toContain('sourceEventKey: `wastage_line:${line.id}:reverse`');
     expect(action).toContain("WASTAGE_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
+    expect(action).toContain("assertFreshWastageInventoryAuthority");
   });
 
   test("service read gate allows every wastage action permission", () => {
@@ -321,6 +326,24 @@ describe("wastage foundation rules", () => {
         "EVIDENCE_REQUIRED",
         "EVIDENCE_MISSING"
       ])
+    );
+  });
+
+  test("requires evidence when the selected reason code requires it", () => {
+    const evaluation = buildWastagePolicyEvaluation({
+      policy: null,
+      totalEstimatedCost: 100,
+      categoryPhotoRequired: false,
+      reasonCodeRequiresEvidence: true,
+      evidenceReference: null,
+      repeatItemLocationPriorCount: 0,
+      repeatReporterPriorCount: 0
+    });
+
+    expect(evaluation.evidenceRequired).toBe(true);
+    expect(evaluation.evidenceSatisfied).toBe(false);
+    expect(evaluation.flags).toEqual(
+      expect.arrayContaining(["EVIDENCE_REQUIRED", "EVIDENCE_MISSING"])
     );
   });
 

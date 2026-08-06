@@ -20,6 +20,7 @@ import {
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
+import { assertApprovalReviewEvidenceSourceMutable } from "./approvalReviewAggregateFence";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
@@ -352,10 +353,6 @@ type AuditEventRecord = Awaited<ReturnType<typeof findAuditEvents>>[number];
 type ApprovalActionRecord = Awaited<
   ReturnType<typeof findApprovalActions>
 >[number];
-type PurchaseRequestApprovalRules = Awaited<
-  ReturnType<typeof findPurchaseRequestApprovalRule>
->;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -374,8 +371,8 @@ function isEmergencyApprovalRule(scopeFilters: unknown) {
   );
 }
 
-export function resolvePurchaseRequestApprovalRule(input: {
-  rules: PurchaseRequestApprovalRules;
+export function resolvePurchaseRequestApprovalRule<TRule extends { scopeFilters: unknown }>(input: {
+  rules: readonly TRule[];
   isEmergency: boolean;
 }) {
   const emergencyRule = input.rules.find((rule) =>
@@ -955,6 +952,7 @@ async function listPurchaseRequestsWithOptions(
   options: {
     dashboardProfile?: PurchaseRequestDashboardProfile;
     pagination?: { page: number; pageSize: number };
+    maxRows?: number;
   } = {},
 ) {
   if (!canUsePurchaseRequests(session.permissionCodes)) {
@@ -1008,8 +1006,14 @@ async function listPurchaseRequestsWithOptions(
           skip: (options.pagination.page - 1) * options.pagination.pageSize,
           take: options.pagination.pageSize,
         }
-      : {}),
+      : options.maxRows !== undefined
+        ? { take: options.maxRows + 1 }
+        : {}),
   });
+
+  if (options.maxRows !== undefined && records.length > options.maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   const auditEvents = await findAuditEvents(
     session,
@@ -1027,8 +1031,13 @@ async function listPurchaseRequestsWithOptions(
 export async function listPurchaseRequests(
   session: SessionContext,
   filters: PurchaseRequestListFilters = {},
+  input: { maxRows?: number } = {}
 ) {
-  return listPurchaseRequestsWithOptions(session, filters);
+  const maxRows = input.maxRows;
+  if (maxRows !== undefined && (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 100_000)) {
+    throw new Error("PURCHASE_REQUEST_EXPORT_MAX_ROWS_INVALID");
+  }
+  return listPurchaseRequestsWithOptions(session, filters, { ...(maxRows !== undefined ? { maxRows } : {}) });
 }
 
 export async function listPurchaseRequestPage(
@@ -1082,10 +1091,18 @@ export async function listPurchaseRequestsDashboardProfilePage(
 export async function listPurchaseRequestsDashboardProfile(
   session: SessionContext,
   profileValue: string | undefined,
+  input: { maxRows?: number } = {}
 ) {
   const profile = resolvePurchaseRequestDashboardProfile(profileValue);
   if (!profile) return null;
-  return listPurchaseRequestsWithOptions(session, {}, { dashboardProfile: profile });
+  const maxRows = input.maxRows;
+  if (maxRows !== undefined && (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 100_000)) {
+    throw new Error("PURCHASE_REQUEST_EXPORT_MAX_ROWS_INVALID");
+  }
+  return listPurchaseRequestsWithOptions(session, {}, {
+    dashboardProfile: profile,
+    ...(maxRows !== undefined ? { maxRows } : {})
+  });
 }
 
 export async function getPurchaseRequest(session: SessionContext, id: string) {
@@ -2018,6 +2035,12 @@ export async function addPurchaseRequestComment(formData: FormData) {
   assertAuthorizedLocation(session, request.requestLocationId);
 
   await prisma.$transaction(async (tx) => {
+    await assertApprovalReviewEvidenceSourceMutable(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      sourceType: "PURCHASE_REQUEST",
+      sourceRecordId: request.id,
+    });
     await tx.purchaseRequestComment.create({
       data: {
         purchaseRequestId: request.id,

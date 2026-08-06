@@ -51,6 +51,21 @@ describe("role permission catalog metadata", () => {
       group: "Opening Inventory",
       sensitive: true
     });
+    expect(getPermissionPresentation(permissions.inventoryPilotConfigurationView)).toMatchObject({
+      label: "View inventory pilot configuration",
+      group: "Inventory Pilot Configuration",
+      sensitive: false
+    });
+    expect(getPermissionPresentation(permissions.inventoryPilotConfigurationDraft)).toMatchObject({
+      label: "Draft inventory pilot configuration",
+      group: "Inventory Pilot Configuration",
+      sensitive: true
+    });
+    expect(getPermissionPresentation(permissions.inventoryPilotConfigurationSeal)).toMatchObject({
+      label: "Seal inventory pilot configuration",
+      group: "Inventory Pilot Configuration",
+      sensitive: true
+    });
   });
 
   test("defines recommended defaults for configured roles", () => {
@@ -81,6 +96,9 @@ describe("role permission catalog metadata", () => {
     expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).toContain(
       permissions.coreAdminister
     );
+    expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).toContain(
+      permissions.inventoryPilotConfigurationSeal
+    );
     expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).not.toContain(
       permissions.supplierConfidentialView
     );
@@ -108,6 +126,9 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.supplierConfidentialView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.inventoryBalanceView)).toBe(false);
     expect(isSensitivePermissionCode(permissions.openingInventoryView)).toBe(false);
+    expect(isSensitivePermissionCode(permissions.inventoryPilotConfigurationView)).toBe(false);
+    expect(isSensitivePermissionCode(permissions.inventoryPilotConfigurationDraft)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.inventoryPilotConfigurationSeal)).toBe(true);
     expect(isSensitivePermissionCode(permissions.openingInventoryRequestExecute)).toBe(true);
   });
 

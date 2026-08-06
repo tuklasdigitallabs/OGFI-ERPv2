@@ -5,6 +5,7 @@ import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ShortMutationForm } from "@/components/OrganizationEditForm";
 import { ConversionCreateComposer } from "@/components/ConversionCreateComposer";
 import {
   ItemCreateComposer,
@@ -28,9 +29,7 @@ import { assertTrustedServerActionOrigin } from "@/server/services/authenticatio
 import { getSessionContext } from "@/server/services/context";
 import {
   createItem,
-  createItemCategory,
   createItemUomConversion,
-  createUom,
   deactivateItemCategory,
   deactivateUom,
   itemInventoryClasses,
@@ -73,30 +72,6 @@ function conversionReturnPath(formData: FormData) {
   if (Number.isInteger(page) && page > 0 && page <= 10_000) query.set("conversionPage", String(page));
   if (/^[0-9a-f-]{36}$/i.test(id)) query.set("conversionId", id);
   return `/items?${query.toString()}`;
-}
-
-async function createCategoryAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createItemCategory(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=categories", error));
-  }
-  revalidatePath("/items");
-  redirect("/items?tab=categories");
-}
-
-async function createUomAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createUom(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=uoms", error));
-  }
-  revalidatePath("/items");
-  redirect("/items?tab=uoms");
 }
 
 async function createItemAction(
@@ -258,7 +233,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   if (!session) {
     redirect("/sign-in");
   }
-  if (!session.permissionCodes.includes(permissions.coreAdminister)) {
+  const canViewItemMaster = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.itemMasterView);
+  const canCreateItemMaster = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.itemMasterCreate);
+  const canEditItemMaster = session.permissionCodes.includes(permissions.coreAdminister)
+    || session.permissionCodes.includes(permissions.itemMasterEdit);
+  const canManageItemLifecycle = session.permissionCodes.includes(permissions.coreAdminister);
+  if (!canViewItemMaster) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
@@ -374,16 +356,16 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
       </Panel>
 
       <div className="mb-5 flex flex-wrap justify-end gap-2">
-        {activeTab === "items" ? (
+        {activeTab === "items" && canCreateItemMaster ? (
           <ItemCreateComposer
             action={createItemAction}
             companyName={session.context.companyName}
             itemTypes={itemTypes}
           />
         ) : null}
-        {activeTab === "categories" ? (
+        {activeTab === "categories" && canCreateItemMaster ? (
         <EntryModal title="Create Category" triggerLabel="Create Category">
-          <form action={createCategoryAction} className="ogfi-form-shell mt-4 grid gap-3">
+          <ShortMutationForm endpoint="/api/item-master/category/create" submitLabel="Create Category" pendingLabel="Creating Category…">
             <div className="grid gap-3 md:grid-cols-2">
               <input aria-label="Category code" className="rounded-md border border-slate-300 px-3 py-2" name="categoryCode" placeholder="Category code" required />
               <input aria-label="Category name" className="rounded-md border border-slate-300 px-3 py-2" name="categoryName" placeholder="Category name" required />
@@ -407,15 +389,12 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </label>
             </div>
             <input aria-label="Category creation reason" className="rounded-md border border-slate-300 px-3 py-2" name="reason" placeholder="Creation reason" required />
-            <button className="inline-flex ogfi-mobile-action items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create Category
-            </button>
-          </form>
+          </ShortMutationForm>
         </EntryModal>
         ) : null}
-        {activeTab === "uoms" ? (
+        {activeTab === "uoms" && canCreateItemMaster ? (
         <EntryModal title="Create UOM" triggerLabel="Create UOM">
-          <form action={createUomAction} className="ogfi-form-shell mt-4 grid gap-3">
+          <ShortMutationForm endpoint="/api/item-master/uom/create" submitLabel="Create UOM" pendingLabel="Creating UOM…">
             <div className="grid gap-3 md:grid-cols-2">
               <input aria-label="UOM code" className="rounded-md border border-slate-300 px-3 py-2" name="uomCode" placeholder="UOM code" required />
               <input aria-label="UOM name" className="rounded-md border border-slate-300 px-3 py-2" name="uomName" placeholder="UOM name" required />
@@ -431,13 +410,10 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               <input aria-label="Decimal precision" className="rounded-md border border-slate-300 px-3 py-2" name="decimalPrecision" min="0" max="6" type="number" defaultValue="0" required />
             </div>
             <input aria-label="UOM creation reason" className="rounded-md border border-slate-300 px-3 py-2" name="reason" placeholder="Creation reason" required />
-            <button className="inline-flex ogfi-mobile-action items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create UOM
-            </button>
-          </form>
+          </ShortMutationForm>
         </EntryModal>
         ) : null}
-        {activeTab === "conversions" ? (
+        {activeTab === "conversions" && canCreateItemMaster ? (
         <EntryModal
           title="Create Conversion"
           triggerLabel="Create Conversion"
@@ -531,6 +507,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               companyName={session.context.companyName}
               returnHref={itemActionHref()}
               updateAction={updateItemAction}
+              canEdit={canEditItemMaster}
             />
           ) : selectedItemId ? (
             <UnavailableSelectedItemTaskSheet returnHref={itemActionHref()} />
@@ -679,15 +656,15 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                 <div><h3 className="text-lg font-bold text-slate-950">Selected category: {selectedCategory.categoryName}</h3><p className="text-sm text-slate-600">Actions apply only to this selected record.</p></div>
                 <Link className="text-sm font-semibold text-blue-700 hover:underline" href={categoryActionHref()}>Close controls</Link>
               </div>
-              <form action={updateCategoryAction} className="grid gap-3">
+              {canEditItemMaster ? <ShortMutationForm endpoint="/api/item-master/category/update" submitLabel="Save Category" pendingLabel="Saving Category…">
                 <input name="categoryId" type="hidden" value={selectedCategory.id} />
                 <input name="returnCategoryQuery" type="hidden" value={categoryQuery} /><input name="returnCategoryStatus" type="hidden" value={categoryStatus ?? ""} /><input name="returnCategoryPage" type="hidden" value={String(masterData.categoriesPage.page)} /><input name="returnCategoryId" type="hidden" value={selectedCategory.id} />
                 <div className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700">Category code<input className={`${inputClass} bg-slate-50 text-slate-500`} value={selectedCategory.categoryCode} disabled /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Category name<input className={inputClass} name="categoryName" defaultValue={selectedCategory.categoryName} required /></label></div>
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Inventory class<select className={inputClass} name="inventoryClass" defaultValue={selectedCategory.inventoryClass} required>{itemInventoryClasses.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label>
                 <div className="grid gap-2 text-sm font-medium text-slate-700 md:grid-cols-3"><label className="flex items-center gap-2"><input name="requiresExpiryTracking" type="checkbox" defaultChecked={selectedCategory.requiresExpiryTracking} /> Requires expiry</label><label className="flex items-center gap-2"><input name="requiresLotTracking" type="checkbox" defaultChecked={selectedCategory.requiresLotTracking} /> Requires lot</label><label className="flex items-center gap-2"><input name="defaultWastageRequiresPhoto" type="checkbox" defaultChecked={selectedCategory.defaultWastageRequiresPhoto} /> Wastage photo</label></div>
-                <div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required /><button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white">Save Category</button></div>
-              </form>
-              {selectedCategory.status === "ACTIVE" ? <form action={deactivateCategoryAction} className="mt-4 grid gap-2 border-t border-blue-100 pt-4 sm:grid-cols-[1fr_auto] sm:items-end"><input name="categoryId" type="hidden" value={selectedCategory.id} /><input name="returnCategoryQuery" type="hidden" value={categoryQuery} /><input name="returnCategoryStatus" type="hidden" value={categoryStatus ?? ""} /><input name="returnCategoryPage" type="hidden" value={String(masterData.categoriesPage.page)} /><input name="returnCategoryId" type="hidden" value={selectedCategory.id} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className={inputClass} name="reason" minLength={5} required /></label><button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white">Deactivate Category</button></form> : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">Inactive category: retained history.</p>}
+                <input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required />
+              </ShortMutationForm> : <p className="text-sm text-slate-600">Read-only category access. A user with Edit item master access can make a controlled correction.</p>}
+              {selectedCategory.status === "ACTIVE" && canManageItemLifecycle ? <ShortMutationForm endpoint="/api/item-master/category/deactivate" submitLabel="Deactivate Category" pendingLabel="Deactivating Category…" className="mt-4 border-t border-blue-100 pt-4"><input name="categoryId" type="hidden" value={selectedCategory.id} /><input name="returnCategoryQuery" type="hidden" value={categoryQuery} /><input name="returnCategoryStatus" type="hidden" value={categoryStatus ?? ""} /><input name="returnCategoryPage" type="hidden" value={String(masterData.categoriesPage.page)} /><input name="returnCategoryId" type="hidden" value={selectedCategory.id} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className={inputClass} name="reason" minLength={5} required /></label></ShortMutationForm> : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">{selectedCategory.status === "ACTIVE" ? "Lifecycle changes require core administration." : "Inactive category: retained history."}</p>}
             </div>
           ) : selectedCategoryId ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected category is unavailable in the current company scope.</p> : null}
           {masterData.categoriesPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{categoryQuery || categoryStatus ? "No categories match the selected filters." : "No categories yet."}</p> : null}
@@ -819,13 +796,13 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           {selectedUom ? (
             <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-bold text-slate-950">Selected UOM: {selectedUom.uomCode}</h3><p className="text-sm text-slate-600">Actions apply only to this selected record.</p></div><Link className="text-sm font-semibold text-blue-700 hover:underline" href={uomActionHref()}>Close controls</Link></div>
-              <form action={updateUomAction} className="grid gap-3">
+              {canEditItemMaster ? <ShortMutationForm endpoint="/api/item-master/uom/update" submitLabel="Save UOM" pendingLabel="Saving UOM…">
                 <input name="uomId" type="hidden" value={selectedUom.id} /><input name="returnUomQuery" type="hidden" value={uomQuery} /><input name="returnUomStatus" type="hidden" value={uomStatus ?? ""} /><input name="returnUomPage" type="hidden" value={String(masterData.uomsPage.page)} /><input name="returnUomId" type="hidden" value={selectedUom.id} />
                 <div className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700">UOM code<input className={`${inputClass} bg-slate-50 text-slate-500`} value={selectedUom.uomCode} disabled /></label><label className="grid gap-1 text-sm font-medium text-slate-700">UOM name<input className={inputClass} name="uomName" defaultValue={selectedUom.uomName} required /></label></div>
                 <div className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700">UOM type<select className={inputClass} name="uomType" defaultValue={selectedUom.uomType} required>{uomTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Decimal precision<input className={inputClass} name="decimalPrecision" min="0" max="6" type="number" defaultValue={selectedUom.decimalPrecision} required /></label></div>
-                <div className="flex flex-wrap gap-2"><input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required /><button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white">Save UOM</button></div>
-              </form>
-              {selectedUom.status === "ACTIVE" ? <form action={deactivateUomAction} className="mt-4 grid gap-2 border-t border-blue-100 pt-4 sm:grid-cols-[1fr_auto] sm:items-end"><input name="uomId" type="hidden" value={selectedUom.id} /><input name="returnUomQuery" type="hidden" value={uomQuery} /><input name="returnUomStatus" type="hidden" value={uomStatus ?? ""} /><input name="returnUomPage" type="hidden" value={String(masterData.uomsPage.page)} /><input name="returnUomId" type="hidden" value={selectedUom.id} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className={inputClass} name="reason" minLength={5} required /></label><button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white">Deactivate UOM</button></form> : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">Inactive UOM: retained history.</p>}
+                <input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required />
+              </ShortMutationForm> : <p className="text-sm text-slate-600">Read-only UOM access. A user with Edit item master access can make a controlled correction.</p>}
+              {selectedUom.status === "ACTIVE" && canManageItemLifecycle ? <ShortMutationForm endpoint="/api/item-master/uom/deactivate" submitLabel="Deactivate UOM" pendingLabel="Deactivating UOM…" className="mt-4 border-t border-blue-100 pt-4"><input name="uomId" type="hidden" value={selectedUom.id} /><input name="returnUomQuery" type="hidden" value={uomQuery} /><input name="returnUomStatus" type="hidden" value={uomStatus ?? ""} /><input name="returnUomPage" type="hidden" value={String(masterData.uomsPage.page)} /><input name="returnUomId" type="hidden" value={selectedUom.id} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className={inputClass} name="reason" minLength={5} required /></label></ShortMutationForm> : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">{selectedUom.status === "ACTIVE" ? "Lifecycle changes require core administration." : "Inactive UOM: retained history."}</p>}
             </div>
           ) : selectedUomId ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected UOM is unavailable in the current company scope.</p> : null}
           {masterData.uomsPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{uomQuery || uomStatus ? "No UOMs match the selected filters." : "No UOMs yet."}</p> : null}
@@ -934,13 +911,12 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           {selectedConversion ? (
             <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-bold text-slate-950">Selected conversion: {selectedConversion.item.itemName}</h3><p className="text-sm text-slate-600">{selectedConversion.fromUom.uomCode} → {selectedConversion.toUom.uomCode}; only the factor and rounding rule are editable.</p></div><Link className="text-sm font-semibold text-blue-700 hover:underline" href={conversionActionHref()}>Close controls</Link></div>
-              <form action={updateConversionAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              {canEditItemMaster ? <ShortMutationForm endpoint="/api/item-master/conversion/update" submitLabel="Save Conversion" pendingLabel="Saving Conversion…" className="md:grid-cols-[1fr_1fr_auto] md:items-end">
                 <input name="conversionId" type="hidden" value={selectedConversion.id} /><input name="returnConversionQuery" type="hidden" value={conversionQuery} /><input name="returnConversionPage" type="hidden" value={String(masterData.conversionsPage.page)} /><input name="returnConversionId" type="hidden" value={selectedConversion.id} />
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Conversion factor<input className={inputClass} name="conversionFactor" min="0.000001" step="0.000001" type="number" defaultValue={Number(selectedConversion.conversionFactor)} required /></label>
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Rounding rule<select className={inputClass} name="roundingRule" defaultValue={selectedConversion.roundingRule} required><option value="none">none</option><option value="up">up</option><option value="down">down</option><option value="nearest">nearest</option></select></label>
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Update reason<input className={inputClass} name="reason" minLength={5} required /></label>
-                <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white md:col-span-3 md:justify-self-start">Save Conversion</button>
-              </form>
+              </ShortMutationForm> : <p className="text-sm text-slate-600">Read-only conversion access. A user with Edit item master access can make a controlled correction.</p>}
             </div>
           ) : selectedConversionId ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected conversion is unavailable in the current company scope.</p> : null}
           {masterData.conversionsPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{conversionQuery ? "No conversions match the selected filters." : "No conversions yet."}</p> : null}

@@ -11,6 +11,7 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportWastageReports } from "@/server/services/exportAuthorization";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 import {
   listWastageReports,
   resolveWastageDashboardProfile
@@ -38,14 +39,22 @@ export async function GET(request: Request) {
   if (profileParam && !profile) {
     return exportErrorResponse(new Error("WASTAGE_DASHBOARD_PROFILE_UNSUPPORTED"))!;
   }
+  const exportPolicy = await getReportExportPolicy(session);
+  const auditMetadata = {
+    maxRows: exportPolicy.maxRows,
+    profileApplied: Boolean(profile)
+  };
 
   try {
     await logOperationalExportAudit({
       session,
       reportId: "wastage-report",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      metadata: auditMetadata
     });
-    const reports = await listWastageReports(session, profile ?? undefined);
+    const reports = await listWastageReports(session, profile ?? undefined, {
+      maxRows: exportPolicy.maxRows
+    });
     const rows = [
       [
         "Wastage Number",
@@ -101,21 +110,26 @@ export async function GET(request: Request) {
       session,
       reportId: "wastage-report",
       eventType: "report.export_completed",
-      rowCount: reports.length
+      rowCount: reports.length,
+      metadata: auditMetadata
     });
 
     return csvExportResponse(rows, profile ? "wastage-exceptions.csv" : "wastage-reports.csv", {
       metadata: await buildReportCsvMetadata({
         session,
-        reportId: "wastage-report"
+        reportId: "wastage-report",
+        extra: [["Maximum Rows", exportPolicy.maxRows]]
       })
     });
   } catch (error) {
     await logOperationalExportFailure({
       session,
       reportId: "wastage-report",
-      error
+      error,
+      metadata: auditMetadata
     });
+    const response = exportErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

@@ -30,19 +30,20 @@ describe("supplier master-data controls", () => {
     expect(isIsoCalendarDate("07/01/2026")).toBe(false);
   });
 
-  test("supplier setup writes are admin scoped, transactional, and audited", () => {
+  test("supplier setup separates view, create, edit, and lifecycle authority while retaining audit controls", () => {
     const source = readFileSync(path.resolve(__dirname, "suppliers.ts"), "utf8");
 
-    expect(source).toContain("requirePermission(session, permissions.coreAdminister)");
-    expect(source).toContain(
-      "assertCanManageCompanyScope(session, session.context.companyId)"
-    );
+    expect(source).toContain("assertSupplierMasterView(session)");
+    expect(source).toContain("assertSupplierMasterCreate(session)");
+    expect(source).toContain("assertSupplierMasterEdit(session)");
+    expect(source).toContain("assertSupplierMasterManage(session)");
     expect(source).toContain("tenantId: session.context.tenantId");
     expect(source).toContain("companyId: session.context.companyId");
     expect(source).toContain("prisma.$transaction");
     expect(source).toContain("Prisma.PrismaClientKnownRequestError");
     expect(source).toContain('throw new Error("DUPLICATE_SUPPLIER_ITEM_LINK")');
     expect(source).toContain("export async function getSupplierCatalog");
+    expect(source).toContain("export async function getSupplierMasterRecord");
     expect(source).toContain("supplierCatalogInputSchema");
     expect(source).toContain("canViewSupplierConfidential");
     expect(source).toContain("permissions.supplierConfidentialView");
@@ -89,7 +90,7 @@ describe("supplier master-data controls", () => {
     expect(service).toContain("supplierListInputSchema");
     expect(service).toContain("totalSuppliers");
     expect(service).toContain('pageSize: z.number().int().min(10).max(100)');
-    expect(service).toContain("assertCanManageCompanyScope(session, session.context.companyId)");
+    expect(service).toContain("assertSupplierMasterView(session)");
     expect(page).toContain("supplierData.suppliersPage");
     expect(page).toContain("PaginationBar");
     expect(page).toContain("Search supplier code or name");
@@ -104,7 +105,7 @@ describe("supplier master-data controls", () => {
     expect(page).toContain("WorkspaceTabs");
     expect(page).toContain('label: "Overview"');
     expect(page).toContain('label: "Catalog"');
-    expect(page).toContain('label: "Accreditation"');
+    expect(page).toContain('label: "Accreditation & lifecycle"');
     expect(page).toContain('label: "Audit"');
     expect(page).toContain("/admin?tab=audit&entityType=Supplier&entityId=");
     expect(page).not.toContain("/admin/audit?entityType=Supplier");
@@ -148,6 +149,7 @@ describe("supplier master-data controls", () => {
 
   test("supplier register and catalog provide responsive parity without task overflow", () => {
     const page = readFileSync(path.resolve(__dirname, "../../app/(app)/suppliers/page.tsx"), "utf8");
+    const selection = readFileSync(path.resolve(__dirname, "../../components/SupplierRegisterSelection.tsx"), "utf8");
     const urlSheet = readFileSync(path.resolve(__dirname, "../../components/UrlOwnedTaskSheet.tsx"), "utf8");
     const taskSheet = readFileSync(path.resolve(__dirname, "../../components/TaskSheet.tsx"), "utf8");
 
@@ -158,7 +160,7 @@ describe("supplier master-data controls", () => {
     expect(page).toContain('data-testid="supplier-catalog-card"');
     expect(page).not.toContain('min-w-[1100px]');
     expect(page).not.toContain('className="overflow-x-auto"');
-    expect(page).toContain('Inactive link retained as read-only history.');
+    expect(page).toContain('Read-only catalog access.');
     expect(page).toContain('Inactive supplier retained as read-only history.');
     expect(page).toContain('No catalog links configured');
     expect(page).toContain('No catalog links match the current filters');
@@ -167,6 +169,24 @@ describe("supplier master-data controls", () => {
     expect(page).toContain('selectedSupplierCatalog.rangeEnd');
     expect(page).toContain('selectedSupplierCatalog.filteredCount');
     expect(page).toContain('selectedSupplierCatalog.totalPages');
+    expect(page).toContain('key={selectedSupplier.id}');
+    expect(page).toContain('draftStorageKey={`supplier-workspace:${session.user.id}:${selectedSupplier.id}`}');
+    expect(page).toContain('title="Supplier unavailable"');
+    expect(page).toContain("getSupplierMasterRecord(session, selectedSupplierId)");
+    expect(page).not.toContain('>View catalog<');
+    expect(page).not.toContain('>View supplier<');
+
+    expect(selection).toContain('destination.searchParams.set("supplier", selectedSupplierId)');
+    expect(selection).toContain('current === supplierId ? "" : supplierId');
+    expect(selection).toContain('disabled={!openDestination}');
+    expect(selection).toContain('method="get"');
+    expect(selection).toContain('aria-selected={selected}');
+    expect(selection).toContain('aria-pressed={selected}');
+    expect(selection).toContain('export function SupplierSelectableRow');
+    expect(selection).toContain('export function SupplierSelectableCard');
+    expect(selection).not.toContain('type="radio"');
+    expect(selection).not.toContain('Opening supplier');
+    expect(selection).toContain('Open supplier');
 
     expect(urlSheet).toContain('router.replace(returnHref, { scroll: false })');
     expect(urlSheet).toContain('data-focus-key');

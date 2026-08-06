@@ -9,6 +9,48 @@ export type PermissionPresentation = {
 };
 
 const permissionPresentations: Record<string, Omit<PermissionPresentation, "code">> = {
+  [permissions.supplierMasterView]: {
+    label: "View supplier master",
+    description: "View company-scoped suppliers and non-confidential catalog links.",
+    group: "Master Data",
+    sensitive: false,
+  },
+  [permissions.supplierMasterCreate]: {
+    label: "Create suppliers",
+    description: "Create company-scoped supplier master records with an audit reason.",
+    group: "Master Data",
+    sensitive: false,
+  },
+  [permissions.supplierMasterEdit]: {
+    label: "Edit supplier catalog",
+    description: "Maintain non-confidential supplier-item catalog links in an authorized company.",
+    group: "Master Data",
+    sensitive: false,
+  },
+  [permissions.supplierMasterManage]: {
+    label: "Manage supplier lifecycle",
+    description: "Change supplier accreditation or deactivate suppliers and catalog links with an audit reason.",
+    group: "Master Data",
+    sensitive: true,
+  },
+  [permissions.itemMasterView]: {
+    label: "View item master",
+    description: "View company-scoped items, categories, UOMs, and conversions.",
+    group: "Master Data",
+    sensitive: false,
+  },
+  [permissions.itemMasterCreate]: {
+    label: "Create item master records",
+    description: "Create company-scoped items, categories, UOMs, and conversions with an audit reason.",
+    group: "Master Data",
+    sensitive: false,
+  },
+  [permissions.itemMasterEdit]: {
+    label: "Edit item master records",
+    description: "Make permitted non-material item, category, UOM, and conversion corrections with an audit reason.",
+    group: "Master Data",
+    sensitive: false,
+  },
   [permissions.coreAdminister]: {
     label: "Administer core setup",
     description: "Manage users, roles, scopes, master setup, approval rules, and audit configuration.",
@@ -243,6 +285,13 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Stock Counts",
     sensitive: true
   },
+  [permissions.stockCountRecovery]: {
+    label: "Recover stock count lineage",
+    description:
+      "Request a protected immutable recount and, where allowed, void an approved unposted count-variance adjustment.",
+    group: "Stock Counts",
+    sensitive: true
+  },
   [permissions.wastageView]: {
     label: "View wastage",
     description: "View wastage reports and approvals.",
@@ -331,6 +380,24 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     label: "Cancel stock adjustments",
     description: "Cancel adjustment requests with reason and audit history.",
     group: "Stock Adjustments",
+    sensitive: true
+  },
+  [permissions.inventoryPilotConfigurationView]: {
+    label: "View inventory pilot configuration",
+    description: "View company-scoped inventory pilot configuration drafts, sealed revisions, and readiness evidence.",
+    group: "Inventory Pilot Configuration",
+    sensitive: false
+  },
+  [permissions.inventoryPilotConfigurationDraft]: {
+    label: "Draft inventory pilot configuration",
+    description: "Create, edit, abandon, and supersede company-scoped inventory pilot configuration drafts.",
+    group: "Inventory Pilot Configuration",
+    sensitive: true
+  },
+  [permissions.inventoryPilotConfigurationSeal]: {
+    label: "Seal inventory pilot configuration",
+    description: "Seal a ready inventory pilot configuration revision with fresh MFA and editor-sealer separation.",
+    group: "Inventory Pilot Configuration",
     sensitive: true
   },
   [permissions.openingInventoryView]: {

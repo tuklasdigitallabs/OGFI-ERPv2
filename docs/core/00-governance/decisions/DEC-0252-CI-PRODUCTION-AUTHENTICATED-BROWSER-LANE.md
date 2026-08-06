@@ -4,7 +4,7 @@
 
 - Decision ID: `DEC-0252`
 - Title: CI Production-Authenticated Browser Lane
-- Status: `Confirmed — implementation and exact-SHA evidence pending`
+- Status: `Partially superseded by DEC-0274 — evidence requirements retained; CI implementation topology replaced`
 - Date: 2026-07-29
 - Decision owner: Shared Production Foundation / CI verification
 - Decision Chair: Parent agent
@@ -198,3 +198,10 @@ This implements the previously pending CI-harness direction in `DEC-0044`; it
 does not supersede its split-gate boundary. It does not supersede or close
 DEC-0248, DEC-0249, or DEC-0250 hosted deployment, public-edge,
 served-identity, rollback, or recovery obligations.
+
+`DEC-0274` supersedes only this record's CI implementation topology: host
+networking and separately host-bound Caddy/application listeners are replaced
+by an Nginx-owned shared network namespace with Nginx as the sole published
+entrypoint. The exact-SHA, production-authenticated, two-proxy, disposable-data,
+real-TLS, evidence-classification, and separate-gate requirements in this
+record remain in force. `DEC-0274` does not change the `DEC-0250` VPS topology.

@@ -36,6 +36,10 @@ EXPOSE 3000
 CMD ["pnpm", "--filter", "@ogfi/web", "start"]
 
 FROM base AS release-runner
+ARG RELEASE_COMMIT_SHA
+ARG RELEASE_ARTIFACT_SHA256
+LABEL org.opencontainers.image.revision="${RELEASE_COMMIT_SHA}" \
+      io.ogfi.release-artifact.sha256="${RELEASE_ARTIFACT_SHA256}"
 ENV NODE_ENV=production
 RUN apk add --no-cache util-linux
 RUN addgroup -S ogfi && adduser -S ogfi -G ogfi

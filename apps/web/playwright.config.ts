@@ -4,6 +4,15 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: "../../tests/e2e",
+  // The production-authenticated suite has a separate CI-only config with
+  // generated TLS, disposable identities, and MFA fixtures. Discovering it in
+  // the ordinary dev-auth lane produces a false missing-fixture failure and
+  // must never be treated as production-auth evidence.
+  testIgnore: [
+    "production-authenticated.spec.ts",
+    "inventory-pilot-setup.production-authenticated.spec.ts",
+    "inventory-approval-worklist.production-authenticated.spec.ts",
+  ],
   timeout: 120_000,
   expect: { timeout: 15_000 },
   forbidOnly: isCi,

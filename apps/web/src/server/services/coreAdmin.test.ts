@@ -113,6 +113,29 @@ describe("core administration audit search wiring", () => {
     expect(adminPageSource).not.toContain("const workspaces = [");
   });
 
+  test("Organization Scope uses a server-authorized selected-record action surface", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const adminPageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8");
+    const selectionPanelSource = readFileSync(path.resolve(__dirname, "../../components/OrganizationScopeSelectionPanel.tsx"), "utf8");
+
+    expect(serviceSource).toContain("async function getCoreAdminOrganizationRecordDetail");
+    expect(serviceSource).toContain("organizationRecordDetail");
+    expect(serviceSource).toContain("await assertCanManageCompanyScope(session, session.context.companyId);");
+    expect(serviceSource).toContain("tenantId: session.context.tenantId, companyId: session.context.companyId");
+    expect(adminPageSource).toContain('getSearchParam(params, "organizationRecord")');
+    expect(adminPageSource).toContain("<OrganizationScopeSelectionPanel");
+    expect(adminPageSource).toContain("Open company details");
+    expect(adminPageSource).toContain("Open brand details");
+    expect(adminPageSource).toContain("Open department details");
+    expect(adminPageSource).toContain("Open location details");
+    expect(adminPageSource).not.toContain('triggerLabel="Edit Company"');
+    expect(adminPageSource).not.toContain('triggerLabel="Edit Brand"');
+    expect(adminPageSource).not.toContain('triggerLabel="Edit Department"');
+    expect(adminPageSource).not.toContain('triggerLabel="Edit Location"');
+    expect(selectionPanelSource).toContain("Selected record unavailable");
+    expect(selectionPanelSource).toContain("View audit history");
+  });
+
   test("administration reads enforce company authority and non-enumerating target checks", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const companyCreationSource = serviceSource.slice(

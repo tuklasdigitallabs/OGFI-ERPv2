@@ -255,14 +255,14 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               {canExportTransfers && profile ? (
                 <ButtonLink
                   href={`/transfers/export?dashboard=${profile}`}
-                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                  className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
                 </ButtonLink>
               ) : canExportTransfers ? (
                 <ButtonLink
                   href="/transfers/export"
-                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                  className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
                 </ButtonLink>
@@ -340,7 +340,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                           type="hidden"
                           value={`ui:transfer-approval:${randomUUID()}`}
                         />
-                        <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                        <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                           {transfer.status === "RETURNED" ? "Resubmit Request" : "Submit Request"}
                         </button>
                       </form>

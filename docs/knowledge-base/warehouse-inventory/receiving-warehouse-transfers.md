@@ -3,7 +3,7 @@
 **Audience / required role:** Branch, warehouse, or destination-location user with `inventory.transfer.receive`  
 **Applies to:** Current ERP header location as the transfer destination  
 **Related phase/module:** Phase I / Inventory Transfers  
-**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow (2026-07-30)
+**Last verified against:** `inventory-workflow.md`, `transfers-ui-spec.md`, and implemented transfer receipt/reversal flow (2026-08-02)
 
 ## Purpose
 
@@ -33,7 +33,9 @@ Use this article to confirm stock received from a dispatched transfer. Only acce
 8. Add an optional receiving note.
 9. Select `Post Receipt`.
 
-The receipt opens in a workspace-sized task sheet with an independently scrolling body, persistent transfer/source/destination context, and a touch-friendly `Post Receipt` action at the end of the form. Quantity and evidence controls remain touch-friendly on mobile, and the sheet prevents a second submission while the receipt is posting. If all dispatched quantities are already accounted for, the detail page shows that no receivable lines remain instead of opening an unusable form.
+The receipt opens in a workspace-sized task sheet with an independently scrolling body, persistent transfer/source/destination context, and a touch-friendly `Post Receipt` action at the end of the form. After selection, the button shows `Posting Receipt…` and prevents a second submission while the receipt is posting. Quantity and evidence controls remain touch-friendly on mobile. If all dispatched quantities are already accounted for, the detail page shows that no receivable lines remain instead of opening an unusable form.
+
+After a successful post, the application navigates back to the detail surface and reloads the authoritative transfer status, posted receipt event, quantities, and audit history. Do not rely on the button state alone as proof that stock was posted; confirm the `RECEIVED`, `PARTIALLY_RECEIVED`, or `DISPUTED` status and the receipt event shown on the detail page.
 
 The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock. A scope conflict tells you to refresh the transfer; a retry-key conflict tells you to start a new receipt attempt; and an in-progress response tells you to wait for the existing result before retrying.
 
@@ -68,6 +70,7 @@ Reversal writes linked `REVERSAL` movements for accepted quantity, updates trans
 - Evidence reference can be a photo filename, document ID, incident reference, or other approved operational reference. Binary upload/download remains part of the shared attachment-service roadmap.
 - Reversal is the correction path for posted receipt events. Do not edit posted inventory movements.
 - Posting and reversal recheck the transfer, ordered lines, inventory destinations, permission, and privileged MFA inside the transaction. If another action changes the locked facts first, refresh the transfer and retry from the current detail page.
+- The original dispatcher cannot reverse a receipt, and the original receiver cannot reverse the same receipt. Reversal is a separate controlled action.
 
 ## Related articles
 

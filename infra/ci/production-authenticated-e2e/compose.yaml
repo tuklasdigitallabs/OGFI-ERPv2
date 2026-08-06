@@ -1,29 +1,12 @@
 name: ogfi-production-auth-e2e
 
 services:
-  caddy:
-    build:
-      context: ../../..
-      dockerfile: infra/caddy/Dockerfile
-      args:
-        CADDY_BUILDER_IMAGE: docker.io/library/caddy:2.11.4-builder-alpine@sha256:8e89605351333ad2cc2f3bcc95275a2ccc427f88914050e86a5fde0fd77a63c4
-        CADDY_RUNTIME_IMAGE: docker.io/library/caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
-    network_mode: host
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    volumes:
-      - type: bind
-        source: ./Caddyfile
-        target: /etc/caddy/Caddyfile
-        read_only: true
-    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
-
   nginx:
     image: docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
-    network_mode: host
+    ports:
+      - "127.0.0.1:3443:3443"
+    networks:
+      - database
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -47,8 +30,78 @@ services:
         target: ogfi_production_auth_e2e_tls_key
         mode: 0400
 
+  caddy:
+    image: ${OGFI_PRODUCTION_AUTH_E2E_CADDY_IMAGE:?Set the immutable reviewed Caddy image ID}
+    pull_policy: never
+    network_mode: service:nginx
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+
+  app:
+    image: ${OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE:?Set the immutable exact-candidate image ID}
+    pull_policy: never
+    network_mode: service:nginx
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV:?Set the admitted production or hardened-UAT environment}
+      CI: "true"
+      APP_URL: https://127.0.0.1:3443
+      AUTH_MODE: local
+      AUTH_TRUSTED_PROXY_MODE: caddy_single_hop
+      AUTH_HARDENED_UAT_RUNTIME_ENABLED: ${AUTH_HARDENED_UAT_RUNTIME_ENABLED:-false}
+      BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: ${BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED:-false}
+      APPROVAL_ROUTING_V1_ENABLED: ${APPROVAL_ROUTING_V1_ENABLED:-false}
+      DATABASE_URL: ${OGFI_PRODUCTION_AUTH_E2E_APP_DATABASE_URL:?Set the runtime-role private-network URL}
+      DIRECT_DATABASE_URL: ""
+      AUTHORIZATION_DATABASE_INTEGRATION: ${AUTHORIZATION_DATABASE_INTEGRATION:?Set the disposable integration marker}
+      AUTH_DATABASE_INTEGRATION: ${AUTH_DATABASE_INTEGRATION:?Set the disposable authentication marker}
+      AUTHORIZATION_TEST_DATABASE: ${AUTHORIZATION_TEST_DATABASE:?Set the disposable database name}
+      AUTHORIZATION_TEST_DATABASE_HOST: ${AUTHORIZATION_TEST_DATABASE_HOST:?Set the attested database host}
+      AUTHORIZATION_TEST_DATABASE_PORT: ${AUTHORIZATION_TEST_DATABASE_PORT:?Set the attested database port}
+      AUTHORIZATION_TEST_RUN_ID: ${AUTHORIZATION_TEST_RUN_ID:?Set the disposable run ID}
+      AUTHORIZATION_TEST_RUNTIME_ROLE: ${AUTHORIZATION_TEST_RUNTIME_ROLE:?Set the runtime role}
+      AUTHORIZATION_TEST_DATABASE_NONCE_SHA256: ${AUTHORIZATION_TEST_DATABASE_NONCE_SHA256:?Set the database nonce digest}
+      OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME: ${OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME:?Set the expected database name}
+      OGFI_DISPOSABLE_DATABASE_RUN_ID: ${OGFI_DISPOSABLE_DATABASE_RUN_ID:?Set the expected run ID}
+      OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: ${OGFI_DISPOSABLE_DATABASE_NONCE_SHA256:?Set the expected nonce digest}
+      AUTH_SECRET: ${AUTH_SECRET:?Set a per-run authentication secret}
+      AUTH_THROTTLE_HMAC_KEY: ${AUTH_THROTTLE_HMAC_KEY:?Set a distinct per-run throttle secret}
+      AUTH_THROTTLE_KEY_VERSION: ${AUTH_THROTTLE_KEY_VERSION:-1}
+      AUTH_ARGON2_MAX_CONCURRENCY: ${AUTH_ARGON2_MAX_CONCURRENCY:-2}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set a per-run encryption key}
+      APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+      OGFI_PRODUCTION_AUTH_E2E_PROBE_TOKEN: ${OGFI_PRODUCTION_AUTH_E2E_PROBE_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURITY: ${SMTP_SECURITY:-}
+    command: ["sh", "-lc", "cd /app/apps/web && exec ./node_modules/.bin/next start -H 127.0.0.1 -p 3102"]
+
 secrets:
   ogfi_production_auth_e2e_tls_cert:
     file: ${OGFI_PRODUCTION_AUTH_E2E_TLS_CERT_FILE:?Set the absolute per-run TLS certificate path}
   ogfi_production_auth_e2e_tls_key:
     file: ${OGFI_PRODUCTION_AUTH_E2E_TLS_KEY_FILE:?Set the absolute per-run TLS key path}
+
+networks:
+  database:
+    external: true
+    name: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_NETWORK:?Set the run-local private database network}

@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { MapPin, ShieldCheck } from "lucide-react";
 import { Badge, ButtonLink, PaginationBar, Panel, WorkspaceTabs } from "@ogfi/ui";
-import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
+import { ActionFeedbackToast } from "@/components/ActionFeedbackToast";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { OrganizationEditForm } from "@/components/OrganizationEditForm";
+import { OrganizationScopeSelectionPanel } from "@/components/OrganizationScopeSelectionPanel";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -14,10 +16,6 @@ import {
   permissions
 } from "@/server/services/authorization";
 import {
-  createCoreAdminBrand,
-  createCoreAdminCompany,
-  createCoreAdminDepartment,
-  createCoreAdminLocation,
   createCoreAdminRole,
   createCoreAdminUser,
   assertCanManageCompanyScope,
@@ -75,58 +73,6 @@ async function createRoleAction(formData: FormData) {
   }
   revalidatePath("/admin");
   redirect("/admin?tab=roles");
-}
-
-async function createCompanyAction(formData: FormData) {
-  "use server";
-  const returnPath = "/admin?tab=organization&organizationSection=companies";
-
-  try {
-    await createCoreAdminCompany(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(returnPath, error));
-  }
-  revalidatePath("/admin");
-  redirect(returnPath);
-}
-
-async function createBrandAction(formData: FormData) {
-  "use server";
-  const returnPath = "/admin?tab=organization&organizationSection=brands";
-
-  try {
-    await createCoreAdminBrand(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(returnPath, error));
-  }
-  revalidatePath("/admin");
-  redirect(returnPath);
-}
-
-async function createDepartmentAction(formData: FormData) {
-  "use server";
-  const returnPath = "/admin?tab=organization&organizationSection=departments";
-
-  try {
-    await createCoreAdminDepartment(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(returnPath, error));
-  }
-  revalidatePath("/admin");
-  redirect(returnPath);
-}
-
-async function createLocationAction(formData: FormData) {
-  "use server";
-  const returnPath = "/admin?tab=organization&organizationSection=locations";
-
-  try {
-    await createCoreAdminLocation(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(returnPath, error));
-  }
-  revalidatePath("/admin");
-  redirect(returnPath);
 }
 
 export default async function CoreAdministrationPage({
@@ -200,6 +146,7 @@ export default async function CoreAdministrationPage({
   const organizationSection: CoreAdminOrganizationSection = organizationSectionValue === "brands" || organizationSectionValue === "departments" || organizationSectionValue === "locations"
     ? organizationSectionValue
     : "companies";
+  const organizationRecordId = getSearchParam(params, "organizationRecord");
   const userQuery = getSearchParam(params, "userQuery")?.trim() ?? "";
   const userStatus = getSearchParam(params, "userStatus");
   const userPage = Number.parseInt(getSearchParam(params, "userPage") ?? "1", 10);
@@ -357,7 +304,7 @@ export default async function CoreAdministrationPage({
       ...(approvalRuleStatus && ["ACTIVE", "INACTIVE"].includes(approvalRuleStatus)
         ? { status: approvalRuleStatus as "ACTIVE" | "INACTIVE" }
         : {})
-    }, { activeTab, organizationSection }),
+    }, { activeTab, organizationSection, ...(organizationRecordId ? { organizationRecordId } : {}) }),
     activeTab === "users" || (activeTab === "organization" && organizationSection === "locations") ? listCoreAdminBrandOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
     activeTab === "users" ? listCoreAdminLocationOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
     activeTab === "audit" && auditEntityIdIsValid ? listCoreAdminAuditEventPage(session, {
@@ -376,6 +323,33 @@ export default async function CoreAdministrationPage({
   const activeUsers = overview.userPage.activeItems;
   const activeRules = overview.approvalRulePage.activeItems;
   const highAccessRoleCount = overview.rolePage.highAccessItems;
+  const selectedOrganizationRecord = overview.organizationRecordDetail;
+  const organizationSelectionParams = new URLSearchParams({ tab: "organization", organizationSection });
+  if (organizationSection === "brands") {
+    organizationSelectionParams.set("brandPage", String(overview.brandPage.page));
+    organizationSelectionParams.set("brandPageSize", String(overview.brandPage.pageSize));
+    if (brandQuery) organizationSelectionParams.set("brandQuery", brandQuery);
+    if (brandStatus) organizationSelectionParams.set("brandStatus", brandStatus);
+  }
+  if (organizationSection === "departments") {
+    organizationSelectionParams.set("departmentPage", String(overview.departmentPage.page));
+    organizationSelectionParams.set("departmentPageSize", String(overview.departmentPage.pageSize));
+    if (departmentQuery) organizationSelectionParams.set("departmentQuery", departmentQuery);
+    if (departmentStatus) organizationSelectionParams.set("departmentStatus", departmentStatus);
+  }
+  if (organizationSection === "locations") {
+    organizationSelectionParams.set("locationPage", String(overview.locationPage.page));
+    organizationSelectionParams.set("locationPageSize", String(overview.locationPage.pageSize));
+    if (locationQuery) organizationSelectionParams.set("locationQuery", locationQuery);
+    if (locationStatus) organizationSelectionParams.set("locationStatus", locationStatus);
+    if (locationType) organizationSelectionParams.set("locationType", locationType);
+  }
+  const organizationCloseHref = `/admin?${organizationSelectionParams.toString()}`;
+  const organizationSelectHref = (recordId: string) => {
+    const selection = new URLSearchParams(organizationSelectionParams);
+    selection.set("organizationRecord", recordId);
+    return `/admin?${selection.toString()}`;
+  };
 
   return (
     <AppShell
@@ -384,7 +358,7 @@ export default async function CoreAdministrationPage({
       subtitle="Control center for users, roles, scope, approvals, and audit history"
       activeNav="admin"
     >
-      <ActionFeedbackBanner feedback={actionFeedback} />
+      <ActionFeedbackToast feedback={actionFeedback} />
       <section className="mb-5 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[var(--shadow-surface)]">
         <div className="grid gap-5 bg-gradient-to-br from-blue-50 via-white to-slate-50 p-5 lg:grid-cols-[1.25fr_0.75fr] lg:p-6">
           <div>
@@ -745,7 +719,7 @@ export default async function CoreAdministrationPage({
             <div className="flex flex-wrap items-center gap-2">
               <MapPin aria-hidden="true" className="h-5 w-5 text-blue-600" />
               {organizationSection === "companies" ? <EntryModal title="Create Company" triggerLabel="Create Company">
-                <form action={createCompanyAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                <OrganizationEditForm endpoint="/api/admin/organization/create/company" submitLabel="Create Company" pendingLabel="Creating Company…" className="md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company code
                     <input className="rounded-md border border-slate-300 px-3 py-2" name="code" placeholder="e.g. OGFI" required />
@@ -777,13 +751,10 @@ export default async function CoreAdministrationPage({
                   <p className="text-sm text-slate-500 md:col-span-2">
                     The current admin receives Manage scope for this company so setup can continue.
                   </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create Company
-                  </button>
-                </form>
+                </OrganizationEditForm>
               </EntryModal> : null}
               {organizationSection === "brands" ? <EntryModal title="Create Brand" triggerLabel="Create Brand">
-                <form action={createBrandAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                <OrganizationEditForm endpoint="/api/admin/organization/create/brand" submitLabel="Create Brand" pendingLabel="Creating Brand…" className="md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
                     <select className="rounded-md border border-slate-300 px-3 py-2" name="companyId" required>
@@ -809,13 +780,10 @@ export default async function CoreAdministrationPage({
                   <p className="text-sm text-slate-500 md:col-span-2">
                     Create the restaurant or operating brand before creating branch locations under it.
                   </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create Brand
-                  </button>
-                </form>
+                </OrganizationEditForm>
               </EntryModal> : null}
               {organizationSection === "departments" ? <EntryModal title="Create Department" triggerLabel="Create Department">
-                <form action={createDepartmentAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                <OrganizationEditForm endpoint="/api/admin/organization/create/department" submitLabel="Create Department" pendingLabel="Creating Department…" className="md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
                     <select className="rounded-md border border-slate-300 px-3 py-2" name="companyId" required>
@@ -841,13 +809,10 @@ export default async function CoreAdministrationPage({
                   <p className="text-sm text-slate-500 md:col-span-2">
                     Departments are company-scoped owners for budgets, cost centers, projects, workforce assignments, and finance requests.
                   </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create Department
-                  </button>
-                </form>
+                </OrganizationEditForm>
               </EntryModal> : null}
               {organizationSection === "locations" ? <EntryModal title="Create Branch / Location" triggerLabel="Create Branch / Location">
-                <form action={createLocationAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                <OrganizationEditForm endpoint="/api/admin/organization/create/location" submitLabel="Create Branch / Location" pendingLabel="Creating Location…" className="md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
                     <select className="rounded-md border border-slate-300 px-3 py-2" name="companyId" required>
@@ -909,10 +874,7 @@ export default async function CoreAdministrationPage({
                   <p className="text-sm text-slate-500 md:col-span-2">
                     Branch locations require a brand. Warehouses and head office locations can remain company-wide.
                   </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create Branch / Location
-                  </button>
-                </form>
+                </OrganizationEditForm>
               </EntryModal> : null}
             </div>
           </div>
@@ -924,7 +886,12 @@ export default async function CoreAdministrationPage({
               { label: "Locations", href: "/admin?tab=organization&organizationSection=locations", active: organizationSection === "locations" }
             ]}
           />
-          <div className="grid gap-4 xl:grid-cols-4">
+          <OrganizationScopeSelectionPanel
+            record={selectedOrganizationRecord}
+            requestedRecordId={organizationRecordId}
+            closeHref={organizationCloseHref}
+          />
+          <div className="grid gap-4">
             {organizationSection === "companies" ? <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Companies</h3>
@@ -943,13 +910,7 @@ export default async function CoreAdministrationPage({
                       {company.status}
                     </Badge>
                   </div>
-                  <ButtonLink
-                    href={`/admin/companies/${company.id}`}
-                    tone="ghost"
-                    className="ogfi-chip mt-3"
-                  >
-                    View Company
-                  </ButtonLink>
+                  <ButtonLink href={organizationSelectHref(company.id)} tone="ghost" className="mt-3">Open company details</ButtonLink>
                 </div>
               ))}
             </section> : null}
@@ -959,17 +920,23 @@ export default async function CoreAdministrationPage({
                 <h3 className="font-bold text-slate-950">Brands</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
-              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
                 <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="brands" />
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="brandQuery" defaultValue={brandQuery} placeholder="Search brand name or code" />
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="brandStatus" defaultValue={brandStatus ?? ""}>
+                <label className="min-w-0">
+                  <span className="sr-only">Search brand name or code</span>
+                  <input className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2" list="organization-brand-search-options" name="brandQuery" defaultValue={brandQuery} placeholder="Search brand name or code" />
+                  <datalist id="organization-brand-search-options">
+                    {overview.brands.map((brand) => <option key={brand.id} value={`${brand.name} / ${brand.code}`} />)}
+                  </datalist>
+                </label>
+                <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="brandStatus" defaultValue={brandStatus ?? ""}>
                   <option value="">All statuses</option>
                   <option value="ACTIVE">Active</option>
                   <option value="INACTIVE">Inactive</option>
                   <option value="ARCHIVED">Archived</option>
                 </select>
-                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
-                <ButtonLink href="/admin?tab=organization&organizationSection=brands" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
+                <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
+                <ButtonLink href="/admin?tab=organization&organizationSection=brands" tone="ghost" className="min-h-11 md:w-fit">Clear</ButtonLink>
               </form>
               {overview.brands.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
@@ -992,6 +959,7 @@ export default async function CoreAdministrationPage({
                         {brand.status}
                       </Badge>
                     </div>
+                    <ButtonLink href={organizationSelectHref(brand.id)} tone="ghost" className="mt-3">Open brand details</ButtonLink>
                   </div>
                 ))
               )}
@@ -1018,16 +986,22 @@ export default async function CoreAdministrationPage({
                 <h3 className="font-bold text-slate-950">Departments</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
-              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="departments" />
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="departmentQuery" defaultValue={departmentQuery} placeholder="Search name or code" />
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="departmentStatus" defaultValue={departmentStatus ?? ""}>
+                <label className="min-w-0">
+                  <span className="sr-only">Search department name or code</span>
+                  <input className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2" list="organization-department-search-options" name="departmentQuery" defaultValue={departmentQuery} placeholder="Search department name or code" />
+                  <datalist id="organization-department-search-options">
+                    {overview.departments.map((department) => <option key={department.id} value={`${department.name} / ${department.code}`} />)}
+                  </datalist>
+                </label>
+                <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="departmentStatus" defaultValue={departmentStatus ?? ""}>
                   <option value="">All statuses</option>
                   <option value="ACTIVE">Active</option>
                   <option value="INACTIVE">Inactive</option>
                   <option value="ARCHIVED">Archived</option>
                 </select>
-                <button type="submit" className="rounded-md bg-blue-600 px-3 py-2 font-semibold text-white">Apply filters</button>
+                <button type="submit" className="min-h-11 rounded-md bg-blue-600 px-3 py-2 font-semibold text-white">Apply filters</button>
               </form>
               {overview.departments.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
@@ -1061,6 +1035,7 @@ export default async function CoreAdministrationPage({
                         {department.costCenterCount} cost center{department.costCenterCount === 1 ? "" : "s"}
                       </Badge>
                     </div>
+                    <ButtonLink href={organizationSelectHref(department.id)} tone="ghost" className="mt-3">Open department details</ButtonLink>
                   </div>
                 ))
               )}
@@ -1087,21 +1062,27 @@ export default async function CoreAdministrationPage({
                 <h3 className="font-bold text-slate-950">Locations</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
-              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="locations" />
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="locationQuery" defaultValue={locationQuery} placeholder="Search name, code, or brand" />
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="locationStatus" defaultValue={locationStatus ?? ""}>
+                <label className="min-w-0">
+                  <span className="sr-only">Search location name, code, or brand</span>
+                  <input className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2" list="organization-location-search-options" name="locationQuery" defaultValue={locationQuery} placeholder="Search location name, code, or brand" />
+                  <datalist id="organization-location-search-options">
+                    {overview.locations.map((location) => <option key={location.id} value={`${location.name} / ${location.code}`} />)}
+                  </datalist>
+                </label>
+                <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="locationStatus" defaultValue={locationStatus ?? ""}>
                   <option value="">All statuses</option>
                   <option value="ACTIVE">Active</option>
                   <option value="INACTIVE">Inactive</option>
                   <option value="ARCHIVED">Archived</option>
                 </select>
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="locationType" defaultValue={locationType ?? ""}>
+                <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="locationType" defaultValue={locationType ?? ""}>
                   <option value="">All types</option>
                   {['BRANCH','WAREHOUSE','COMMISSARY','CENTRAL_KITCHEN','HEAD_OFFICE','PROJECT_SITE','TEMPORARY_SITE'].map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
                 </select>
-                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
-                <ButtonLink href="/admin?tab=organization&organizationSection=locations" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
+                <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
+                <ButtonLink href="/admin?tab=organization&organizationSection=locations" tone="ghost" className="min-h-11 md:w-fit">Clear</ButtonLink>
               </form>
               {overview.locations.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
@@ -1120,13 +1101,7 @@ export default async function CoreAdministrationPage({
                     </div>
                     <Badge tone="info">{location.type}</Badge>
                   </div>
-                  <ButtonLink
-                    href={`/admin/locations/${location.id}`}
-                    tone="ghost"
-                    className="ogfi-chip mt-3"
-                  >
-                    View Location
-                  </ButtonLink>
+                  <ButtonLink href={organizationSelectHref(location.id)} tone="ghost" className="mt-3">Open location details</ButtonLink>
                 </div>
               ))}
               <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">

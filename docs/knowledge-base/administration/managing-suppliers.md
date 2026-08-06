@@ -1,6 +1,6 @@
 # Managing Suppliers and Supplier Catalog Links
 
-**Who can do this:** In the current build, a Core Administrator with active `MANAGE` scope for the selected company can use the Supplier workspace. Viewing or entering confidential Supplier commercial values also requires `Supplier confidential access`. That additional permission does not grant access to Suppliers by itself.
+**Who can do this:** A user needs the Supplier permission for the task and active scope in the selected company. `Supplier view` opens the register and selected Supplier workspace; `Supplier create`, `Supplier edit`, and `Supplier manage` separately control creation, catalog maintenance, and accreditation/deactivation. Core Administrators retain equivalent authority. Viewing or entering confidential Supplier commercial values also requires `Supplier confidential access`; that additional permission does not grant Supplier access by itself.
 
 ## Purpose
 
@@ -9,7 +9,7 @@ Use the company-scoped Supplier Register to find Suppliers, review a selected Su
 ## Prerequisites
 
 - Select the company whose Supplier records you are authorized to manage.
-- Confirm that you have the current Supplier workspace authority and active company `MANAGE` scope.
+- Confirm that you have the Supplier permission needed for the intended task and active scope in the selected company. Creating, editing catalog links, and managing lifecycle are separate permissions.
 - For payment terms or a Supplier Item reference unit price and effective date, also confirm that `Supplier confidential access` is explicitly assigned.
 - Prepare the required reason for a create, accreditation, or deactivation action. Accreditation evidence is optional in the current screen.
 - For a new Supplier Item link, identify the active Supplier, Item, and purchase UOM. The exact combination cannot already be linked.
@@ -24,10 +24,11 @@ Open **Suppliers**. The selected company in your session is the company boundary
 
 1. In **Supplier Register**, search by Supplier code or name, or apply lifecycle and accreditation filters.
 2. Use the page controls to move through the matching records. The displayed total and page range reflect the applied server filters.
-3. Select a Supplier, then use **Overview**, **Catalog**, **Accreditation**, or **Audit** for the task you need.
-4. In **Catalog**, search by Item, Supplier SKU, or Supplier item name. You can also filter by link status or Item Category.
-5. Page through the catalog or the Category options as needed. The selected section, filters, pages, and action context are stored in the page URL and remain available when you close a focused task.
-6. On a desktop-sized screen, review the catalog table. On a smaller screen, review the responsive cards. Both presentations represent the same filtered page of Supplier Item links; mobile use does not require horizontal table scrolling.
+3. Click anywhere on a Supplier row or card to select it. Click the same record again to clear the selection, or click another record to change it. **Open supplier** remains unavailable until one Supplier is selected.
+4. Choose **Open supplier**. The selected Supplier opens in a focused workspace overlay above the register; use **Overview**, **Catalog**, **Accreditation & lifecycle**, or **Audit** for the task you need. Use **Close supplier** when finished to return to the preserved register filters and page.
+5. In **Catalog**, search by Item, Supplier SKU, or Supplier item name. You can also filter by link status or Item Category.
+6. Page through the catalog or the Category options as needed. The selected section, filters, pages, and action context are stored in the page URL and remain available when you close a focused task.
+7. On a desktop-sized screen, review the catalog table. On a smaller screen, review the responsive cards. Both presentations represent the same filtered page of Supplier Item links; mobile use does not require horizontal table scrolling.
 
 **Expected result:** You see only Suppliers and links in the selected company scope. An out-of-range page is returned to the last valid page. A true empty catalog is distinguished from a filter with no matches.
 

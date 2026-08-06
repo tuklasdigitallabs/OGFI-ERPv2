@@ -23,7 +23,8 @@ import {
   listInventoryTransfersDashboardProfilePage,
   resolveTransferDashboardProfile,
   transferDashboardProfileHref,
-  transferDashboardProfileWhere
+  transferDashboardProfileWhere,
+  TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_ENABLED
 } from "./transfers";
 
 const mockPrisma = vi.hoisted(() => ({
@@ -58,6 +59,13 @@ describe("inventory transfer foundation rules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+  });
+
+  test("keeps discrepancy settlement fail-closed until finality policy is confirmed", () => {
+    expect(TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_ENABLED).toBe(false);
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const settle = source.slice(source.indexOf("export async function settleInventoryTransferDiscrepancy"));
+    expect(settle).toContain("TRANSFER_DISCREPANCY_SETTLEMENT_POLICY_UNCONFIRMED");
   });
 
   test("read gate allows every transfer action permission", () => {
@@ -323,6 +331,11 @@ describe("inventory transfer foundation rules", () => {
     expect(dispatch).toContain('sourceDocumentType: "InventoryTransfer"');
     expect(dispatch).toContain("TRANSFER_LINE_DISPATCH_STATE_CONFLICT");
     expect(dispatch).toContain("TRANSFER_DISPATCH_STATE_CONFLICT");
+    expect(dispatch).toContain("assertFreshTransferReceiptAuthority");
+    expect(dispatch).toContain('action: "inventory_transfer.dispatch"');
+    expect(dispatch).toContain("assertPrivilegedMfaForAction");
+    expect(dispatch).toContain('locationId: true');
+    expect(dispatch).toContain("TRANSFER_DISPATCH_SCOPE_CONFLICT");
   });
 
   test("dispatch and receipt deny every historical transfer approver before custody mutation", () => {
@@ -483,6 +496,8 @@ describe("inventory transfer foundation rules", () => {
     expect(submit.indexOf("if (existingIntent)")).toBeLessThan(
       submit.indexOf('lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED"')
     );
+    expect(submit).toContain("priorSubmissionIntent");
+    expect(submit).toContain('lockedTransfer.status === "PENDING_APPROVAL"');
     expect(submit.indexOf('lockedTransfer.status !== "DRAFT" && lockedTransfer.status !== "RETURNED"')).toBeLessThan(
       submit.indexOf("assertTransferLocationsDistinct")
     );
@@ -823,7 +838,9 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain('eventType: "inventory_transfer.discrepancy_settled"');
     expect(service).toContain("Evidence Reference");
     expect(route).toContain("resolveTransferDashboardProfile");
-    expect(route).toContain("buildInventoryTransferExportRows(session, profile ?? undefined)");
+    expect(route).toContain("buildInventoryTransferExportRows(session, profile ?? undefined, {");
+    expect(route).toContain("maxRows: exportPolicy.maxRows");
+    expect(route).toContain("exportErrorResponse(error)");
     expect(route).toContain("TRANSFER_DASHBOARD_PROFILE_UNSUPPORTED");
     expect(route).not.toContain("postInventoryMovementInTransaction");
     expect(route).not.toContain("inventoryTransfer.update");
@@ -1014,37 +1031,38 @@ describe("inventory transfer foundation rules", () => {
       path.resolve(__dirname, "../../app/(app)/transfers/[id]/page.tsx"),
       "utf8"
     );
+    const receiptSurface = readFileSync(
+      path.resolve(__dirname, "../../components/TransferReceiptTaskSheet.tsx"),
+      "utf8",
+    );
     expect(service).toContain('idempotencyKey: z.string().trim().min(16).max(200)');
-    expect(detailPage).toContain('name="idempotencyKey"');
     expect(detailPage).toContain("ui:transfer-receipt:");
-    expect(detailPage).toContain('import { TaskSheet } from "@/components/TaskSheet";');
-    expect(detailPage).toContain('size="workspace"');
-    expect(detailPage).toContain('bodyScroll="auto"');
-    expect(detailPage).toContain('key={`receive-transfer-${transfer.status}-${transfer.receipts.length}');
-    expect(detailPage).toContain('id={`transfer-receipt-form-${transfer.id}`}');
-    expect(detailPage).toContain('<PendingActionButton\n                    label="Post Receipt"');
-    expect(detailPage).toContain('pendingLabel="Posting Receipt…"');
+    expect(receiptSurface).toContain('name="idempotencyKey"');
+    expect(receiptSurface).toContain('size="workspace"');
+    expect(receiptSurface).toContain('bodyScroll="auto"');
+    expect(receiptSurface).toContain('label="Post Receipt"');
+    expect(receiptSurface).toContain('pendingLabel="Posting Receipt…"');
     expect(detailPage).toContain("No receivable lines remain.");
-    expect(detailPage).toContain("min-h-11");
-    expect(detailPage).toContain("grid-cols-2 gap-3 rounded-md border");
+    expect(receiptSurface).toContain("min-h-11");
+    expect(receiptSurface).toContain("grid-cols-2 gap-3 rounded-md border");
     expect(service).toContain('const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ?? 0;');
     expect(service).toContain('authoritativeReceipt.receivedByUserId === session.user.id');
     expect(service).toContain('line.inventoryTransferLine.inventoryTransferId !== transfer.id');
     expect(service).toContain('lockedOriginalMovements.length !== new Set(originalMovementIdsToLock).size');
-    expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
+    expect(receiptSurface).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
     expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });
 
   test("reversal action keeps retained-history warning and pending danger control", () => {
-    const detailPage = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/transfers/[id]/page.tsx"),
+    const receiptSurface = readFileSync(
+      path.resolve(__dirname, "../../components/TransferReceiptTaskSheet.tsx"),
       "utf8",
     );
-    expect(detailPage).toContain('triggerClassName="min-h-11"');
-    expect(detailPage).toContain("counter-movements");
-    expect(detailPage).toContain('pendingLabel="Reversing Receipt…"');
-    expect(detailPage).toContain('tone="danger"');
-    expect(detailPage).toContain("Linked counter-movements will be created");
-    expect(detailPage).toContain('name="reversalReason"');
+    expect(receiptSurface).toContain('triggerClassName="min-h-11"');
+    expect(receiptSurface).toContain("counter-movements");
+    expect(receiptSurface).toContain('pendingLabel="Reversing Receipt…"');
+    expect(receiptSurface).toContain('tone="danger"');
+    expect(receiptSurface).toContain("Linked counter-movements will be created");
+    expect(receiptSurface).toContain('name="reversalReason"');
   });
 });

@@ -4,6 +4,13 @@ How authorized approvers review, approve, reject, or return records for revision
 
 Use the knowledge-base article template and follow the knowledge-base standard.
 
+## Inventory Control UAT approvals
+
+- [Reviewing Bounded Inventory Control UAT Approvals](./reviewing-bounded-inventory-control-uat-approvals.md) — pre-release guidance for the partial seven-family worklist. The locally implemented surface remains NO-GO for UAT until its remaining PostgreSQL and trusted-TLS responsive-browser evidence passes.
+
+This bounded worklist does not activate or replace the global Approval Inbox. It
+does not show finance, workforce, projects, or any other approval family.
+
 ## Workforce overtime records during controlled routing
 
 When an overtime record is already linked to a governed approval graph, the

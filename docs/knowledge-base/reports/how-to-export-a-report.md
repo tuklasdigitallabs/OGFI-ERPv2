@@ -3,7 +3,7 @@
 **Audience / required role:** Managers, purchasing users, warehouse users, finance, auditors, project users, and administrators with export access  
 **Applies to:** Scoped list pages, report catalog, project reports, and admin audit export  
 **Related phase/module:** Phase I / Reports and Exports  
-**Last verified against:** implemented scoped CSV exports, export authorization, export metadata, and export audit logging
+**Last verified against:** implemented scoped CSV exports, procurement/inventory export authorization, export metadata, bounded-row handling, and export audit logging (2026-08-02)
 
 ## Purpose
 
@@ -25,6 +25,7 @@ Common export paths include:
 - `Reports -> Export CSV`
 - `Purchase Requests -> Export CSV`
 - `Purchase Orders -> Export CSV`
+- `Supplier Quotes -> Export CSV`
 - `Receiving -> Export CSV`
 - `Inventory -> Export CSV`
 - `Inventory Ledger -> Export CSV`
@@ -56,6 +57,7 @@ Operational CSV exports include a metadata block before the data rows. Review it
 - reporting trust-gate label and mode
 - trust-gate source decision, normally `DEC-0036`
 - whether the trust-gate setting is overridden
+- maximum synchronous export rows, when the report provides that control
 
 Some exports add extra context, such as Purchase Order filter values, recipe ID, or a release-readiness scope note.
 
@@ -82,6 +84,8 @@ Some exports add extra context, such as Purchase Order filter values, recipe ID,
 - Sensitive fields are present only when your role is allowed to see them.
 - The report ID, filename, generated timestamp, selected scope, and trust-gate source decision are present.
 - If the export is denied, ask an administrator to review permissions and scope instead of using another user's account.
+- If the export says it is too large, no partial CSV was created. Narrow the search, location, status, or date filters and retry; do not treat a truncated file as a complete report.
+- Purchase Request, Purchase Order, and Supplier Quote exports use the same configured synchronous row ceiling as the inventory and store-operation exports. A successful local browser check verified all three procurement CSV routes; this does not replace human UAT or production-authenticated evidence.
 
 ## Related Articles
 

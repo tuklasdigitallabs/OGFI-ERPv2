@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { PendingActionButton } from "@/components/PendingActionButton";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -283,7 +284,7 @@ export default async function AdjustmentDetailPage({
             ["DRAFT", "SUBMITTED", "RETURNED"].includes(adjustment.status) ? (
               <form action={submitAdjustmentAction}>
                 <input name="id" type="hidden" value={adjustment.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                   Submit for Approval
                 </button>
               </form>
@@ -291,9 +292,7 @@ export default async function AdjustmentDetailPage({
             {canPost && adjustment.status === "APPROVED" ? (
               <form action={postAdjustmentAction}>
                 <input name="id" type="hidden" value={adjustment.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
-                  Post Adjustment
-                </button>
+                <PendingActionButton label="Post Adjustment" pendingLabel="Posting Adjustment…" />
               </form>
             ) : null}
           </div>
@@ -369,7 +368,7 @@ export default async function AdjustmentDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-9 items-center justify-center rounded-md bg-slate-800 px-4 text-sm font-semibold text-white hover:bg-slate-900 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-800 px-4 text-sm font-semibold text-white hover:bg-slate-900 sm:w-fit">
                       Cancel Adjustment
                     </button>
                   </form>
@@ -399,9 +398,7 @@ export default async function AdjustmentDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-9 items-center justify-center rounded-md bg-rose-700 px-4 text-sm font-semibold text-white hover:bg-rose-800 sm:w-fit">
-                      Reverse Adjustment
-                    </button>
+                    <PendingActionButton label="Reverse Adjustment" pendingLabel="Reversing Adjustment…" tone="danger" confirmation="Reverse this posted adjustment? This creates linked counter-movements and preserves the original record." />
                   </form>
                 </EntryModal>
               </div>

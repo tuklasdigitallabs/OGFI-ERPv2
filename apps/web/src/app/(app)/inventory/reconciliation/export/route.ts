@@ -11,6 +11,7 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportInventoryLedgerVariance } from "@/server/services/exportAuthorization";
+import { getReportExportPolicy } from "@/server/services/policySettings";
 import {
   listInventoryLedgerVarianceExportRows,
   maxInventorySearchLength,
@@ -49,7 +50,12 @@ export async function GET(request: Request) {
   }
   const auditMetadata = {
     dashboardProfile: profile,
-    searchQuery: query ?? null
+    searchApplied: Boolean(query)
+  };
+  const exportPolicy = await getReportExportPolicy(session);
+  const boundedAuditMetadata = {
+    ...auditMetadata,
+    maxRows: exportPolicy.maxRows
   };
 
   try {
@@ -57,10 +63,11 @@ export async function GET(request: Request) {
       session,
       reportId: "inventory-ledger-variance",
       eventType: "report.export_started",
-      metadata: auditMetadata
+      metadata: boundedAuditMetadata
     });
     const result = await listInventoryLedgerVarianceExportRows(session, {
-      ...(query ? { query } : {})
+      ...(query ? { query } : {}),
+      maxRows: exportPolicy.maxRows
     });
     const rows = [
       [
@@ -94,7 +101,7 @@ export async function GET(request: Request) {
       reportId: "inventory-ledger-variance",
       eventType: "report.export_completed",
       rowCount: result.totalItems,
-      metadata: auditMetadata
+      metadata: boundedAuditMetadata
     });
 
     return csvExportResponse(rows, "inventory-ledger-variance.csv", {
@@ -108,7 +115,8 @@ export async function GET(request: Request) {
           [
             "Control Notice",
             "Diagnostic only. Do not edit balances or create adjustments to conceal cache-to-ledger differences."
-          ]
+          ],
+          ["Maximum Rows", exportPolicy.maxRows]
         ]
       })
     });
@@ -117,7 +125,7 @@ export async function GET(request: Request) {
       session,
       reportId: "inventory-ledger-variance",
       error,
-      metadata: auditMetadata
+      metadata: boundedAuditMetadata
     });
     const response = exportErrorResponse(error);
     if (response) return response;

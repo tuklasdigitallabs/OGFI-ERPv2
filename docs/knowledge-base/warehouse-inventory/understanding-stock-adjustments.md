@@ -50,6 +50,9 @@ Do not use it to hide wastage, supplier shortage, transfer loss, unapproved back
 10. Assigned approvers review, approve, return, or reject the request from the approval workflow.
 11. After approval, an authorized inventory poster selects `Post Adjustment`.
 
+Posting and reversal are guarded again after the record and inventory locations are locked. The server rechecks the live user/session, current permission, exact location scope, and privileged MFA evidence while holding the matching authority rows transactionally; a revocation cannot slip between the check and the ledger write. If any control changed, refresh the detail page and retry only after the current access issue is resolved.
+While a post is running the action shows `Posting Adjustment…`; while a reversal is running it shows `Reversing Adjustment…` and prevents duplicate submission.
+
 ## Expected Result
 
 - Submitted adjustments enter the approval workflow.

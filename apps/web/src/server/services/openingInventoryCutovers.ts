@@ -11,8 +11,11 @@ import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { acquireApprovalProducerBarrierShared } from "./approvalProducerBarrier";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import { getMfaStepUpMinutes } from "./authentication";
+import { getInventoryPilotRevisionOpeningReadiness } from "./inventoryPilotConfiguration";
 
 const digestPattern = /^[a-f0-9]{64}$/;
+const v2ParticipantResponsibilities = ["PREPARER", "SUBMITTER", "OPERATIONS_REVIEWER", "ACCOUNTING_REVIEWER", "COMMAND_REQUESTER"] as const;
+const v2ReadinessFamilies = ["PurchaseRequest", "QuotationRecommendation", "PurchaseOrder", "InventoryTransfer", "StockCountAttemptReview", "WastageReport", "StockAdjustment", "OpeningInventoryCutover"] as const;
 
 const uuid = z.string().uuid();
 const positiveVersion = z.coerce.number().int().positive();
@@ -54,6 +57,9 @@ const requestCommandSchema = z.object({
 
 export const openingInventoryStableErrors = Object.freeze({
   unsupportedConfiguration: "OPENING_INVENTORY_CONFIGURATION_NOT_SEALED",
+  configurationNotLatest: "OPENING_INVENTORY_CONFIGURATION_NOT_LATEST",
+  configurationEvidenceInvalid: "OPENING_INVENTORY_CONFIGURATION_EVIDENCE_INVALID",
+  configurationLiveReadinessBlocked: "OPENING_INVENTORY_CONFIGURATION_LIVE_READINESS_BLOCKED",
   endpointScope: "OPENING_INVENTORY_ENDPOINT_SCOPE_DENIED",
   itemScope: "OPENING_INVENTORY_ITEM_SCOPE_DENIED",
   sourceNotReviewed: "OPENING_INVENTORY_SOURCE_ATTEMPT_NOT_REVIEWED",
@@ -113,6 +119,54 @@ export function openingInventoryDigest(value: StableValue) {
   return createHash("sha256")
     .update(canonicalOpeningInventoryJson(value))
     .digest("hex");
+}
+
+const openingEligibleRevisionInclude = Prisma.validator<Prisma.InventoryPilotConfigurationRevisionInclude>()({
+  endpointMemberships: { orderBy: [{ capability: "asc" }, { inventoryLocationId: "asc" }] },
+  itemMemberships: { orderBy: { itemId: "asc" } },
+  participantMemberships: { orderBy: { responsibility: "asc" } },
+  routeReadinessMemberships: { orderBy: { family: "asc" } },
+  successorRevision: { select: { id: true } },
+});
+
+export function hasExactInventoryPilotV2OpeningEvidence(revision: {
+  schemaVersion: number;
+  canonicalJson: string;
+  configurationDigest: string;
+  successorRevision: { id: string } | null;
+  endpointMemberships: Array<{ capability: string; inventoryLocationId: string; locationId: string }>;
+  itemMemberships: Array<{ itemId: string }>;
+  participantMemberships: Array<{ responsibility: string; userId: string }>;
+  routeReadinessMemberships: Array<{ family: string; ruleDefinitionCanonicalJson: string; ruleDefinitionDigest: string; resolverEvidenceCanonicalJson: string | null; resolverEvidenceDigest: string | null }>;
+}) {
+  if (revision.schemaVersion !== 2 || revision.successorRevision) return false;
+  if (!digestPattern.test(revision.configurationDigest) || createHash("sha256").update(revision.canonicalJson).digest("hex") !== revision.configurationDigest) return false;
+  if (!revision.endpointMemberships.some((row) => row.capability === "OPENING_STOCK_LOCATION") || revision.itemMemberships.length === 0) return false;
+  const responsibilities = revision.participantMemberships.map((row) => row.responsibility).sort();
+  const families = revision.routeReadinessMemberships.map((row) => row.family).sort();
+  if (responsibilities.length !== v2ParticipantResponsibilities.length || responsibilities.some((value, index) => value !== [...v2ParticipantResponsibilities].sort()[index])) return false;
+  if (new Set(revision.participantMemberships.map((row) => row.userId)).size !== v2ParticipantResponsibilities.length) return false;
+  if (families.length !== v2ReadinessFamilies.length || families.some((value, index) => value !== [...v2ReadinessFamilies].sort()[index])) return false;
+  return revision.routeReadinessMemberships.every((row) => {
+    const ruleDigestValid = digestPattern.test(row.ruleDefinitionDigest) && createHash("sha256").update(row.ruleDefinitionCanonicalJson).digest("hex") === row.ruleDefinitionDigest;
+    const resolverDigestValid = row.family === "PurchaseRequest"
+      ? Boolean(row.resolverEvidenceCanonicalJson && row.resolverEvidenceDigest && digestPattern.test(row.resolverEvidenceDigest) && createHash("sha256").update(row.resolverEvidenceCanonicalJson).digest("hex") === row.resolverEvidenceDigest)
+      : row.resolverEvidenceCanonicalJson === null && row.resolverEvidenceDigest === null;
+    return ruleDigestValid && resolverDigestValid;
+  });
+}
+
+async function evaluateLatestOpeningInventoryRevision(tx: TransactionClient, session: SessionContext) {
+  const revision = await tx.inventoryPilotConfigurationRevision.findFirst({
+    where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "SEALED", schemaVersion: 2, successorRevision: { is: null } },
+    include: openingEligibleRevisionInclude,
+    orderBy: { revisionNumber: "desc" },
+  });
+  if (!revision) return { revision: null, code: openingInventoryStableErrors.unsupportedConfiguration, blockerCodes: [] as string[] };
+  if (!hasExactInventoryPilotV2OpeningEvidence(revision)) return { revision: null, code: openingInventoryStableErrors.configurationEvidenceInvalid, blockerCodes: [] as string[] };
+  const readiness = await getInventoryPilotRevisionOpeningReadiness(tx, session, revision.id);
+  if (!readiness.eligible) return { revision: null, code: openingInventoryStableErrors.configurationLiveReadinessBlocked, blockerCodes: readiness.blockers.map((blocker) => blocker.code) };
+  return { revision, code: null, blockerCodes: [] as string[] };
 }
 
 function requireDigest(value: string) {
@@ -367,19 +421,15 @@ export async function createOpeningInventoryCohort(
   await requirePermission(session, permissions.openingInventoryPrepare);
   const input = createCohortSchema.parse(rawInput);
   return prisma.$transaction(async (tx) => {
-    const revision = await tx.inventoryPilotConfigurationRevision.findFirst({
-      where: {
-        id: input.configurationRevisionId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "SEALED",
-      },
-      include: {
-        endpointMemberships: { where: { capability: "OPENING_STOCK_LOCATION" }, orderBy: { inventoryLocationId: "asc" } },
-        itemMemberships: { orderBy: { itemId: "asc" } },
-      },
-    });
-    if (!revision) throw new Error(openingInventoryStableErrors.unsupportedConfiguration);
+    await tx.$queryRaw`SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`inventory-pilot-configuration:${session.context.tenantId}:${session.context.companyId}`}, 0))::text AS "lockResult"`;
+    const eligibility = await evaluateLatestOpeningInventoryRevision(tx, session);
+    if (!eligibility.revision) throw new Error(eligibility.code ?? openingInventoryStableErrors.unsupportedConfiguration);
+    if (eligibility.revision.id !== input.configurationRevisionId) throw new Error(openingInventoryStableErrors.configurationNotLatest);
+    const latestEligibleRevision = eligibility.revision;
+    const revision = {
+      ...latestEligibleRevision,
+      endpointMemberships: latestEligibleRevision.endpointMemberships.filter((row) => row.capability === "OPENING_STOCK_LOCATION"),
+    };
     if (revision.endpointMemberships.length === 0) throw new Error(openingInventoryStableErrors.endpointScope);
     if (revision.itemMemberships.length === 0) throw new Error(openingInventoryStableErrors.itemScope);
     for (const endpoint of revision.endpointMemberships) {
@@ -1186,18 +1236,20 @@ export async function getOpeningInventoryFormOptions(
 ) {
   await requirePermission(session, permissions.openingInventoryPrepare);
   await prisma.$transaction((tx) => assertLiveScopedPermission(tx, session, permissions.openingInventoryPrepare, session.context.locationId, ["OPERATE", "APPROVE", "MANAGE"]));
-  const revisionWhere = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    status: "SEALED" as const,
-    endpointMemberships: { some: { capability: "OPENING_STOCK_LOCATION" as const, locationId: session.context.locationId } },
-    itemMemberships: { some: {} },
-  };
-  const [revisions, attempts, cohorts] = await Promise.all([
-    prisma.inventoryPilotConfigurationRevision.findMany({
-      where: revisionWhere,
-      select: { id: true, revisionNumber: true, configurationDigest: true, sealedAt: true, endpointMemberships: { where: { capability: "OPENING_STOCK_LOCATION", locationId: session.context.locationId }, select: { inventoryLocationId: true, locationId: true } }, itemMemberships: { select: { itemId: true } } },
-      orderBy: { revisionNumber: "desc" },
+  const [candidateEvaluation, attempts, cohorts] = await Promise.all([
+    prisma.$transaction(async (tx) => {
+      const eligibility = await evaluateLatestOpeningInventoryRevision(tx, session);
+      const revision = eligibility.revision;
+      if (!revision) return { ...eligibility, revisions: [] };
+      if (!revision.endpointMemberships.some((row) => row.capability === "OPENING_STOCK_LOCATION" && row.locationId === session.context.locationId)) return { ...eligibility, code: openingInventoryStableErrors.endpointScope, revisions: [] };
+      return { ...eligibility, revisions: [{
+        id: revision.id,
+        revisionNumber: revision.revisionNumber,
+        configurationDigest: revision.configurationDigest,
+        sealedAt: revision.sealedAt,
+        endpointMemberships: revision.endpointMemberships.filter((row) => row.capability === "OPENING_STOCK_LOCATION").map((row) => ({ inventoryLocationId: row.inventoryLocationId, locationId: row.locationId })),
+        itemMemberships: revision.itemMemberships.map((row) => ({ itemId: row.itemId })),
+      }] };
     }),
     prisma.stockCountAttempt.findMany({
       where: {
@@ -1245,6 +1297,29 @@ export async function getOpeningInventoryFormOptions(
       orderBy: { effectiveAt: "desc" },
     }),
   ]);
+  const revisions = (
+    await Promise.all(candidateEvaluation.revisions.map(async (revision) => {
+      try {
+        await prisma.$transaction(async (tx) => {
+          for (const endpoint of revision.endpointMemberships) {
+            await assertLiveScopedPermission(
+              tx,
+              session,
+              permissions.openingInventoryPrepare,
+              endpoint.locationId,
+              ["OPERATE", "APPROVE", "MANAGE"],
+            );
+          }
+        });
+        return revision;
+      } catch {
+        // A cohort is a company-wide immutable control object. Do not expose a
+        // configuration as creatable when the preparer cannot act at every
+        // endpoint it would bind. The command service repeats this check.
+        return null;
+      }
+    }))
+  ).filter((revision): revision is (typeof candidateEvaluation.revisions)[number] => revision !== null);
   const requestedCohortId = input.cohortId && uuid.safeParse(input.cohortId).success ? input.cohortId : null;
   const selectedCohort = requestedCohortId
     ? cohorts.find((cohort) => cohort.id === requestedCohortId)
@@ -1285,6 +1360,11 @@ export async function getOpeningInventoryFormOptions(
   }) : [], selectedCohortId && evidenceWhere ? prisma.controlledEvidenceAttachment.count({ where: evidenceWhere }) : 0, prisma.$transaction((tx) => openingInventoryActivationPolicyStatus(tx, session))]);
   return {
     revisions,
+    configurationEligibility: {
+      eligible: revisions.length > 0,
+      code: revisions.length > 0 ? null : candidateEvaluation.code,
+      blockerCodes: candidateEvaluation.blockerCodes,
+    },
     reviewedOpeningAttempts: attempts.filter((attempt) => attempt.stockCountSession.currentAttemptId === attempt.id),
     draftCohorts: cohorts.map((cohort) => ({
       id: cohort.id,

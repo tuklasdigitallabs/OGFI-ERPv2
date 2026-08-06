@@ -1,0 +1,17 @@
+ARG OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_IMAGE
+FROM ${OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_IMAGE}
+
+USER root
+ENV COREPACK_HOME=/opt/corepack \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    HOME=/tmp/lifecycle-home \
+    XDG_CACHE_HOME=/tmp/lifecycle-cache
+RUN apk add --no-cache postgresql-client \
+    && mkdir -p "${COREPACK_HOME}" \
+    && corepack prepare pnpm@9.15.4 --activate \
+    && chmod -R a+rX "${COREPACK_HOME}" \
+    && pnpm --version | grep -Fx '9.15.4'
+USER ogfi
+
+ENTRYPOINT ["node", "scripts/production-auth-e2e-private-db-lifecycle.mjs"]
+CMD ["start"]

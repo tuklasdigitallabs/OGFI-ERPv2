@@ -20,6 +20,7 @@ const canonicalApprovalDecisionCommandSchema = z.object({
   decision: z.enum(canonicalApprovalDecisionKinds),
   remarks: z.string().max(1000).optional(),
   evidenceReference: z.string().max(1000).optional(),
+  reviewToken: z.string().min(1).max(16_384).optional(),
 }).strict().superRefine((command, context) => {
   if (
     !canonicalApprovalDecisionCapabilities[command.family].includes(
@@ -101,6 +102,9 @@ export function approvalDecisionCommandToFormData(
   }
   if (command.evidenceReference !== undefined) {
     formData.set("evidenceReference", command.evidenceReference);
+  }
+  if (command.reviewToken !== undefined) {
+    formData.set("reviewToken", command.reviewToken);
   }
   return formData;
 }

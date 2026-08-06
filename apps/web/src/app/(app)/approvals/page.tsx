@@ -10,10 +10,11 @@ import {
 import { getSessionContext } from "@/server/services/context";
 import {
   getApprovalDetail,
+  listBoundedInventoryUatApprovalQueuePage,
   listNormalizedApprovalInboxPage,
   type ApprovalQueueItem
 } from "@/server/services/approvals";
-import { normalizedApprovalRoutingEnabled } from "@/server/services/approvalRouting";
+import { approvalWorklistMode } from "@/server/services/boundedApprovalWorklist";
 import type { PurchaseRequestSlaStatus } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,7 @@ function isDueSoon(approval: ApprovalQueueItem) {
   if (approval.slaStatus === "OVERDUE" || approval.slaStatus === "DUE_TODAY") {
     return true;
   }
+  if (approval.requiredDate === "Not scheduled") return false;
   const required = new Date(`${approval.requiredDate}T00:00:00`);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -110,23 +112,27 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   const activeTab = getTab(params);
   const page = getPage(params);
   const actionFeedback = getActionFeedback(params);
-  const normalizedRouting = normalizedApprovalRoutingEnabled();
-  let approvalInboxUnavailable = !normalizedRouting;
+  const worklistMode = approvalWorklistMode();
+  const boundedUatWorklist = worklistMode === "BOUNDED_UAT";
+  let approvalInboxUnavailable = worklistMode === "DISABLED";
   let pagedApprovals: ApprovalQueueItem[];
   let approvalCount: number;
   let urgentApprovalCount: number;
   let visibleApprovalCount: number;
   let safePage: number;
 
-  if (normalizedRouting) {
+  if (worklistMode !== "DISABLED") {
     try {
     const dueBefore = new Date(Date.now() + 86_400_000);
+    const listWorklist = worklistMode === "GLOBAL"
+      ? listNormalizedApprovalInboxPage
+      : listBoundedInventoryUatApprovalQueuePage;
     const [inboxPage, dueSoonPage] = await Promise.all([
-      listNormalizedApprovalInboxPage(session, {
+      listWorklist(session, {
         page: activeTab === "inbox" ? page : 1,
         pageSize: activeTab === "inbox" ? PAGE_SIZE : 1
       }),
-      listNormalizedApprovalInboxPage(session, {
+      listWorklist(session, {
         page: activeTab === "due-soon" ? page : 1,
         pageSize: activeTab === "due-soon" ? PAGE_SIZE : 1,
         view: "DUE_SOON",
@@ -140,23 +146,34 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
     safePage = Math.min(page, pageCount);
     let selectedPage = activeTab === "due-soon" ? dueSoonPage : inboxPage;
     if (safePage !== page) {
-      selectedPage = await listNormalizedApprovalInboxPage(session, {
+      selectedPage = await listWorklist(session, {
         page: safePage,
         pageSize: PAGE_SIZE,
         ...(activeTab === "due-soon" ? { view: "DUE_SOON" as const, dueBefore } : {})
       });
     }
-    const details = await Promise.all(
-      selectedPage.items.map((item) => getApprovalDetail(session, item.approvalInstanceId))
-    );
-    const staleDetail = details.some((detail) => detail === null);
-    if (staleDetail && getStringParam(params, "stale") !== "1") {
-      redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1");
+    if (worklistMode === "BOUNDED_UAT") {
+      const queuePage = selectedPage as Awaited<
+        ReturnType<typeof listBoundedInventoryUatApprovalQueuePage>
+      >;
+      pagedApprovals = queuePage.items;
+    } else {
+      const details = await Promise.all(
+        selectedPage.items.map((item) =>
+          getApprovalDetail(session, item.approvalInstanceId),
+        ),
+      );
+      const staleDetail = details.some((detail) => detail === null);
+      if (staleDetail && getStringParam(params, "stale") !== "1") {
+        redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1");
+      }
+      pagedApprovals = details.filter(
+        (detail): detail is NonNullable<typeof detail> => detail !== null,
+      );
     }
-    pagedApprovals = details.filter((detail): detail is NonNullable<typeof detail> => detail !== null);
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      if (code !== "APPROVAL_ROUTING_BACKFILL_REQUIRED" && code !== "APPROVAL_ROUTING_V1_DISABLED") {
+      if (code !== "APPROVAL_ROUTING_BACKFILL_REQUIRED" && code !== "APPROVAL_ROUTING_V1_DISABLED" && code !== "APPROVAL_WORKLIST_ITEM_UNAVAILABLE" && code !== "APPROVAL_WORKLIST_SOURCE_NOT_READY") {
         throw error;
       }
       approvalInboxUnavailable = true;
@@ -189,8 +206,8 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   return (
       <AppShell
       session={session}
-      title="Approval Inbox"
-      subtitle="Assigned controlled record decisions"
+      title={boundedUatWorklist ? "Inventory Control UAT Approval Worklist" : "Approval Inbox"}
+      subtitle={boundedUatWorklist ? "Eligible Phase I procurement and inventory decisions only" : "Assigned controlled record decisions"}
       activeNav="approvals"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
@@ -198,7 +215,9 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
         <div className="ogfi-data-surface border-amber-200 bg-amber-50/60 p-6" role="status">
           <h2 className="text-xl font-bold text-amber-950">Approval Inbox unavailable</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-900">
-            Normalized approval routing is not enabled for this environment. No legacy approval list is shown, and no approval action is available here. An administrator must complete the approval-routing cutover and its database, authorization, and hosted release gates before this inbox can be activated.
+            {boundedUatWorklist
+              ? "The bounded approval queue could not prove every eligible source record. No partial rows or totals are shown. Refresh after an administrator resolves the source or routing inconsistency."
+              : "Global normalized approval routing is not enabled for this environment. No legacy approval list is shown, and no approval action is available here. An administrator must complete the approval-routing cutover and its database, authorization, and hosted release gates before the global inbox can be activated."}
           </p>
         </div>
       ) : <div className="ogfi-data-surface">
@@ -208,6 +227,11 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
             <p className="text-sm text-slate-500">
               {approvalCount} assigned to {session.user.displayName}; {urgentApprovalCount} due soon.
             </p>
+            {boundedUatWorklist ? (
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-amber-800">
+                Local UAT only: this partial worklist shows eligible Purchase Requests, quotation recommendations, Purchase Orders, transfers, stock-count reviews, wastage, and stock adjustments. Other approval families remain unavailable here.
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="info" size="sm">Scoped</Badge>
@@ -298,8 +322,11 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 md:bg-white">
                   <p className="font-semibold text-slate-900">Review assigned step</p>
                   <p className="mt-1">
-                    Step {approval.currentStepOrder ?? "current"} / Due {approval.requiredDate}
+                    Step {approval.currentStepOrder ?? "current"} / Approval due {approval.requiredDate}
                   </p>
+                  {approval.sourceRequiredDate ? (
+                    <p className="mt-1">Source required date {approval.sourceRequiredDate}</p>
+                  ) : null}
                   {approval.slaStatus === "OVERDUE" ? (
                     <p className="mt-1 font-semibold text-rose-700">Overdue</p>
                   ) : isDueSoon(approval) ? (
