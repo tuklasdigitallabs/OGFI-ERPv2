@@ -41,6 +41,7 @@ describe("approval producer shared-lock participation", () => {
   test("calls the database barrier before invoking the producer body", () => {
     const source = serviceSource("approvalProducerBarrier.ts");
     const transactionAt = source.indexOf("prisma.$transaction");
+    const beforeBarrierAt = source.indexOf("options?.beforeBarrier?.(tx)", transactionAt);
     const barrierAt = source.indexOf(
       "public.acquire_approval_routing_producer_barrier_shared",
       transactionAt,
@@ -48,7 +49,8 @@ describe("approval producer shared-lock participation", () => {
     const actionAt = source.indexOf("return action(tx)", transactionAt);
 
     expect(transactionAt).toBeGreaterThanOrEqual(0);
-    expect(barrierAt).toBeGreaterThan(transactionAt);
+    expect(beforeBarrierAt).toBeGreaterThan(transactionAt);
+    expect(barrierAt).toBeGreaterThan(beforeBarrierAt);
     expect(actionAt).toBeGreaterThan(barrierAt);
     expect(source).toContain("await tx.$executeRaw`");
     expect(source).not.toContain("await tx.$queryRaw`");

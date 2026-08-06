@@ -1181,6 +1181,20 @@ describe("multi-step approval advancement", () => {
     expect(serviceSource).toContain("isApprovalReviewSerializationFailure");
     expect(serviceSource).toContain('candidate.meta?.code === "40001"');
     expect(serviceSource).toContain('throw new Error("APPROVAL_REVIEW_STALE")');
+    const reviewedTransactionAt = serviceSource.indexOf(
+      "async function runReviewedApprovalTransaction",
+    );
+    const serializationMapAt = serviceSource.indexOf(
+      "isApprovalReviewSerializationFailure(error)",
+      reviewedTransactionAt,
+    );
+    const staleErrorAt = serviceSource.indexOf(
+      'throw new Error("APPROVAL_REVIEW_STALE")',
+      serializationMapAt,
+    );
+    expect(reviewedTransactionAt).toBeGreaterThanOrEqual(0);
+    expect(serializationMapAt).toBeGreaterThan(reviewedTransactionAt);
+    expect(staleErrorAt).toBeGreaterThan(serializationMapAt);
     const authoritySource = extractFunctionSource(
       serviceSource,
       "normalizedDecisionAuthorityRequired",

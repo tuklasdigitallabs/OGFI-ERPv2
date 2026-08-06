@@ -123,26 +123,14 @@ async function makePostingReadyFixture(
     extraPermissionCodes: [postingPermission, reversalPermission],
     createSource: (context) => createSharedProcurementInventorySource(family, context),
   });
-  const approvalSession = fixture.sessionFor(1);
-  mockContext.requireSessionContext.mockResolvedValue(approvalSession);
   const session = fixture.sessionFor(1);
   const sessionId = randomUUID();
+  const mfaAuthenticatedAt = new Date();
   const expiry = new Date(Date.now() + 60 * 60_000);
-  // Approval is a separate controlled action. Install the runtime MFA
-  // session only after approval so no approval helper can replace or retain a
-  // stale authentication snapshot for the posting race.
-  const approval = new FormData();
-  approval.set("approvalInstanceId", fixture.approvalInstanceId);
-  approval.set("remarks", "Approve disposable posting race fixture.");
-  if (family === "WastageReport") await approveWastageReport(approval);
-  else await approveStockAdjustment(approval);
-
-  session.authentication = {
-    sessionId,
-    assuranceLevel: "MFA",
-    mfaAuthenticatedAt: new Date(),
-    absoluteExpiresAt: expiry,
-  };
+  const actor = await prisma.user.findUniqueOrThrow({
+    where: { id: fixture.approverUserIds[0] },
+    select: { privilegeEpoch: true },
+  });
   await prisma.authSession.create({
     data: {
       id: sessionId,
@@ -151,13 +139,27 @@ async function makePostingReadyFixture(
       tokenHash: `posting-race-${sessionId}`,
       status: "ACTIVE",
       assuranceLevel: "MFA",
-      mfaAuthenticatedAt: new Date(),
-      privilegeEpochAtIssue: 0,
+      mfaAuthenticatedAt,
+      privilegeEpochAtIssue: actor.privilegeEpoch,
       idleExpiresAt: expiry,
       absoluteExpiresAt: expiry,
     },
   });
+  // The approval and posting races use one live MFA session. This verifies the
+  // real guard without a test-only bypass and retains the same authority
+  // snapshot through both controlled actions.
+  session.authentication = {
+    sessionId,
+    assuranceLevel: "MFA",
+    mfaAuthenticatedAt,
+    absoluteExpiresAt: expiry,
+  };
   mockContext.requireSessionContext.mockResolvedValue(session);
+  const approval = new FormData();
+  approval.set("approvalInstanceId", fixture.approvalInstanceId);
+  approval.set("remarks", "Approve disposable posting race fixture.");
+  if (family === "WastageReport") await approveWastageReport(approval);
+  else await approveStockAdjustment(approval);
 
   if (family === "WastageReport") {
     const report = await prisma.wastageReport.findUniqueOrThrow({

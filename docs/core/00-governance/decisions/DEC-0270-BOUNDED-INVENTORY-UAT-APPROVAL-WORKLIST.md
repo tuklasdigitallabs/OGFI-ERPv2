@@ -326,6 +326,34 @@ hard gates.
   ledger/movement/balance/commitment effect; desktop/tablet/mobile states; and
   truthful partial-visibility copy.
 
+### August 6 hosted-authorization follow-up
+
+Exact-SHA run `31108885996` exposed a Stock Adjustment final-approval versus
+cancellation race that could return a raw PostgreSQL serialization failure. The
+approved correction does not alter approval authority, status semantics, MFA,
+segregation, inventory posting, or the bounded seven-family scope. Cancellation
+now acquires the same Stock Adjustment decision-aggregate fence as approval
+before the shared producer barrier and source/approval locks. The canonical lock
+order is:
+
+`decision aggregate fence -> producer barrier -> source -> approval graph`
+
+Any residual serialization abort at the reviewed-approval transaction boundary
+is returned as `APPROVAL_REVIEW_STALE`; database codes are not exposed. The
+associated MFA and Item-parent changes are test-fixture corrections only: they
+replace obsolete mocks/order with real active MFA, role, and company-management
+authority. A fresh disposable PostgreSQL run applied all 151 migrations and
+passed the affected three files **16/16**, including the adversarial approval /
+cancellation race with no inventory movement and safe loser containment.
+Independent challenge review then required direct stock-neutrality assertions;
+the race was rerun **2/2** on another fresh 151-migration database and proved
+zero `InventoryMovement` and `InventoryBalance` rows for both possible terminal
+outcomes, followed by verified database teardown.
+
+This follow-up changes no visible user workflow or policy, so no glossary,
+knowledge-base, training, or user-facing release-note update is required. Hosted
+exact-SHA authorization and browser evidence remains required before UAT credit.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |

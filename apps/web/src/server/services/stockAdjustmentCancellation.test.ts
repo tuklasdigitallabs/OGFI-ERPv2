@@ -20,6 +20,10 @@ const mockMfa = vi.hoisted(() => ({
   assertPrivilegedMfaForAction: vi.fn()
 }));
 
+const mockApprovalReviewFence = vi.hoisted(() => ({
+  acquireApprovalReviewDecisionAggregateFences: vi.fn()
+}));
+
 vi.mock("@ogfi/database", () => ({
   prisma: mockPrisma
 }));
@@ -34,6 +38,11 @@ vi.mock("./context", async () => {
 
 vi.mock("./privilegedMfaGuard", () => ({
   assertPrivilegedMfaForAction: mockMfa.assertPrivilegedMfaForAction
+}));
+
+vi.mock("./approvalReviewAggregateFence", () => ({
+  acquireApprovalReviewDecisionAggregateFences:
+    mockApprovalReviewFence.acquireApprovalReviewDecisionAggregateFences
 }));
 
 const ids = {
@@ -175,6 +184,9 @@ describe("stock-adjustment cancellation serialization", () => {
     vi.clearAllMocks();
     mockContext.requireSessionContext.mockResolvedValue(session);
     mockMfa.assertPrivilegedMfaForAction.mockResolvedValue(undefined);
+    mockApprovalReviewFence.acquireApprovalReviewDecisionAggregateFences.mockResolvedValue(
+      undefined
+    );
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([
       {
         role: {
@@ -198,6 +210,18 @@ describe("stock-adjustment cancellation serialization", () => {
 
     await expect(cancelStockAdjustment(cancellationForm())).resolves.toBeUndefined();
 
+    expect(
+      mockApprovalReviewFence.acquireApprovalReviewDecisionAggregateFences
+    ).toHaveBeenCalledWith(tx, {
+      tenantId: ids.tenant,
+      companyId: ids.company,
+      family: "StockAdjustment",
+      documentId: ids.adjustment
+    });
+    expect(
+      mockApprovalReviewFence.acquireApprovalReviewDecisionAggregateFences.mock
+        .invocationCallOrder[0]
+    ).toBeLessThan(tx.$executeRaw.mock.invocationCallOrder[0]!);
     expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
     const firstUserLockSql = tx.$queryRaw.mock.calls[2]?.[0].join(" ");
     const secondUserLockSql = tx.$queryRaw.mock.calls[3]?.[0].join(" ");

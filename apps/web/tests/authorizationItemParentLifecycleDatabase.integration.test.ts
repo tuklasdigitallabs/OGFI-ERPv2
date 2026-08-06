@@ -7,11 +7,7 @@ import {
   assertDisposableAuthorizationDatabaseMarker,
 } from "./authorizationDatabaseSafety";
 
-const boundaryMock = vi.hoisted(() => ({
-  assertCanManageCompanyScope: vi.fn().mockResolvedValue(undefined),
-  requirePermission: vi.fn().mockResolvedValue(undefined),
-  requireSessionContext: vi.fn(),
-}));
+const boundaryMock = vi.hoisted(() => ({ requireSessionContext: vi.fn() }));
 
 vi.mock("../src/server/services/context", async () => {
   const actual = await vi.importActual<
@@ -20,23 +16,6 @@ vi.mock("../src/server/services/context", async () => {
   return {
     ...actual,
     requireSessionContext: boundaryMock.requireSessionContext,
-  };
-});
-
-vi.mock("../src/server/services/authorization", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/server/services/authorization")
-  >("../src/server/services/authorization");
-  return { ...actual, requirePermission: boundaryMock.requirePermission };
-});
-
-vi.mock("../src/server/services/coreAdmin", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/server/services/coreAdmin")
-  >("../src/server/services/coreAdmin");
-  return {
-    ...actual,
-    assertCanManageCompanyScope: boundaryMock.assertCanManageCompanyScope,
   };
 });
 
@@ -73,12 +52,30 @@ function deferred() {
   return { promise, resolve };
 }
 
+type Settlement<T> =
+  | { status: "fulfilled"; value: T }
+  | { status: "rejected"; reason: unknown };
+
+function describeSettlement(settlement: Settlement<unknown> | undefined) {
+  if (!settlement) return "PENDING";
+  if (settlement.status === "fulfilled") return "FULFILLED";
+  return settlement.reason instanceof Error
+    ? `REJECTED:${settlement.reason.message}`
+    : `REJECTED:${String(settlement.reason)}`;
+}
+
 function tracked<T>(promise: Promise<T>) {
   let settled = false;
-  void promise.finally(() => {
-    settled = true;
-  }).catch(() => undefined);
-  return { promise, isSettled: () => settled };
+  let settlement: Settlement<T> | undefined;
+  void promise.then(
+    (value) => { settlement = { status: "fulfilled", value }; },
+    (reason) => { settlement = { status: "rejected", reason }; },
+  ).finally(() => { settled = true; }).catch(() => undefined);
+  return {
+    promise,
+    isSettled: () => settled,
+    settlement: () => settlement,
+  };
 }
 
 async function within<T>(promise: Promise<T>, timeoutMs: number, label: string) {
@@ -102,24 +99,29 @@ async function waitForAuditWriterBlocked(input: {
   blockerPid: number;
   control: PrismaClient;
   isSettled: () => boolean;
+  settlement: () => Settlement<unknown> | undefined;
 }) {
   const deadline = Date.now() + observationTimeoutMs;
   while (Date.now() < deadline) {
     const rows = await input.control.$queryRaw<
-      Array<{ pid: number; query: string }>
+      Array<{ pid: number; query: string; waitEventType: string | null }>
     >`
-      SELECT activity.pid, activity.query
+      SELECT activity.pid,
+             activity.query,
+             activity.wait_event_type AS "waitEventType"
         FROM pg_stat_activity activity
        WHERE activity.datname = current_database()
          AND ${input.blockerPid}::int = ANY(pg_blocking_pids(activity.pid))
        ORDER BY activity.pid ASC
     `;
-    const writer = rows.find(({ query }) =>
-      /INSERT[\s\S]*"AuditEvent"/i.test(query),
+    const writer = rows.find(({ query, waitEventType }) =>
+      waitEventType === "Lock" && /"AuditEvent"/i.test(query),
     );
     if (writer) return writer.pid;
     if (input.isSettled()) {
-      throw new Error("DEC_0239_WINNER_SETTLED_BEFORE_AUDIT_LOCK_WAIT");
+      throw new Error(
+        `DEC_0239_WINNER_SETTLED_BEFORE_AUDIT_LOCK_WAIT:${describeSettlement(input.settlement())}`,
+      );
     }
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -132,6 +134,7 @@ async function waitForParentLockWait(input: {
   blockerPid: number;
   control: PrismaClient;
   isSettled: () => boolean;
+  settlement: () => Settlement<unknown> | undefined;
   parentRole: ParentRole;
 }) {
   const relation = input.parentRole === "category" ? "ItemCategory" : "Uom";
@@ -158,7 +161,9 @@ async function waitForParentLockWait(input: {
     );
     if (waiter) return waiter.pid;
     if (input.isSettled()) {
-      throw new Error("DEC_0239_LOSER_SETTLED_BEFORE_PARENT_LOCK_WAIT");
+      throw new Error(
+        `DEC_0239_LOSER_SETTLED_BEFORE_PARENT_LOCK_WAIT:${describeSettlement(input.settlement())}`,
+      );
     }
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -199,6 +204,7 @@ describe.skipIf(!databaseEnabled).sequential(
     let items: ItemsService;
     let tenantId: string;
     let companyId: string;
+    let coreAdminPermissionId: string;
 
     beforeAll(async () => {
       const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
@@ -245,6 +251,17 @@ describe.skipIf(!databaseEnabled).sequential(
           currencyCode: "PHP",
         },
       });
+      const coreAdminPermission = await prisma.permission.upsert({
+        where: { code: "core.administer" },
+        update: {},
+        create: {
+          code: "core.administer",
+          module: "core",
+          action: "administer",
+        },
+        select: { id: true },
+      });
+      coreAdminPermissionId = coreAdminPermission.id;
     });
 
     afterAll(async () => {
@@ -271,6 +288,37 @@ describe.skipIf(!databaseEnabled).sequential(
           tenantId,
           email: `item-parent-lock-${suffix}@example.test`,
           displayName: `DEC-0239 actor ${suffix}`,
+        },
+      });
+      const actorRoleId = randomUUID();
+      const activeAt = new Date(Date.now() - 60_000);
+      await prisma.role.create({
+        data: {
+          id: actorRoleId,
+          tenantId,
+          code: `ITEM-LIFECYCLE-${suffix}`,
+          name: `DEC-0239 item lifecycle actor ${suffix}`,
+          permissions: { create: { permissionId: coreAdminPermissionId } },
+        },
+      });
+      await prisma.userRoleAssignment.create({
+        data: {
+          id: randomUUID(),
+          userId: actorId,
+          roleId: actorRoleId,
+          status: "ACTIVE",
+          startsAt: activeAt,
+        },
+      });
+      await prisma.userScopeAssignment.create({
+        data: {
+          id: randomUUID(),
+          userId: actorId,
+          scopeType: "COMPANY",
+          scopeId: companyId,
+          accessLevel: "MANAGE",
+          status: "ACTIVE",
+          startsAt: activeAt,
         },
       });
       await prisma.itemCategory.createMany({
@@ -459,6 +507,17 @@ describe.skipIf(!databaseEnabled).sequential(
     ) {
       const fixture = await createFixture(parentRole);
       boundaryMock.requireSessionContext.mockResolvedValue(fixture.session);
+      const [{ getGrantedPermissionCodes }, { assertCanManageCompanyMasterDataScope }] =
+        await Promise.all([
+          import("../src/server/services/authorization"),
+          import("../src/server/services/coreAdmin"),
+        ]);
+      await expect(getGrantedPermissionCodes(fixture.session)).resolves.toContain(
+        "core.administer",
+      );
+      await expect(
+        assertCanManageCompanyMasterDataScope(fixture.session, companyId),
+      ).resolves.toBeUndefined();
       const before = await sourceSnapshot(fixture);
       expect(before.parent.status).toBe("ACTIVE");
       expect(before.audits).toEqual([]);
@@ -490,6 +549,7 @@ describe.skipIf(!databaseEnabled).sequential(
           blockerPid: barrier.pid,
           control: prisma,
           isSettled: winnerOperation.isSettled,
+          settlement: winnerOperation.settlement,
         });
         loserOperation = tracked(
           winner === "item"
@@ -500,6 +560,7 @@ describe.skipIf(!databaseEnabled).sequential(
           blockerPid: winnerPid,
           control: prisma,
           isSettled: loserOperation.isSettled,
+          settlement: loserOperation.settlement,
           parentRole,
         });
         expect(loserPid).not.toBe(winnerPid);
@@ -520,6 +581,11 @@ describe.skipIf(!databaseEnabled).sequential(
       );
       if (observationError) throw observationError;
       expect(outcomes[0]?.status).toBe("fulfilled");
+      if (outcomes[1]?.status !== "fulfilled") {
+        throw new Error(
+          `DEC_0239_WINNER_REJECTED:${describeSettlement(outcomes[1] as Settlement<unknown>)}`,
+        );
+      }
       expect(outcomes[1]?.status).toBe("fulfilled");
 
       const loserError =

@@ -405,13 +405,22 @@ describe(`stock-adjustment final approval versus cancellation (${expectedDatabas
     const loser = outcomes.find(({ status }) => status === "rejected");
     expect(loser?.error).toBeInstanceOf(Error);
     expect((loser?.error as Error).message).toMatch(
-      /^(APPROVAL_NOT_ACTIONABLE|STOCK_ADJUSTMENT_NOT_CANCELLABLE|STOCK_ADJUSTMENT_NOT_PENDING_APPROVAL)$/
+      /^(APPROVAL_NOT_ACTIONABLE|APPROVAL_REVIEW_STALE|STOCK_ADJUSTMENT_NOT_CANCELLABLE|STOCK_ADJUSTMENT_NOT_PENDING_APPROVAL)$/
     );
     expect((loser?.error as Error).message).not.toMatch(
       /P2034|40P01|40001|deadlock|serialization/i
     );
 
-    const [adjustment, approval, step, approvedAudits, cancelledAudits, notifications] =
+    const [
+      adjustment,
+      approval,
+      step,
+      approvedAudits,
+      cancelledAudits,
+      notifications,
+      movementCount,
+      balanceCount
+    ] =
       await Promise.all([
         prisma.stockAdjustment.findUniqueOrThrow({
           where: { id: ids.adjustment }
@@ -447,8 +456,25 @@ describe(`stock-adjustment final approval versus cancellation (${expectedDatabas
               startsWith: "APPROVAL_OUTCOME_"
             }
           }
+        }),
+        prisma.inventoryMovement.count({
+          where: {
+            tenantId: ids.tenant,
+            companyId: ids.company,
+            inventoryLocationId: ids.inventoryLocation
+          }
+        }),
+        prisma.inventoryBalance.count({
+          where: {
+            tenantId: ids.tenant,
+            companyId: ids.company,
+            inventoryLocationId: ids.inventoryLocation
+          }
         })
       ]);
+
+    expect(movementCount).toBe(0);
+    expect(balanceCount).toBe(0);
 
     if (adjustment.status === "APPROVED") {
       expect(approval.status).toBe("APPROVED");

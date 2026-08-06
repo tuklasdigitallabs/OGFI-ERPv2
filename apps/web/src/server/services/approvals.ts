@@ -81,12 +81,19 @@ import { verifyApprovalReviewToken } from "./approvalReviewToken";
 import { assertBoundedApprovalReviewMatchesLockedState } from "./boundedApprovalReview";
 import { acquireApprovalReviewDecisionAggregateFences } from "./approvalReviewAggregateFence";
 
-function runReviewedApprovalTransaction<T>(
+async function runReviewedApprovalTransaction<T>(
   operation: (tx: TransactionClient) => Promise<T>,
 ) {
-  return prisma.$transaction(operation, {
-    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  });
+  try {
+    return await prisma.$transaction(operation, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  } catch (error) {
+    if (isApprovalReviewSerializationFailure(error)) {
+      throw new Error("APPROVAL_REVIEW_STALE");
+    }
+    throw error;
+  }
 }
 
 function isApprovalReviewSerializationFailure(error: unknown) {

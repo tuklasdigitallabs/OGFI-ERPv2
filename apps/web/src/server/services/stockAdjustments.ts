@@ -26,6 +26,7 @@ import {
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
+import { acquireApprovalReviewDecisionAggregateFences } from "./approvalReviewAggregateFence";
 import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
@@ -1513,129 +1514,138 @@ export async function cancelStockAdjustment(formData: FormData) {
         documentType: "StockAdjustment"
       },
       async (tx) => {
-      const lockedSource = await lockStockAdjustmentSourceForCancellation(
-        tx,
-        session,
-        adjustment.id
-      );
-      const lockedUserById = await lockStockAdjustmentCancellationUsers(
-        tx,
-        session,
-        [session.user.id, adjustment.requestedByUserId]
-      );
-      const authSession = await lockStockAdjustmentCancellationSession(
-        tx,
-        session
-      );
-      const approval = await lockPendingStockAdjustmentApproval(
-        tx,
-        session,
-        adjustment.id
-      );
+        const lockedSource = await lockStockAdjustmentSourceForCancellation(
+          tx,
+          session,
+          adjustment.id
+        );
+        const lockedUserById = await lockStockAdjustmentCancellationUsers(
+          tx,
+          session,
+          [session.user.id, adjustment.requestedByUserId]
+        );
+        const authSession = await lockStockAdjustmentCancellationSession(
+          tx,
+          session
+        );
+        const approval = await lockPendingStockAdjustmentApproval(
+          tx,
+          session,
+          adjustment.id
+        );
 
-      await assertFreshStockAdjustmentCancellationAuthority(tx, session, {
-        actor: lockedUserById.get(session.user.id),
-        authSession,
-        inventoryLocationId: adjustment.inventoryLocationId
-      });
-      const liveMfaSession = authSession
-        ? {
-            ...session,
-            authentication: {
-              sessionId: session.authentication!.sessionId,
-              assuranceLevel: authSession.assuranceLevel,
-              mfaAuthenticatedAt: authSession.mfaAuthenticatedAt,
-              absoluteExpiresAt: authSession.absoluteExpiresAt
-            }
-          }
-        : session;
-      await assertPrivilegedMfaForAction(liveMfaSession, {
-        action: "stock_adjustment.cancel",
-        enforcementScope: "all_sensitive",
-        permissionCode: permissions.stockAdjustmentCancel,
-        entityType: "StockAdjustment",
-        entityId: adjustment.id,
-        reason:
-          "Cancelling a stock adjustment is a sensitive controlled-workflow action.",
-        metadata: {
-          adjustmentType: adjustment.adjustmentType,
+        await assertFreshStockAdjustmentCancellationAuthority(tx, session, {
+          actor: lockedUserById.get(session.user.id),
+          authSession,
           inventoryLocationId: adjustment.inventoryLocationId
+        });
+        const liveMfaSession = authSession
+          ? {
+              ...session,
+              authentication: {
+                sessionId: session.authentication!.sessionId,
+                assuranceLevel: authSession.assuranceLevel,
+                mfaAuthenticatedAt: authSession.mfaAuthenticatedAt,
+                absoluteExpiresAt: authSession.absoluteExpiresAt
+              }
+            }
+          : session;
+        await assertPrivilegedMfaForAction(liveMfaSession, {
+          action: "stock_adjustment.cancel",
+          enforcementScope: "all_sensitive",
+          permissionCode: permissions.stockAdjustmentCancel,
+          entityType: "StockAdjustment",
+          entityId: adjustment.id,
+          reason:
+            "Cancelling a stock adjustment is a sensitive controlled-workflow action.",
+          metadata: {
+            adjustmentType: adjustment.adjustmentType,
+            inventoryLocationId: adjustment.inventoryLocationId
+          }
+        });
+
+        if (lockedSource.status === "PENDING_APPROVAL" && !approval) {
+          throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
         }
-      });
 
-      if (lockedSource.status === "PENDING_APPROVAL" && !approval) {
-        throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
-      }
+        if (approval) {
+          const cancelledApproval = await tx.approvalInstance.updateMany({
+            where: {
+              id: approval.id,
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              status: "PENDING",
+              currentStepOrder: approval.currentStepOrder
+            },
+            data: {
+              status: "CANCELLED",
+              currentStepOrder: null
+            }
+          });
+          if (cancelledApproval.count !== 1) {
+            throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+          }
+          const skippedSteps = await tx.approvalInstanceStep.updateMany({
+            where: {
+              approvalInstanceId: approval.id,
+              status: { in: ["PENDING", "WAITING"] }
+            },
+            data: { status: "SKIPPED" }
+          });
+          if (skippedSteps.count < 1) {
+            throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+          }
+        }
 
-      if (approval) {
-        const cancelledApproval = await tx.approvalInstance.updateMany({
+        const cancelled = await tx.stockAdjustment.updateMany({
           where: {
-            id: approval.id,
+            id: adjustment.id,
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            status: "PENDING",
-            currentStepOrder: approval.currentStepOrder
+            inventoryLocationId: adjustment.inventoryLocationId,
+            status: lockedSource.status,
+            updatedAt: lockedSource.updatedAt,
+            inventoryLocation: {
+              locationId: adjustment.inventoryLocation.locationId
+            }
           },
           data: {
             status: "CANCELLED",
-            currentStepOrder: null
+            cancelledAt: new Date(),
+            cancelledByUserId: session.user.id,
+            cancellationReason: values.cancellationReason
           }
         });
-        if (cancelledApproval.count !== 1) {
+        if (cancelled.count !== 1) {
           throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
         }
-        const skippedSteps = await tx.approvalInstanceStep.updateMany({
-          where: {
-            approvalInstanceId: approval.id,
-            status: { in: ["PENDING", "WAITING"] }
-          },
-          data: { status: "SKIPPED" }
+
+        await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "stock_adjustment.cancelled",
+            entityType: "StockAdjustment",
+            entityId: adjustment.id,
+            beforeData: { status: lockedSource.status },
+            afterData: { status: "CANCELLED" },
+            metadata: {
+              approvalInstanceId: approval?.id ?? null,
+              cancellationReason: values.cancellationReason,
+              nonPostingApproval: lockedSource.status === "PENDING_APPROVAL"
+            }
+          }
         });
-        if (skippedSteps.count < 1) {
-          throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
-        }
-      }
-
-      const cancelled = await tx.stockAdjustment.updateMany({
-        where: {
-          id: adjustment.id,
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          inventoryLocationId: adjustment.inventoryLocationId,
-          status: lockedSource.status,
-          updatedAt: lockedSource.updatedAt,
-          inventoryLocation: {
-            locationId: adjustment.inventoryLocation.locationId
-          }
-        },
-        data: {
-          status: "CANCELLED",
-          cancelledAt: new Date(),
-          cancelledByUserId: session.user.id,
-          cancellationReason: values.cancellationReason
-        }
-      });
-      if (cancelled.count !== 1) {
-        throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
-      }
-
-      await tx.auditEvent.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          actorUserId: session.user.id,
-          eventType: "stock_adjustment.cancelled",
-          entityType: "StockAdjustment",
-          entityId: adjustment.id,
-          beforeData: { status: lockedSource.status },
-          afterData: { status: "CANCELLED" },
-          metadata: {
-            approvalInstanceId: approval?.id ?? null,
-            cancellationReason: values.cancellationReason,
-            nonPostingApproval: lockedSource.status === "PENDING_APPROVAL"
-          }
-        }
-      });
+      },
+      {
+        beforeBarrier: (tx) =>
+          acquireApprovalReviewDecisionAggregateFences(tx, {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            family: "StockAdjustment",
+            documentId: adjustment.id
+          })
       }
     );
   } catch (error) {

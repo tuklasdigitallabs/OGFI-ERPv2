@@ -116,6 +116,8 @@ describe("stock adjustment controlled workflow rules", () => {
     const end = source.indexOf("\nexport async function postStockAdjustment", start);
     const action = source.slice(start, end);
     expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("acquireApprovalReviewDecisionAggregateFences");
+    expect(action).toContain("beforeBarrier:");
     expect(action).toContain("lockStockAdjustmentSourceForCancellation");
     expect(action.indexOf("lockStockAdjustmentSourceForCancellation")).toBeLessThan(
       action.indexOf("lockPendingStockAdjustmentApproval")
