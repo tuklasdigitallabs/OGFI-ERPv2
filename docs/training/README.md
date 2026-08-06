@@ -6,6 +6,7 @@ Use `docs/templates/TRAINING_MODULE_TEMPLATE.md`. Do not use training materials 
 
 ## Current modules
 
+- `docs/training/phase-i-local-end-to-end-uat-runbook.md` — local Phase I functional-verification rehearsal from scoped master data and gated Opening Inventory through purchasing, receiving, transfers, wastage, counts, adjustments, ledger reconciliation, negative controls, and evidence capture; not formal UAT, a hosted release, or GO approval
 - `docs/training/controlled-uat-staging-access-runbook.md` — controlled staging access, sample-role selection, UAT evidence capture, and defect reporting; not a production or GO approval
 - `docs/training/controlled-evidence-and-retention-training.md` — controlled upload, safety-check states, source authorization, archive/preservation behavior, confidential register review, privileged-MFA legal holds, and support recovery
 - `docs/training/phase-4-expansion-projects-quick-start.md` — branch expansion portfolio, lifecycle gates, permits/documents, construction, opening readiness, punch-list closure, report rollups, and source-record boundary walkthrough
