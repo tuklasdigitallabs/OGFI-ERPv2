@@ -44,8 +44,10 @@ describe("DEC-0049 append-only seed lifecycle", () => {
     expect(seedSource).toContain("assertSeedInventoryBalanceMatchesLedger");
     expect(seedSource).toContain("isPrismaUniqueConflict");
     expect(seedSource).toContain("await prisma.$transaction(verifyExisting)");
-    expect(seedSource).toContain("qtyOnHand: { increment: quantity }");
-    expect(seedSource).toContain("qtyOnHand: { decrement: line.quantity }");
+    expect(seedSource).toContain("_sum: { quantityDeltaBaseUom: true }");
+    expect(seedSource).not.toMatch(
+      /(?:prisma|tx)\.inventoryBalance\.(?:create|delete|deleteMany|update|updateMany|upsert)\s*\(/,
+    );
     expect(seedSource).not.toContain("DEMO_RESET_DATA");
   });
 
