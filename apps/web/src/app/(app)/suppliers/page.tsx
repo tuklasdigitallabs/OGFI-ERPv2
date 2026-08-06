@@ -1,4 +1,3 @@
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
@@ -46,7 +45,6 @@ async function createSupplierItemLinkAction(
       status: "error"
     };
   }
-  revalidatePath("/suppliers");
   return {
     feedback: getActionFeedback({ success: "SUPPLIER_ITEM_LINK_CREATED" }),
     status: "success"
@@ -497,6 +495,11 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                       <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Catalog</dt><dd className="mt-1 text-slate-800">{supplier.itemLinkCount} item{supplier.itemLinkCount === 1 ? "" : "s"}</dd></div>
                     </dl>
                     <p className="mt-4 break-words text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p>
+                    {supplier.status !== "ACTIVE" ? (
+                      <p className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                        Inactive supplier retained as read-only history.
+                      </p>
+                    ) : null}
                   </SupplierSelectableCard>
                 ))}
               </div>

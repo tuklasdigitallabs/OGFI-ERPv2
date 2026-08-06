@@ -13,6 +13,26 @@ describe("shared URL-owned task sheet contracts", () => {
     expect(source).not.toContain("[close, isOpen]");
   });
 
+  test("nested task sheets only focus and trap controls owned by their own dialog", () => {
+    const source = readFileSync(path.resolve(__dirname, "TaskSheet.tsx"), "utf8");
+
+    expect(source).toContain("element.closest('[role=\"dialog\"]') === sheet");
+    expect(source).toContain("body.closest('[role=\"dialog\"]') === sheet");
+    expect(source).toContain("target.closest('[role=\"dialog\"]') === sheet");
+    expect(source).toContain("const focusable = ownedFocusableElements(sheetRef.current)");
+    expect(source).toContain("ownedFocusableElements(sheet).find((element) => body.contains(element))");
+    expect(source).toContain("if (sheet.querySelector('[role=\"dialog\"]')) return");
+    expect(source).toContain("if (!eventBelongsToSheet(event.target, sheetRef.current)) return");
+  });
+
+  test("nested URL-owned tasks do not persist or navigate through their parent task", () => {
+    const source = readFileSync(path.resolve(__dirname, "UrlOwnedTaskSheet.tsx"), "utf8");
+
+    expect(source).toContain("function eventBelongsToContentDialog(");
+    expect(source).toContain("target.closest('[role=\"dialog\"]') === content.closest('[role=\"dialog\"]')");
+    expect(source.match(/if \(!eventBelongsToContentDialog\(event\.target, contentRef\.current\)\) return;/g)).toHaveLength(3);
+  });
+
   test("retains bounded non-hidden drafts through URL navigation and clears deliberate closes", () => {
     const source = readFileSync(path.resolve(__dirname, "UrlOwnedTaskSheet.tsx"), "utf8");
 
@@ -27,7 +47,16 @@ describe("shared URL-owned task sheet contracts", () => {
     expect(source).toContain("window.sessionStorage.getItem(storageKey)");
     expect(source).toContain("window.sessionStorage.removeItem(storageKey)");
     expect(source).toContain("onSubmitCapture={captureDraftSubmit}");
-    expect(source).toContain("clearStoredDraft();\n    router.replace(returnHref");
+    expect(source).toContain("clearStoredDraft();");
+    expect(source).toContain("router.replace(returnHref");
+    expect(source).toContain("let userMovedFocus = false");
+    expect(source).toContain('window.addEventListener("pointerdown", markUserFocusIntent, true)');
+    expect(source).toContain('window.addEventListener("keydown", markUserFocusIntent, true)');
+    expect(source).toContain("const returnContextReady =");
+    expect(source).toContain("if (target && returnContextReady)");
+    expect(source).toContain("stopWatchingFocusIntent();\n        return;");
+    expect(source).toContain("if (attempt < 100)");
+    expect(source).toContain("stopWatchingFocusIntent();");
   });
 
   test("enrolls exact bounded select values into same-page GET lookup navigation", () => {
@@ -64,5 +93,6 @@ describe("shared URL-owned task sheet contracts", () => {
     expect(source).toContain('aria-live="polite"');
     expect(source).toContain('role="status"');
     expect(source).toContain("pending ? pendingLiveMessage : \"\"");
+    expect(source).toContain("actionFeedback && showActionFeedbackInline");
   });
 });

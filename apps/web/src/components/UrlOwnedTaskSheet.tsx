@@ -45,11 +45,24 @@ type UrlOwnedTaskSheetProps = {
   draftStorageKey?: string | undefined;
   /** Server-action feedback to render inside the still-open URL-owned task. */
   actionFeedback?: UrlOwnedTaskSheetFeedback | null | undefined;
+  /** Keep action state for draft/close behavior while a shared application toast owns visible feedback. */
+  showActionFeedbackInline?: boolean | undefined;
   pendingSubmitLabel?: string | undefined;
   pendingLiveMessage?: string | undefined;
   /** Exact select-to-query mappings retained across same-page GET lookup navigation. */
   preserveSelectionParams?: readonly PreservedSelectionParam[] | undefined;
 };
+
+function eventBelongsToContentDialog(
+  target: EventTarget | null,
+  content: HTMLElement | null
+) {
+  return Boolean(
+    content &&
+      target instanceof Element &&
+      target.closest('[role="dialog"]') === content.closest('[role="dialog"]')
+  );
+}
 
 type StoredControl = {
   key: string;
@@ -230,6 +243,7 @@ export function UrlOwnedTaskSheet({
   cancelLabel = "Cancel",
   draftStorageKey,
   actionFeedback = null,
+  showActionFeedbackInline = true,
   pendingSubmitLabel,
   pendingLiveMessage = "Submitting request…",
   preserveSelectionParams = []
@@ -312,16 +326,40 @@ export function UrlOwnedTaskSheet({
     setOpen(false);
     setDirty(false);
     clearStoredDraft();
+    const returnUrl = new URL(returnHref, window.location.href);
     router.replace(returnHref, { scroll: false });
+    let userMovedFocus = false;
+    const markUserFocusIntent = () => {
+      userMovedFocus = true;
+    };
+    const stopWatchingFocusIntent = () => {
+      window.removeEventListener("pointerdown", markUserFocusIntent, true);
+      window.removeEventListener("keydown", markUserFocusIntent, true);
+    };
+    window.addEventListener("pointerdown", markUserFocusIntent, true);
+    window.addEventListener("keydown", markUserFocusIntent, true);
     const restoreFocus = (attempt = 0) => {
+      if (userMovedFocus) {
+        stopWatchingFocusIntent();
+        return;
+      }
       const target = Array.from(document.querySelectorAll<HTMLElement>("[data-focus-key]"))
         .find((candidate) => candidate.dataset.focusKey === nextFocusTargetId && candidate.offsetParent !== null)
         ?? document.getElementById(nextFocusTargetId);
-      if (target) {
-        target.focus({ preventScroll: true });
+      const returnContextReady =
+        window.location.pathname === returnUrl.pathname &&
+        window.location.search === returnUrl.search &&
+        window.location.hash === returnUrl.hash;
+      if (target && returnContextReady) {
+        if (document.activeElement !== target) target.focus({ preventScroll: true });
+        stopWatchingFocusIntent();
         return;
       }
-      if (attempt < 20) window.setTimeout(() => restoreFocus(attempt + 1), 50);
+      if (attempt < 100) {
+        window.setTimeout(() => restoreFocus(attempt + 1), 50);
+      } else {
+        stopWatchingFocusIntent();
+      }
     };
     window.setTimeout(restoreFocus, 0);
   }, [clearStoredDraft, focusTargetId, returnHref, router]);
@@ -354,11 +392,13 @@ export function UrlOwnedTaskSheet({
     };
   }, [actionFeedback, clearStoredDraft, focusTargetId, restoreStoredDraft, returnToContext, successFocusTargetId]);
 
-  const captureDraftChange = (_event: SyntheticEvent) => {
+  const captureDraftChange = (event: SyntheticEvent) => {
+    if (!eventBelongsToContentDialog(event.target, contentRef.current)) return;
     persistDraft(true);
   };
 
   const captureDraftSubmit = (event: FormEvent<HTMLDivElement>) => {
+    if (!eventBelongsToContentDialog(event.target, contentRef.current)) return;
     persistDraft(true);
     if (selectionParams.length === 0 || !(event.target instanceof HTMLFormElement)) return;
 
@@ -381,6 +421,7 @@ export function UrlOwnedTaskSheet({
   };
 
   const captureLookupLink = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!eventBelongsToContentDialog(event.target, contentRef.current)) return;
     if (
       selectionParams.length === 0 ||
       event.defaultPrevented ||
@@ -458,7 +499,7 @@ export function UrlOwnedTaskSheet({
         onInputCapture={captureDraftChange}
         onSubmitCapture={captureDraftSubmit}
       >
-        {actionFeedback ? (
+        {actionFeedback && showActionFeedbackInline ? (
           <div
             ref={feedbackRef}
             className={

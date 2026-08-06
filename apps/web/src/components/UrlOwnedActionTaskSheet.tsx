@@ -1,15 +1,12 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useEffect, type ReactNode } from "react";
 import { UrlOwnedTaskSheet } from "@/components/UrlOwnedTaskSheet";
+import { useActionToast } from "@/components/ActionToastProvider";
+import type { ActionFeedback } from "@/server/services/actionFeedback";
 
 export type UrlOwnedActionState = {
-  feedback: {
-    code?: string;
-    message: string;
-    title: string;
-    tone?: "error" | "success";
-  } | null;
+  feedback: ActionFeedback | null;
   status: "idle" | "error" | "success";
 };
 
@@ -63,10 +60,18 @@ export function UrlOwnedActionTaskSheet({
   preserveSelectionParams
 }: UrlOwnedActionTaskSheetProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  const { showActionToast } = useActionToast();
+
+  useEffect(() => {
+    if (state.feedback) {
+      showActionToast(state.feedback);
+    }
+  }, [showActionToast, state.feedback, state.status]);
 
   return (
     <UrlOwnedTaskSheet
       actionFeedback={state.feedback}
+      showActionFeedbackInline={false}
       cancelLabel={state.status === "success" ? "Return to catalog" : cancelLabel}
       description={description}
       draftStorageKey={draftStorageKey}

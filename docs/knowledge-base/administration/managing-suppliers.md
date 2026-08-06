@@ -61,9 +61,9 @@ Open **Suppliers**. The selected company in your session is the company boundary
 6. Enter a link reason and choose **Link supplier item**.
 
 The effective date must be a real calendar date. If the action is not completed,
-the focused task keeps your entered draft and places the safe error message inside
-the task so you can correct and retry it. During submission, close, cancel, and
-submit controls are temporarily unavailable to prevent duplicate actions.
+the focused task stays open, keeps your entered draft, and shows a safe application
+toast so you can correct and retry it. During submission, close, cancel, and submit
+controls are temporarily unavailable to prevent duplicate actions.
 Ordinary draft fields and selected Item/UOM context survive lookup paging within
 the same signed-in user's browser tab. Confidential price/date fields are never
 written to tab storage; recheck them after lookup navigation before submission.
@@ -78,10 +78,10 @@ written to tab storage; recheck them after lookup navigation before submission.
 4. Choose **Deactivate supplier** or **Deactivate link**.
 5. If the action reports that the record is unavailable, refresh the register and review its current status before deciding whether another action is needed.
 
-An unsuccessful link deactivation keeps the entered reason in the open task. A
-successful link action confirms completion before closing and returns focus to the
-Catalog context. A success message cannot be created merely by changing the page
-URL.
+An unsuccessful link deactivation keeps the entered reason in the open task and
+shows a safe error toast. A successful link action shows a success toast, closes
+the action task automatically, and returns focus to the Catalog context. A success
+message cannot be created merely by changing the page URL.
 
 **Expected result:** A successful Supplier deactivation changes the Supplier to **Inactive** and its accreditation to **Suspended**. A successful link deactivation changes that exact link to **Inactive**. Both retain their history. If two users try to deactivate the same record at the same time, only the first valid action succeeds and produces the deactivation audit entry; the other user must refresh and review the retained result.
 

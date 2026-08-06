@@ -42,6 +42,24 @@ type TaskSheetProps = {
 const focusableSelector =
   "a[href], button:not(:disabled), input:not([type='hidden']):not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
 
+function ownedFocusableElements(sheet: HTMLElement) {
+  return Array.from(sheet.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => element.closest('[role="dialog"]') === sheet && element.offsetParent !== null
+  );
+}
+
+function ownedTaskSheetBody(sheet: HTMLElement) {
+  return Array.from(sheet.querySelectorAll<HTMLElement>("[data-task-sheet-body]")).find(
+    (body) => body.closest('[role="dialog"]') === sheet
+  ) ?? null;
+}
+
+function eventBelongsToSheet(target: EventTarget | null, sheet: HTMLElement | null) {
+  return Boolean(
+    sheet && target instanceof Element && target.closest('[role="dialog"]') === sheet
+  );
+}
+
 export function TaskSheet({
   title,
   children,
@@ -119,6 +137,7 @@ export function TaskSheet({
 
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (!eventBelongsToSheet(event.target, sheetRef.current)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         closeRef.current();
@@ -129,9 +148,7 @@ export function TaskSheet({
         return;
       }
 
-      const focusable = Array.from(sheetRef.current.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-        (element) => element.offsetParent !== null
-      );
+      const focusable = ownedFocusableElements(sheetRef.current);
       if (focusable.length === 0) {
         event.preventDefault();
         sheetRef.current.focus();
@@ -152,10 +169,14 @@ export function TaskSheet({
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
     window.setTimeout(() => {
-      const firstField = sheetRef.current?.querySelector<HTMLElement>(
-        "[data-task-sheet-body] input:not([type='hidden']):not(:disabled), [data-task-sheet-body] select:not(:disabled), [data-task-sheet-body] textarea:not(:disabled), [data-task-sheet-body] button:not(:disabled)"
-      );
-      (firstField ?? sheetRef.current)?.focus();
+      const sheet = sheetRef.current;
+      if (!sheet) return;
+      if (sheet.querySelector('[role="dialog"]')) return;
+      const body = ownedTaskSheetBody(sheet);
+      const firstField = body
+        ? ownedFocusableElements(sheet).find((element) => body.contains(element))
+        : null;
+      (firstField ?? sheet)?.focus();
     }, 0);
 
     return () => {
@@ -206,6 +227,7 @@ export function TaskSheet({
             onSubmitCapture={
               captureSubmit
                 ? (event) => {
+                    if (!eventBelongsToSheet(event.target, sheetRef.current)) return;
                     if (isPending) {
                       event.preventDefault();
                       return;
@@ -247,8 +269,20 @@ export function TaskSheet({
                   : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6",
                 bodyClassName
               )}
-              onChangeCapture={captureDirty ? markDirty : undefined}
-              onInputCapture={captureDirty ? markDirty : undefined}
+              onChangeCapture={
+                captureDirty
+                  ? (event) => {
+                      if (eventBelongsToSheet(event.target, sheetRef.current)) markDirty();
+                    }
+                  : undefined
+              }
+              onInputCapture={
+                captureDirty
+                  ? (event) => {
+                      if (eventBelongsToSheet(event.target, sheetRef.current)) markDirty();
+                    }
+                  : undefined
+              }
             >
               {children}
             </div>

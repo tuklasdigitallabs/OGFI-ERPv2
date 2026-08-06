@@ -15,7 +15,7 @@
 - Supplier creation and Supplier/link deactivation use focused task modes. Inactive records remain as read-only history.
 - Supplier and link deactivation recheck the exact company-scoped record and active status. When concurrent attempts target the same record, only one succeeds and records the deactivation audit entry.
 - Supplier deactivation now serializes with accreditation updates and new Supplier Item links, preventing a stale writer from restoring accreditation or adding a link after the Supplier becomes inactive.
-- Create-link and link-deactivation tasks keep entered drafts on safe server rejection, show the error inside the open task, announce pending progress, prevent duplicate submission, and restore context focus after confirmed success. Success confirmation comes from the completed server action, not a URL parameter.
+- Create-link and link-deactivation tasks keep entered drafts on safe server rejection, show application-level error toasts, announce pending progress, prevent duplicate submission, and restore context focus after confirmed success. Successful short actions show one application toast and close their action task automatically. Success confirmation comes from the completed server action, not a URL parameter.
 - Reference-price effective dates now reject malformed or impossible calendar dates.
 - Ordinary drafts and selected Item/UOM context survive same-tab lookup navigation for the same user. Confidential price/date values are not stored in the browser and must be rechecked after changing lookup results.
 
