@@ -9,6 +9,33 @@ import { approvalRoutingPolicies } from "../apps/web/src/server/services/approva
 
 const prisma = new PrismaClient();
 
+function assertFixtureRuntimeAdmission() {
+  const ordinaryProductionLane =
+    process.env.APP_ENV === "production" &&
+    process.env.AUTH_HARDENED_UAT_RUNTIME_ENABLED === "false" &&
+    process.env.BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED === "false" &&
+    process.env.APPROVAL_ROUTING_V1_ENABLED === "false";
+  const boundedUatLane =
+    process.env.APP_ENV === "uat" &&
+    process.env.AUTH_HARDENED_UAT_RUNTIME_ENABLED === "true" &&
+    process.env.BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED === "true" &&
+    process.env.APPROVAL_ROUTING_V1_ENABLED === "false";
+  if (
+    process.env.CI !== "true" ||
+    process.env.NODE_ENV !== "production" ||
+    process.env.AUTH_MODE !== "local" ||
+    (!ordinaryProductionLane && !boundedUatLane)
+  ) {
+    throw new Error("PRODUCTION_AUTH_E2E_FIXTURE_RUNTIME_NOT_ADMITTED");
+  }
+  if (
+    required("AUTHORIZATION_TEST_RUN_ID") !==
+    required("OGFI_DISPOSABLE_DATABASE_RUN_ID")
+  ) {
+    throw new Error("PRODUCTION_AUTH_E2E_FIXTURE_RUN_ID_MISMATCH");
+  }
+}
+
 function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name}_REQUIRED`);
@@ -210,6 +237,7 @@ async function createInventoryApprovalWorklistFixture(input: {
 }
 
 async function provision() {
+  assertFixtureRuntimeAdmission();
   await assertDisposableMarker();
   const provisioningNow = new Date();
   const tenantCode = process.env.OGFI_PRODUCTION_AUTH_E2E_TENANT_CODE ?? "ogfi";

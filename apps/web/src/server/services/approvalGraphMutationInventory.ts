@@ -342,6 +342,51 @@ export const approvalGraphToolingMutationInventory = Object.freeze([
   },
 ] as const);
 
+export const approvalGraphToolingOrmMutationInventory = Object.freeze([
+  {
+    file: "scripts/production-auth-e2e-fixture.ts",
+    classification: "DISPOSABLE_PRODUCTION_AUTH_E2E_FIXTURE_MUTATOR",
+    command: "provision",
+    functionName: "createInventoryApprovalWorklistFixture",
+    dataAuthority:
+      "Exact-lane disposable production-authenticated browser fixture; runtime admission, matching run IDs, and the database identity marker must pass before mutation.",
+    mutations: [
+      {
+        model: "approvalInstance",
+        operation: "create",
+        access: "DIRECT_DELEGATE",
+        count: 1,
+      },
+      {
+        model: "approvalInstanceStep",
+        operation: "create",
+        access: "NESTED_RELATION",
+        count: 1,
+      },
+    ],
+    delegatedMutationAuthority: [
+      {
+        service: "createSealedApprovalRuleFixture",
+        owner: "createInventoryApprovalWorklistFixture",
+        purpose:
+          "Creates and seals the disposable worklist approval rule and its steps.",
+      },
+      {
+        service: "configureApprovalStepRouting",
+        owner: "createInventoryApprovalWorklistFixture",
+        purpose:
+          "Creates the fixture step scope groups, scope targets, prohibited actors, activation audit, and routing state through the canonical routing service.",
+      },
+      {
+        service: "requestInventoryPilotBootstrap",
+        owner: "provision",
+        purpose:
+          "Creates the sealed disposable Inventory Pilot configuration and activation evidence through the private bootstrap boundary.",
+      },
+    ],
+  },
+] as const);
+
 export const approvalGraphToolingDdlInventory = Object.freeze([
   "infra/hostinger/postgres/handoff-opening-stock-owner.sql",
   "infra/hostinger/postgres/reconcile-ownership-and-grants.sql",

@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionContext } from "../src/server/services/context";
@@ -11,8 +15,11 @@ import {
 } from "./authorizationDatabaseSafety";
 import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
-const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
-if (!process.env.DATABASE_URL) {
+const runPg = process.env.RUN_INVENTORY_PILOT_APPROVAL_PG_TESTS === "true";
+const expectedDatabase = runPg
+  ? assertDisposableAuthorizationDatabaseConfigured(process.env)
+  : null;
+if (runPg && !process.env.DATABASE_URL) {
   throw new Error("INVENTORY_PILOT_CONFIGURATION_DATABASE_REQUIRED");
 }
 
@@ -54,7 +61,7 @@ const configurationPermissionCodes = [
   permissions.inventoryPilotConfigurationSeal,
 ] as const;
 
-describe("DEC-0273 inventory pilot configuration PostgreSQL controls", () => {
+describe.skipIf(!runPg)("DEC-0273 inventory pilot configuration PostgreSQL controls", () => {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
   const id = () => randomUUID();
   const ids = {
@@ -197,6 +204,192 @@ describe("DEC-0273 inventory pilot configuration PostgreSQL controls", () => {
       prisma.inventoryBalance.count({ where: { tenantId: ids.tenant, companyId: ids.company } }),
     ]);
     return { activations, cohorts, movements, balances };
+  }
+
+  async function productionFixtureMutationSnapshot() {
+    const [
+      authIdentityRows,
+      passwordCredentialRows,
+      mfaAuthenticatorRows,
+      purchaseRequests,
+      approvalInstances,
+      approvalSteps,
+      scopeGroups,
+      scopeTargets,
+      prohibitedActors,
+      routingProvenance,
+      approvalRules,
+      approvalRuleSteps,
+      pilotDrafts,
+      pilotDraftEndpoints,
+      pilotDraftItems,
+      pilotDraftParticipants,
+      pilotDraftRoutes,
+      pilotSealOperations,
+      pilotRevisions,
+      pilotEndpoints,
+      pilotItems,
+      pilotParticipants,
+      pilotRoutes,
+      pilotActivationEvents,
+      pilotActivations,
+      auditEvents,
+    ] = await Promise.all([
+      prisma.authIdentity.findMany({
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          tenantId: true,
+          userId: true,
+          provider: true,
+          providerSubject: true,
+          normalizedIdentifier: true,
+          status: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.passwordCredential.findMany({
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          authIdentityId: true,
+          passwordHash: true,
+          hashAlgorithm: true,
+          requiresChange: true,
+          temporaryPasswordExpiresAt: true,
+          temporaryPasswordUsedAt: true,
+          passwordChangedAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.mfaAuthenticator.findMany({
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          tenantId: true,
+          userId: true,
+          label: true,
+          status: true,
+          encryptedSecret: true,
+          secretIv: true,
+          secretAuthTag: true,
+          keyVersion: true,
+          lastUsedCounter: true,
+          verifiedAt: true,
+          revokedAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.purchaseRequest.count(),
+      prisma.approvalInstance.count(),
+      prisma.approvalInstanceStep.count(),
+      prisma.approvalInstanceStepScopeGroup.count(),
+      prisma.approvalInstanceStepScopeTarget.count(),
+      prisma.approvalInstanceStepProhibitedActor.count(),
+      prisma.approvalRoutingProducerProvenance.count(),
+      prisma.approvalRule.count(),
+      prisma.approvalRuleStep.count(),
+      prisma.inventoryPilotConfigurationDraft.count(),
+      prisma.inventoryPilotDraftEndpointMembership.count(),
+      prisma.inventoryPilotDraftItemMembership.count(),
+      prisma.inventoryPilotDraftParticipant.count(),
+      prisma.inventoryPilotDraftRouteReadiness.count(),
+      prisma.inventoryPilotConfigurationSealOperation.count(),
+      prisma.inventoryPilotConfigurationRevision.count(),
+      prisma.inventoryPilotEndpointMembership.count(),
+      prisma.inventoryPilotItemMembership.count(),
+      prisma.inventoryPilotParticipantMembership.count(),
+      prisma.inventoryPilotRouteReadinessMembership.count(),
+      prisma.inventoryPilotFamilyActivationEvent.count(),
+      prisma.inventoryPilotFamilyActivation.count(),
+      prisma.auditEvent.count(),
+    ]);
+    const sensitiveDigest = (value: unknown) =>
+      createHash("sha256")
+        .update(
+          JSON.stringify(value, (_name, item) =>
+            typeof item === "bigint" ? item.toString() : item,
+          ),
+        )
+        .digest("hex");
+    return {
+      authIdentityDigest: sensitiveDigest(authIdentityRows),
+      passwordCredentialDigest: sensitiveDigest(passwordCredentialRows),
+      mfaAuthenticatorDigest: sensitiveDigest(mfaAuthenticatorRows),
+      purchaseRequests,
+      approvalInstances,
+      approvalSteps,
+      scopeGroups,
+      scopeTargets,
+      prohibitedActors,
+      routingProvenance,
+      approvalRules,
+      approvalRuleSteps,
+      pilotDrafts,
+      pilotDraftEndpoints,
+      pilotDraftItems,
+      pilotDraftParticipants,
+      pilotDraftRoutes,
+      pilotSealOperations,
+      pilotRevisions,
+      pilotEndpoints,
+      pilotItems,
+      pilotParticipants,
+      pilotRoutes,
+      pilotActivationEvents,
+      pilotActivations,
+      auditEvents,
+    };
+  }
+
+  function runRejectedProductionFixture(
+    markerEnvironment: Record<string, string | undefined>,
+  ) {
+    const executable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+    const fixtureDirectory = mkdtempSync(
+      path.join(tmpdir(), "ogfi-rejected-production-auth-fixture-"),
+    );
+    const fixtureFile = path.join(fixtureDirectory, "fixture.json");
+    const fixtureEnvironment: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: "production",
+      APP_ENV: "production",
+      CI: "true",
+      AUTH_MODE: "local",
+      AUTH_HARDENED_UAT_RUNTIME_ENABLED: "false",
+      BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: "false",
+      APPROVAL_ROUTING_V1_ENABLED: "false",
+      OGFI_PRODUCTION_AUTH_E2E_FIXTURE_FILE: fixtureFile,
+      ...markerEnvironment,
+    };
+    for (const [name, value] of Object.entries(markerEnvironment)) {
+      if (value === undefined) delete fixtureEnvironment[name];
+    }
+    try {
+      const result = spawnSync(
+        executable,
+        [
+          "--dir",
+          "apps/web",
+          "exec",
+          "tsx",
+          "../../scripts/production-auth-e2e-fixture.ts",
+          "provision",
+        ],
+        {
+          cwd: path.resolve(__dirname, "../../.."),
+          encoding: "utf8",
+          env: fixtureEnvironment,
+          timeout: 30_000,
+        },
+      );
+      const fixtureWasWritten = existsSync(fixtureFile);
+      expect(result.status).not.toBe(0);
+      expect(fixtureWasWritten).toBe(false);
+      return `${result.stdout}\n${result.stderr}`;
+    } finally {
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
   }
 
   beforeAll(async () => {
@@ -368,6 +561,37 @@ describe("DEC-0273 inventory pilot configuration PostgreSQL controls", () => {
     delete process.env.AUTH_MODE;
     if (prisma) await prisma.$disconnect();
   });
+
+  it("AUTHZ-PRODUCTION-AUTH-FIXTURE-MARKER-DENIAL-NO-MUTATION", async () => {
+    const before = await productionFixtureMutationSnapshot();
+    const missingMarkerOutput = runRejectedProductionFixture({
+      OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME: undefined,
+    });
+    expect(missingMarkerOutput).toContain(
+      "OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME_REQUIRED",
+    );
+    expect(await productionFixtureMutationSnapshot()).toEqual(before);
+
+    const mismatchedRunId = `fixture-denial-${suffix}`;
+    const mismatchedMarkerOutput = runRejectedProductionFixture({
+      AUTHORIZATION_TEST_RUN_ID: mismatchedRunId,
+      OGFI_DISPOSABLE_DATABASE_RUN_ID: mismatchedRunId,
+    });
+    expect(mismatchedMarkerOutput).toContain(
+      "PRODUCTION_AUTH_E2E_DISPOSABLE_MARKER_MISMATCH",
+    );
+    expect(await productionFixtureMutationSnapshot()).toEqual(before);
+
+    const mismatchedNonceOutput = runRejectedProductionFixture({
+      OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: createHash("sha256")
+        .update(`fixture-denial-${suffix}`)
+        .digest("hex"),
+    });
+    expect(mismatchedNonceOutput).toContain(
+      "PRODUCTION_AUTH_E2E_DISPOSABLE_MARKER_MISMATCH",
+    );
+    expect(await productionFixtureMutationSnapshot()).toEqual(before);
+  }, 60_000);
 
   it("AUTHZ-PI-PILOT-CONFIG-AUTHORIZATION-NO-MUTATION", async () => {
     const tenantCompanyDraft = await pilot.createInventoryPilotConfigurationDraft(

@@ -14,6 +14,7 @@ import {
   approvalRawSqlMethods,
   approvalGraphToolingDdlInventory,
   approvalGraphToolingMutationInventory,
+  approvalGraphToolingOrmMutationInventory,
   approvalGraphToolingProbeInventory,
   canonicalApprovalDocumentTypes,
   financeCloseApprovalDocumentTypes,
@@ -537,6 +538,37 @@ function moduleReferences(file: string, source: string, target: string) {
   };
   visit(sourceFile);
   return references;
+}
+
+function delegatedToolingCallFindings(
+  file: string,
+  source: string,
+  services: ReadonlySet<string>,
+) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(file),
+  );
+  const findings: Array<{ file: string; owner: string; service: string }> = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      services.has(node.expression.text)
+    ) {
+      findings.push({
+        file,
+        owner: functionOwner(node),
+        service: node.expression.text,
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return findings;
 }
 
 describe("DEC-0247 C1-S dormant observer structural contract", () => {
@@ -1114,10 +1146,66 @@ describe("DEC-0247 C0 repository SQL/tooling guard", () => {
     ] as const).sort(([left], [right]) => left.localeCompare(right));
     expect([...actualCounts.entries()].sort(([left], [right]) => left.localeCompare(right))).toEqual(expectedCounts);
 
+    const actualOrmMutationCounts = toolingFiles()
+      .filter((file) =>
+        approvalGraphToolingOrmMutationInventory.some((entry) => entry.file === file),
+      )
+      .flatMap((file) =>
+        analyzeSource(file, readFileSync(path.join(repositoryRoot, file), "utf8"))
+          .findings,
+      )
+      .map((finding) =>
+        `${finding.file}|${finding.owner}|${finding.model}|${finding.operation}|${finding.access}`,
+      )
+      .sort();
+    const expectedOrmMutationCounts = approvalGraphToolingOrmMutationInventory
+      .flatMap((entry) =>
+        entry.mutations.flatMap((mutation) =>
+          Array.from(
+            { length: mutation.count },
+            () =>
+              `${entry.file}|${entry.functionName}|${mutation.model}|${mutation.operation}|${mutation.access}`,
+          ),
+        ),
+      )
+      .sort();
+    expect(actualOrmMutationCounts).toEqual(expectedOrmMutationCounts);
+    const delegatedServices = new Set(
+      approvalGraphToolingOrmMutationInventory.flatMap((entry) =>
+        entry.delegatedMutationAuthority.map(({ service }) => service),
+      ),
+    );
+    const actualDelegatedCalls = approvalGraphToolingOrmMutationInventory
+      .flatMap((entry) =>
+        delegatedToolingCallFindings(
+          entry.file,
+          readFileSync(path.join(repositoryRoot, entry.file), "utf8"),
+          delegatedServices,
+        ),
+      )
+      .map(({ file, owner, service }) => `${file}|${owner}|${service}`)
+      .sort();
+    const expectedDelegatedCalls = approvalGraphToolingOrmMutationInventory
+      .flatMap((entry) =>
+        entry.delegatedMutationAuthority.map(
+          ({ owner, service }) => `${entry.file}|${owner}|${service}`,
+        ),
+      )
+      .sort();
+    expect(actualDelegatedCalls).toEqual(expectedDelegatedCalls);
+
+    for (const entry of approvalGraphToolingOrmMutationInventory) {
+      expect(entry.classification).toBe(
+        "DISPOSABLE_PRODUCTION_AUTH_E2E_FIXTURE_MUTATOR",
+      );
+      expect(entry.command).toBe("provision");
+    }
+
     const classified = new Set<string>([
       ...approvalGraphToolingDdlInventory,
       ...approvalGraphToolingProbeInventory,
       ...approvalGraphToolingMutationInventory.map((item) => item.file),
+      ...approvalGraphToolingOrmMutationInventory.map((item) => item.file),
     ]);
     const referenced = files.filter((file) =>
       protectedReference(readFileSync(path.join(repositoryRoot, file), "utf8")),

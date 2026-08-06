@@ -123,6 +123,15 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
     /requestInventoryPilotBootstrap\(\{\s*action: "CONFIGURATION_V2_SEALED",\s*\}\)/,
   );
   assert.match(fixture, /inventoryPilotConfiguration/);
+  assert.match(fixture, /function assertFixtureRuntimeAdmission\(\)/);
+  assert.match(
+    fixture,
+    /required\("AUTHORIZATION_TEST_RUN_ID"\)[\s\S]*required\("OGFI_DISPOSABLE_DATABASE_RUN_ID"\)/,
+  );
+  assert.match(
+    fixture,
+    /async function provision\(\) \{\s*assertFixtureRuntimeAdmission\(\);\s*await assertDisposableMarker\(\);/,
+  );
   assert.match(
     privateDatabaseHandoff,
     /"--dir",\s*"apps\/web",\s*"exec",\s*"tsx",\s*"\.\.\/\.\.\/scripts\/production-auth-e2e-fixture\.ts"/,
