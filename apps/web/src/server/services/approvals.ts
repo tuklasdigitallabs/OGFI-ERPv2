@@ -84,16 +84,20 @@ import { acquireApprovalReviewDecisionAggregateFences } from "./approvalReviewAg
 async function runReviewedApprovalTransaction<T>(
   operation: (tx: TransactionClient) => Promise<T>,
 ) {
-  try {
-    return await prisma.$transaction(operation, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-    });
-  } catch (error) {
-    if (isApprovalReviewSerializationFailure(error)) {
-      throw new Error("APPROVAL_REVIEW_STALE");
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (!isApprovalReviewSerializationFailure(error)) throw error;
+      // The first aborted transaction has no committed effects. Re-running the
+      // complete locked preflight once lets a concurrent authority revocation
+      // resolve to its precise domain denial rather than a generic stale state.
+      if (attempt === 2) throw new Error("APPROVAL_REVIEW_STALE");
     }
-    throw error;
   }
+  throw new Error("APPROVAL_REVIEW_STALE");
 }
 
 function isApprovalReviewSerializationFailure(error: unknown) {

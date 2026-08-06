@@ -29,6 +29,28 @@ if (!process.env.DATABASE_URL) {
   throw new Error("AUTHORIZATION_PROCUREMENT_INVENTORY_DATABASE_REQUIRED");
 }
 
+async function waitForBlockedRecipientAuthorityLock(
+  prisma: PrismaClient,
+  blockerPid: number,
+) {
+  const deadline = Date.now() + 4_000;
+  while (Date.now() < deadline) {
+    const blocked = await prisma.$queryRaw<Array<{ pid: number }>>`
+      SELECT activity.pid
+        FROM pg_stat_activity activity
+       WHERE activity.datname = current_database()
+         AND activity.wait_event_type = 'Lock'
+         AND ${blockerPid}::int = ANY(pg_blocking_pids(activity.pid))
+         AND activity.query LIKE '%"User"%'
+         AND activity.query LIKE '%FOR SHARE%'
+       LIMIT 1
+    `;
+    if (blocked.length === 1) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error("APPROVAL_RECIPIENT_AUTHORITY_LOCK_WAIT_NOT_OBSERVED");
+}
+
 describe("procurement and inventory authorization boundaries", () => {
   const suffix = randomUUID().slice(0, 8);
   const ids = {
@@ -2869,6 +2891,7 @@ describe("procurement and inventory authorization boundaries", () => {
     const revokePermission = await grantPermission("purchasing.purchase_request.approve");
     let releaseRecipientRevocation!: () => void;
     let recipientRevocationLocked!: () => void;
+    let recipientRevocationPid!: number;
     const recipientRevocationReady = new Promise<void>((resolve) => {
       recipientRevocationLocked = resolve;
     });
@@ -2877,6 +2900,11 @@ describe("procurement and inventory authorization boundaries", () => {
     });
     try {
       const revokeRecipient = prisma.$transaction(async (tx) => {
+        const [backend] = await tx.$queryRaw<Array<{ pid: number }>>`
+          SELECT pg_backend_pid() AS pid
+        `;
+        if (!backend) throw new Error("RECIPIENT_REVOCATION_BACKEND_NOT_FOUND");
+        recipientRevocationPid = backend.pid;
         await tx.user.update({
           where: { id: ids.nextApproverId },
           data: { status: "INACTIVE" },
@@ -2891,12 +2919,15 @@ describe("procurement and inventory authorization boundaries", () => {
           form({ approvalInstanceId: ids.recipientRevocationApprovalId }),
         ),
       ).rejects.toThrow("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForBlockedRecipientAuthorityLock(
+        prisma,
+        recipientRevocationPid,
+      );
       releaseRecipientRevocation();
       await revokeRecipient;
       await approvalAttempt;
 
-      const [approval, steps, request, notifications] = await Promise.all([
+      const [approval, steps, request, notifications, decisionAudits] = await Promise.all([
         prisma.approvalInstance.findUniqueOrThrow({
           where: { id: ids.recipientRevocationApprovalId },
         }),
@@ -2914,6 +2945,14 @@ describe("procurement and inventory authorization boundaries", () => {
             entityId: ids.recipientRevocationPurchaseRequestId,
           },
         }),
+        prisma.auditEvent.count({
+          where: {
+            tenantId: ids.tenantId,
+            entityType: "PurchaseRequest",
+            entityId: ids.recipientRevocationPurchaseRequestId,
+            eventType: "purchase_request.approval_step_approved",
+          },
+        }),
       ]);
       expect(approval).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
       expect(steps.map(({ status }) => status)).toEqual(["PENDING", "WAITING"]);
@@ -2922,6 +2961,7 @@ describe("procurement and inventory authorization boundaries", () => {
         currentApprovalStep: 1,
       });
       expect(notifications).toHaveLength(0);
+      expect(decisionAudits).toBe(0);
     } finally {
       releaseRecipientRevocation?.();
       await prisma.user.update({

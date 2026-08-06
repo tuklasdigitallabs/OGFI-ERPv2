@@ -354,6 +354,22 @@ This follow-up changes no visible user workflow or policy, so no glossary,
 knowledge-base, training, or user-facing release-note update is required. Hosted
 exact-SHA authorization and browser evidence remains required before UAT credit.
 
+Exact-SHA run `31112610959` showed that mapping the first serialization abort
+directly to `APPROVAL_REVIEW_STALE` masked the existing Purchase Request
+next-recipient revocation control. Reviewed-approval transactions now make at
+most two complete serializable attempts. The first recognized `P2034`/`40001`
+abort retries from a fresh snapshot; any business-domain failure on that attempt
+is preserved, while a second serialization abort maps to
+`APPROVAL_REVIEW_STALE`. No other errors retry. This bounded policy preserves
+atomic rollback, live authority/SOD/MFA revalidation, exact recipient-unavailable
+denial, and raw database-error containment across all admitted families. A fresh
+151-migration PostgreSQL run passes the complete procurement/inventory boundary
+file **38/38** plus the Stock Adjustment race **2/2**, with verified teardown.
+The recipient-revocation race now releases its blocker only after
+`pg_stat_activity` and `pg_blocking_pids` prove the approval transaction is
+waiting on the recipient `FOR SHARE` authority lock; the deterministic fresh
+database rerun passes **38/38** with no decision audit or notification residue.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |

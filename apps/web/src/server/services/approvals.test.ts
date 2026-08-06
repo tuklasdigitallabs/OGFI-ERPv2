@@ -1181,6 +1181,15 @@ describe("multi-step approval advancement", () => {
     expect(serviceSource).toContain("isApprovalReviewSerializationFailure");
     expect(serviceSource).toContain('candidate.meta?.code === "40001"');
     expect(serviceSource).toContain('throw new Error("APPROVAL_REVIEW_STALE")');
+    expect(serviceSource).toContain(
+      "for (let attempt = 1; attempt <= 2; attempt += 1)",
+    );
+    expect(serviceSource).toContain(
+      "if (!isApprovalReviewSerializationFailure(error)) throw error",
+    );
+    expect(serviceSource).toContain(
+      'if (attempt === 2) throw new Error("APPROVAL_REVIEW_STALE")',
+    );
     const reviewedTransactionAt = serviceSource.indexOf(
       "async function runReviewedApprovalTransaction",
     );
