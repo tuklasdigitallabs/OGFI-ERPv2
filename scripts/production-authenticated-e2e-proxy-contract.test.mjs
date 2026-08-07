@@ -199,9 +199,10 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   assert.match(runner, /normalizeTmpfs/);
   assert.match(runner, /"\/var\/lib\/postgresql\/data": "size=1g,mode=0700"/);
   assert.match(runner, /"\/var\/run\/postgresql": "size=1m,mode=3775"/);
-  assert.match(runner, /normalizeTmpfs\(\{ "\/tmp": "size=64m,mode=1777" \}\)/);
-  assert.match(runner, /"\/app\/packages\/database\/node_modules\/\.vite": "size=64m,mode=1777"/);
-  assert.match(runner, /"\/app\/apps\/web\/node_modules\/\.vite": "size=64m,mode=1777"/);
+  assert.match(
+    runner,
+    /normalizeTmpfs\(\{[\s\S]*"\/tmp": "size=64m,mode=1777",[\s\S]*"\/app\/packages\/database\/node_modules\/\.vite": "size=64m,mode=1777",[\s\S]*"\/app\/apps\/web\/node_modules\/\.vite": "size=64m,mode=1777"[\s\S]*\}\)/,
+  );
   assert.match(runner, /lifecycle\?\.Config\?\.User !== expectedLifecycleUser/);
   assert.match(runner, /environment\.DATABASE_URL/);
   assert.match(
