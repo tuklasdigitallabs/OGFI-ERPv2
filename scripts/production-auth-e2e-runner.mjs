@@ -518,9 +518,13 @@ function assertPrivateDatabaseTopology(
   const ports = container?.HostConfig?.PortBindings ?? {};
   const mounts = container?.Mounts ?? [];
   const normalizeCapabilities = (capabilities = []) =>
-    capabilities.map((capability) => capability.replace(/^CAP_/, "")).sort();
+    (Array.isArray(capabilities) ? capabilities : [])
+      .map((capability) => capability.replace(/^CAP_/, ""))
+      .sort();
   const normalizeSecurityOptions = (options = []) =>
-    options.map((option) => option.replace(/(?::|=)true$/, "")).sort();
+    (Array.isArray(options) ? options : [])
+      .map((option) => option.replace(/(?::|=)true$/, ""))
+      .sort();
   const mountContract = (actualMounts, expectedMounts) => {
     const normalized = actualMounts
       .map((mount) => ({
@@ -537,7 +541,7 @@ function assertPrivateDatabaseTopology(
   };
   const normalizeTmpfs = (tmpfs = {}) =>
     Object.fromEntries(
-      Object.entries(tmpfs)
+      Object.entries(tmpfs && typeof tmpfs === "object" ? tmpfs : {})
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([destination, options]) => [
           destination,

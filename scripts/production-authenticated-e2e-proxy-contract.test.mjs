@@ -189,6 +189,9 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   assert.match(runner, /container\.HostConfig\?\.ReadonlyRootfs !== true/);
   assert.match(runner, /lifecycle\.HostConfig\?\.ReadonlyRootfs !== true/);
   assert.match(runner, /normalizeSecurityOptions/);
+  assert.match(runner, /Array\.isArray\(capabilities\)/);
+  assert.match(runner, /Array\.isArray\(options\)/);
+  assert.match(runner, /typeof tmpfs === "object"/);
   assert.match(runner, /expectedDatabaseMounts/);
   assert.match(runner, /expectedLifecycleMounts/);
   assert.match(runner, /normalizeTmpfs/);
