@@ -1,6 +1,6 @@
 # OGFI ERP — Current Pending Implementation Plan
 
-**As of:** August 6, 2026
+**As of:** August 7, 2026
 **Status:** Active implementation register  
 **Scope:** Production-readiness implementation remaining outside formal user UAT execution and final owner signoff
 
@@ -290,6 +290,12 @@ The requested Code Spark and exact GPT-5.4 council models were unavailable. Inde
 - The lifecycle Compose service now mounts bounded ephemeral tmpfs caches at the database and web workspace Vitest cache paths while retaining `read_only: true`, dropped capabilities, `no-new-privileges`, private networking, and host-UID binding. The immutable-image validator now accepts the exact CI reference form `docker.io/library/postgres:17-alpine@sha256:...`; the previous validator rejected the tag separator even though the workflow intentionally pins that form.
 - The production-authenticated child command receives only the teardown stop token as an additive outer-runner environment for its authenticated cleanup command. It remains scrubbed from the runtime database environment and is not listed in the web Compose environment. A source contract and lifecycle tests cover the cache mounts, pinned image form, and cleanup-token boundary.
 - Local validation: `pnpm.cmd test:production-authenticated-e2e-proxy` passed 15 tests (5 passed, 10 platform-skipped); disposable/lifecycle contracts passed 18 tests (9 platform-skipped). A hardened local lifecycle reproduction passed migrations, seed, throttle probes, and append-only guard (17/17) before reaching the next fixture-only admission check, confirming the cache and image-identity failures are corrected. A fresh hosted run on this correction is still required; Approval Inbox activation, Phase I, and the Inventory Control Pilot remain **NO-GO** until both hosted lanes complete browser, artifact-secret, teardown, recovery, and human-UAT gates.
+
+### DEC-0276 hosted lifecycle admission failure — August 7, 2026
+
+- Exact candidate `4f1783fd7d5e190b676dc64129a7f6e18f0a6ae7` and hosted run `31140564371` passed the complete prerequisite `checks` job, including ordinary development-authenticated E2E. Both admitted `production` and `bounded-uat` lanes built their immutable candidate/proxy images and then failed at `Start isolated disposable database lifecycle` after approximately 30 seconds; `Verify teardown and remove private runtime` also failed secondarily because no live handoff existed. Neither lane reached TLS/browser execution, artifact scanning, or teardown receipt verification.
+- Public job annotations expose only generic exit code `1`; no failing command or secret-bearing lifecycle log is available through the unauthenticated API. No browser, Approval Inbox, UAT, recovery, or release credit is inferred. The exact global routing flag remains false and ordinary local Approval Inbox behavior remains fail-closed.
+- The next action is a bounded lifecycle-only diagnosis/reproduction (or a redacted state/error diagnostic if the hosted command remains opaque), followed by the smallest safe correction and a new exact-SHA hosted run. No product authorization, approval-routing, database-schema, or release-flag change is authorized from this failure alone. Phase I and the Inventory Control Pilot remain **NO-GO**.
 
 ### Local-only execution directive — July 30, 2026
 
