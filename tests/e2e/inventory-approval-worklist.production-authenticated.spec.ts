@@ -1,10 +1,10 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { prisma } from "../../packages/database/src/client";
 
 type Fixture = {
   tenantCode: string;
+  branch: { email: string; password: string };
   privileged: { email: string; password: string; totpSecret: string };
   approvalWorklist: {
     targetApprovalInstanceId: string;
@@ -104,6 +104,32 @@ async function signInAsPrivilegedApprover(page: Page) {
   ]);
 }
 
+async function addSourceCommentAsBranchUser(
+  browser: import("@playwright/test").Browser,
+  data: Fixture,
+) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await enterPassword(page, data.branch);
+    await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
+    await page.goto(`/purchase-requests/${data.approvalWorklist.targetSourceId}`);
+    await expect(page.getByRole("heading", { name: /Purchase Request/ })).toBeVisible();
+    await page.getByLabel("Add comment").fill(
+      "Source comment changed after the approver loaded the review.",
+    );
+    await page.getByRole("button", { name: "Add Comment" }).click();
+    await expect(
+      page.getByText(
+        "Source comment changed after the approver loaded the review.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   expect(
     await page
@@ -151,11 +177,8 @@ test.describe("hardened-UAT production-authenticated bounded Approval Worklist",
     "Requires the exact hardened bounded-UAT evidence runtime; ordinary production-auth evidence must remain closed.",
   );
 
-  test.afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
   test("is responsive, paginated, review-complete, stale-safe, and refreshes after one decision", async ({
+    browser,
     page,
   }, testInfo) => {
     test.skip(
@@ -274,15 +297,7 @@ test.describe("hardened-UAT production-authenticated bounded Approval Worklist",
     const preservedDraft = "Reviewed values and scope before controlled approval.";
     await remarks.fill(preservedDraft);
 
-    await prisma.purchaseRequestComment.create({
-      data: {
-        purchaseRequestId: data.approvalWorklist.targetSourceId,
-        tenantId: data.approvalWorklist.tenantId,
-        companyId: data.approvalWorklist.companyId,
-        authorUserId: data.approvalWorklist.targetRequesterUserId,
-        body: "Source comment changed after the approver loaded the review.",
-      },
-    });
+    await addSourceCommentAsBranchUser(browser, data);
     await page.getByRole("button", { name: "Approve Purchase Request" }).click();
     const staleAlert = page.getByRole("alert");
     await expect(staleAlert).toContainText("Decision not completed");
