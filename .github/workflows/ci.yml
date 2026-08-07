@@ -190,6 +190,14 @@ jobs:
           probe_token="$(openssl rand -hex 32)"
           stop_token="$(openssl rand -hex 32)"
           smtp_password="$(openssl rand -hex 32)"
+          # These values are generated per run and are not GitHub repository
+          # secrets. Register them with the runner before writing them to
+          # GITHUB_ENV so the step environment summary cannot disclose them.
+          for secret_value in \
+            "$database_password" "$auth_secret" "$throttle_hmac_key" \
+            "$encryption_key" "$probe_token" "$stop_token" "$smtp_password"; do
+            echo "::add-mask::$secret_value"
+          done
           password_file="$secret_root/database-password"
           admin_url_file="$secret_root/database-admin-url"
           artifact_scan_needles="$secret_root/artifact-scan-needles"
