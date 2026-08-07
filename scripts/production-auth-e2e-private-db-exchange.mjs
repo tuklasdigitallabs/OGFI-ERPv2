@@ -28,7 +28,7 @@ export const privateDatabaseExchangeFiles = Object.freeze({
 });
 
 const immutableImagePattern =
-  /^(?:[a-z0-9][a-z0-9._/-]*@)?sha256:[a-f0-9]{64}$/;
+  /^(?:[a-z0-9][a-z0-9._:/-]*@)?sha256:[a-f0-9]{64}$/;
 const runIdPattern = /^[A-Za-z0-9._-]{6,128}$/;
 const safeNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const stateSequence = Object.freeze({

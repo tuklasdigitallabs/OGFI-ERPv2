@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createDisposablePostgresIdentity } from "./disposable-postgres-lifecycle.mjs";
+import { assertImmutableImageIdentity } from "./production-auth-e2e-private-db-exchange.mjs";
 
 const read = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -293,4 +294,9 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   );
   assert.match(workflow, /databaseContainer:"VERIFIED_REMOVED"/);
   assert.match(workflow, /privateNetwork:"VERIFIED_REMOVED"/);
+});
+
+test("database lifecycle accepts the digest-pinned image reference used by CI", () => {
+  const image = `docker.io/library/postgres:17-alpine@sha256:${"a".repeat(64)}`;
+  assert.equal(assertImmutableImageIdentity(image, "IMAGE_INVALID"), image);
 });

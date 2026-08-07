@@ -461,6 +461,14 @@ test("database lifecycle Compose contract is private, unprivileged, and host-UID
   );
   assert.match(compose, /internal: true/);
   assert.match(compose, /lifecycle:[\s\S]*- \/tmp:size=64m,mode=1777/);
+  assert.match(
+    compose,
+    /lifecycle:[\s\S]*- \/app\/packages\/database\/node_modules\/\.vite:size=64m,mode=1777/,
+  );
+  assert.match(
+    compose,
+    /lifecycle:[\s\S]*- \/app\/apps\/web\/node_modules\/\.vite:size=64m,mode=1777/,
+  );
   assert.doesNotMatch(
     compose,
     /docker\.sock|privileged:|network_mode: host|\n\s+ports:/,

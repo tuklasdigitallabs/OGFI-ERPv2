@@ -59,6 +59,11 @@ services:
       - ALL
     tmpfs:
       - /tmp:size=64m,mode=1777
+      # Vitest writes its result cache beneath each workspace's node_modules.
+      # Keep the lifecycle root read-only while providing ephemeral, bounded
+      # cache space for the disposable test process.
+      - /app/packages/database/node_modules/.vite:size=64m,mode=1777
+      - /app/apps/web/node_modules/.vite:size=64m,mode=1777
     volumes:
       - type: bind
         source: ${OGFI_PRODUCTION_AUTH_E2E_DATABASE_EXCHANGE_ROOT:?Set the run-owned exchange root}

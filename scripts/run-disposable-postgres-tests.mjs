@@ -267,16 +267,29 @@ try {
     );
   }
 
+  const runtimeEnvironment = buildRuntimeEnvironment(
+    { ...process.env, ...disposableThrottleEnv },
+    runtimeUrl,
+    identity,
+    adminUrl,
+  );
+  const productionAuthenticatedCleanupEnvironment =
+    suiteName === "production-authenticated-e2e" &&
+    process.env.OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN
+      ? {
+          // The stop token is needed only by the outer production runner's
+          // teardown command. It is not part of the runtime database
+          // environment and is not admitted into the web container compose.
+          OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN:
+            process.env.OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN,
+        }
+      : {};
   exitCode = suiteName === "approval-routing-shadow"
     ? shadowFixtureExitCode ?? 1
     : runChildCommand(
         command,
-        buildRuntimeEnvironment(
-          { ...process.env, ...disposableThrottleEnv },
-          runtimeUrl,
-          identity,
-          adminUrl,
-        ),
+        runtimeEnvironment,
+        productionAuthenticatedCleanupEnvironment,
         buildInventoryPilotBootstrapTestEnvironment(
           suiteName,
           inventoryPilotBootstrap?.runtimeEnvironment,

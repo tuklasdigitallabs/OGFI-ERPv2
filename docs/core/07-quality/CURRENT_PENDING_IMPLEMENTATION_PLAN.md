@@ -284,6 +284,13 @@ The requested Code Spark and exact GPT-5.4 council models were unavailable. Inde
   specialist fallbacks without relaxing the deliberation protocol or hard
   gates.
 
+### DEC-0275 production-authenticated lifecycle cache and handoff correction — August 7, 2026
+
+- Hosted run `31137408375` (candidate `e7c8da7b7ba39c10b24dcf7f9957c1ba865e52a4`) passed image construction, Playwright installation, TLS/proxy contracts, and the checks job, but both matrix lanes exited during the disposable lifecycle before browser execution. A local reproduction of the same hardened lifecycle reached all 151 migrations and exposed the first actionable failure: Vitest attempted to create `/app/packages/database/node_modules/.vite` on the lifecycle image's read-only root.
+- The lifecycle Compose service now mounts bounded ephemeral tmpfs caches at the database and web workspace Vitest cache paths while retaining `read_only: true`, dropped capabilities, `no-new-privileges`, private networking, and host-UID binding. The immutable-image validator now accepts the exact CI reference form `docker.io/library/postgres:17-alpine@sha256:...`; the previous validator rejected the tag separator even though the workflow intentionally pins that form.
+- The production-authenticated child command receives only the teardown stop token as an additive outer-runner environment for its authenticated cleanup command. It remains scrubbed from the runtime database environment and is not listed in the web Compose environment. A source contract and lifecycle tests cover the cache mounts, pinned image form, and cleanup-token boundary.
+- Local validation: `pnpm.cmd test:production-authenticated-e2e-proxy` passed 15 tests (5 passed, 10 platform-skipped); disposable/lifecycle contracts passed 18 tests (9 platform-skipped). A hardened local lifecycle reproduction passed migrations, seed, throttle probes, and append-only guard (17/17) before reaching the next fixture-only admission check, confirming the cache and image-identity failures are corrected. A fresh hosted run on this correction is still required; Approval Inbox activation, Phase I, and the Inventory Control Pilot remain **NO-GO** until both hosted lanes complete browser, artifact-secret, teardown, recovery, and human-UAT gates.
+
 ### Local-only execution directive — July 30, 2026
 
 - The active implementation goal is to complete the Inventory Control Pilot plan step by step through all in-scope local implementation, validation, documentation, test-data UAT preparation, and release-preparation evidence. Phase I and the pilot remain **NO-GO** until every applicable identity, authorization, data-integrity, visible-surface, recovery, and human-UAT gate passes.

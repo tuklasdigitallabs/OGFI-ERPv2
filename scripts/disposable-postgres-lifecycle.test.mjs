@@ -269,6 +269,10 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       runner,
       /buildRuntimeEnvironment\([\s\S]*OPENING_STOCK_EXECUTOR_DATABASE_URL/,
     );
+    assert.match(
+      runner,
+      /productionAuthenticatedCleanupEnvironment[\s\S]*OGFI_PRODUCTION_AUTH_E2E_DATABASE_STOP_TOKEN/,
+    );
   });
 
   it("confines inventory-pilot bootstrap access to its approved child suites", () => {
