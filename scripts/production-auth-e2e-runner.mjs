@@ -25,7 +25,7 @@ const composeFile = "infra/ci/production-authenticated-e2e/compose.yaml";
 const nginxImage =
   "docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10";
 const immutableImagePattern =
-  /^(?:[a-z0-9][a-z0-9._/-]*@)?sha256:[a-f0-9]{64}$/;
+  /^(?:[a-z0-9][a-z0-9._:/-]*@)?sha256:[a-f0-9]{64}$/;
 const containerNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const exchangeRuntimeKeys = new Set([
   "AUTHORIZATION_DATABASE_INTEGRATION",

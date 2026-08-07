@@ -209,7 +209,7 @@ test(
       database: {
         alias: "ogfi-private-db",
         containerId: "1".repeat(64),
-        image: `sha256:${"2".repeat(64)}`,
+        image: `docker.io/library/postgres:17-alpine@sha256:${"2".repeat(64)}`,
         name: "ogfi_test_fixture",
         networkId: "3".repeat(64),
         networkName: "ogfi-private-network",
