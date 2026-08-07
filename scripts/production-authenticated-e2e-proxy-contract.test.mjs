@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { createDisposablePostgresIdentity } from "./disposable-postgres-lifecycle.mjs";
 
 const read = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -248,6 +249,21 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
     workflow,
     /production-authenticated-browser:[\s\S]*NODE_ENV: production[\s\S]*name: Install host test tooling\n\s+run: pnpm install --frozen-lockfile --prod=false[\s\S]*pnpm --dir apps\/web exec playwright install --with-deps chromium/,
   );
+  assert.match(workflow, /production\) database_run_lane=release ;;/);
+  assert.match(workflow, /bounded-uat\) database_run_lane=bounded ;;/);
+  assert.match(
+    workflow,
+    /run_id="ci-\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTEMPT\}-\$\{database_run_lane\}"/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /run_id="\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTEMPT\}-\$\{lane\}"/,
+  );
+  for (const runId of ["ci-31135220330-1-release", "ci-31135220330-1-bounded"]) {
+    assert.doesNotThrow(() =>
+      createDisposablePostgresIdentity(runId, "a".repeat(64)),
+    );
+  }
   assert.match(workflow, /Build immutable candidate and proxy images/);
   assert.match(workflow, /--target release-runner/);
   assert.match(workflow, /OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE/);

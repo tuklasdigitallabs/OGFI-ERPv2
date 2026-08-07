@@ -161,12 +161,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libnss3-tools
           lane="${{ matrix.lane }}"
-          run_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${lane}"
           tls_dir="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-tls.XXXXXX")"
           exchange_root="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-db.XXXXXX")"
           secret_root="$(mktemp -d "$RUNNER_TEMP/ogfi-production-auth-db-secrets.XXXXXX")"
           chmod 755 "$tls_dir"
           chmod 700 "$exchange_root" "$secret_root"
+          case "$lane" in
+            production) database_run_lane=release ;;
+            bounded-uat) database_run_lane=bounded ;;
+            *) echo "Unsupported production-authenticated lane" >&2; exit 1 ;;
+          esac
+          run_id="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${database_run_lane}"
           openssl genrsa -out "$tls_dir/ca.key" 3072
           openssl req -x509 -new -sha256 -key "$tls_dir/ca.key" -days 1 -subj "/CN=OGFI CI Production Auth CA" -out "$tls_dir/ca.crt"
           openssl genrsa -out "$tls_dir/tls.key" 2048
