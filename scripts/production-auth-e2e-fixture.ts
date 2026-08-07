@@ -297,6 +297,19 @@ async function provision() {
       tenantId: privilegedUser.tenantId,
       status: "ACTIVE",
     },
+    include: {
+      scopeAssignments: {
+        where: {
+          status: "ACTIVE",
+          scopeType: "LOCATION",
+          startsAt: { lte: provisioningNow },
+          AND: [
+            { OR: [{ endsAt: null }, { endsAt: { gt: provisioningNow } }] },
+          ],
+        },
+        select: { scopeId: true },
+      },
+    },
   });
   if (!branchUser) throw new Error("PRODUCTION_AUTH_E2E_BRANCH_USER_NOT_FOUND");
   const privilegedPassword = randomBytes(32).toString("base64url");
@@ -395,11 +408,18 @@ async function provision() {
     });
   });
   const approvalWorklist =
-    process.env.BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED === "true"
+      process.env.BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED === "true"
       ? await (async () => {
-          const locationScope = privilegedUser.scopeAssignments[0];
+          const branchLocationScopeIds = new Set(
+            branchUser.scopeAssignments.map(({ scopeId }) => scopeId),
+          );
+          const locationScope = privilegedUser.scopeAssignments.find(({ scopeId }) =>
+            branchLocationScopeIds.has(scopeId),
+          );
           if (!locationScope) {
-            throw new Error("PRODUCTION_AUTH_E2E_APPROVER_LOCATION_SCOPE_REQUIRED");
+            throw new Error(
+              "PRODUCTION_AUTH_E2E_APPROVER_BRANCH_LOCATION_SCOPE_INTERSECTION_REQUIRED",
+            );
           }
           const location = await prisma.location.findFirst({
             where: {

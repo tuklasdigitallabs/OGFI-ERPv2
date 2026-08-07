@@ -38,6 +38,18 @@ function fixture(): Fixture {
   return parsed as Fixture;
 }
 
+async function enterPassword(
+  page: Page,
+  account: { email: string; password: string },
+) {
+  const data = fixture();
+  await page.goto("/sign-in");
+  await page.getByLabel("Organization code").fill(data.tenantCode);
+  await page.getByLabel("Email").fill(account.email);
+  await page.getByLabel("Password").fill(account.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
+
 async function nextUnusedTotpCode(secret: string) {
   const untilNextPeriod = 30_000 - (Date.now() % 30_000);
   await new Promise((resolve) => setTimeout(resolve, untilNextPeriod + 250));
@@ -108,7 +120,10 @@ async function addSourceCommentAsBranchUser(
   browser: import("@playwright/test").Browser,
   data: Fixture,
 ) {
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    baseURL: "https://127.0.0.1:3443",
+    ignoreHTTPSErrors: false,
+  });
   const page = await context.newPage();
   try {
     await enterPassword(page, data.branch);
