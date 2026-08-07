@@ -86,7 +86,9 @@ services:
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set the per-run encryption key}
       APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
       BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: ${BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED:-false}
-      APPROVAL_ROUTING_V1_ENABLED: ${APPROVAL_ROUTING_V1_ENABLED:-false}
+      # Never allow an operator-provided environment value to enable global
+      # routing in the lifecycle service; this lane is bounded-only evidence.
+      APPROVAL_ROUTING_V1_ENABLED: "false"
       OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE: ${OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE:?Set the exact candidate image ID}
       OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_COMMIT: ${OGFI_PRODUCTION_AUTH_E2E_CANDIDATE_COMMIT:?Set the exact candidate commit}
       OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE: ${OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_IMAGE:?Set the immutable lifecycle image ID}

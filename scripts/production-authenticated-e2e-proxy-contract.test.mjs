@@ -276,7 +276,7 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   assert.match(workflow, /Start isolated disposable database lifecycle/);
   assert.match(
     privateDatabaseCompose,
-    /CI: "true"[\s\S]*NODE_ENV: production[\s\S]*APP_ENV: \$\{APP_ENV:\?Set the lane application environment\}[\s\S]*AUTH_MODE: local[\s\S]*AUTH_HARDENED_UAT_RUNTIME_ENABLED: \$\{AUTH_HARDENED_UAT_RUNTIME_ENABLED:-false\}[\s\S]*BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: \$\{BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED:-false\}[\s\S]*APPROVAL_ROUTING_V1_ENABLED: \$\{APPROVAL_ROUTING_V1_ENABLED:-false\}/,
+    /CI: "true"[\s\S]*NODE_ENV: production[\s\S]*APP_ENV: \$\{APP_ENV:\?Set the lane application environment\}[\s\S]*AUTH_MODE: local[\s\S]*AUTH_HARDENED_UAT_RUNTIME_ENABLED: \$\{AUTH_HARDENED_UAT_RUNTIME_ENABLED:-false\}[\s\S]*BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED: \$\{BOUNDED_INVENTORY_UAT_APPROVAL_WORKLIST_ENABLED:-false\}[\s\S]*APPROVAL_ROUTING_V1_ENABLED: "false"/,
   );
   assert.doesNotMatch(workflow, /NODE_EXTRA_CA_CERTS/);
   assert.match(workflow, /OGFI_PRODUCTION_AUTH_E2E_LIFECYCLE_CONTAINER_ID=\$lifecycle_id/);
