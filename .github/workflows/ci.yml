@@ -118,7 +118,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install host test tooling
+        run: pnpm install --frozen-lockfile --prod=false
       - name: Build immutable candidate and proxy images
         run: |
           git diff --quiet -- . ':(exclude)apps/web/next-env.d.ts'

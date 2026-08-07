@@ -244,6 +244,10 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   const workflow = read(".github/workflows/ci.yml");
   assert.match(workflow, /production-authenticated-browser:/);
   assert.match(workflow, /lane:\n\s+- production\n\s+- bounded-uat/);
+  assert.match(
+    workflow,
+    /production-authenticated-browser:[\s\S]*NODE_ENV: production[\s\S]*name: Install host test tooling\n\s+run: pnpm install --frozen-lockfile --prod=false[\s\S]*pnpm --dir apps\/web exec playwright install --with-deps chromium/,
+  );
   assert.match(workflow, /Build immutable candidate and proxy images/);
   assert.match(workflow, /--target release-runner/);
   assert.match(workflow, /OGFI_PRODUCTION_AUTH_E2E_WEB_IMAGE/);
