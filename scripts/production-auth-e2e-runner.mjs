@@ -657,7 +657,13 @@ function assertPrivateDatabaseTopology(
   if (normalizeCapabilities(lifecycle?.HostConfig?.CapAdd).length !== 0) lifecycleDrift.push("cap_add");
   if (
     JSON.stringify(normalizeTmpfs(lifecycle?.HostConfig?.Tmpfs)) !==
-    JSON.stringify(normalizeTmpfs({ "/tmp": "size=64m,mode=1777" }))
+    JSON.stringify(
+      normalizeTmpfs({
+        "/tmp": "size=64m,mode=1777",
+        "/app/packages/database/node_modules/.vite": "size=64m,mode=1777",
+        "/app/apps/web/node_modules/.vite": "size=64m,mode=1777",
+      }),
+    )
   ) lifecycleDrift.push("tmpfs");
   if (lifecycle?.HostConfig?.PidMode === "host") lifecycleDrift.push("pid_mode");
   if (lifecycle?.HostConfig?.IpcMode === "host") lifecycleDrift.push("ipc_mode");
