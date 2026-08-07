@@ -16,6 +16,9 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   const playwright = read(
     "apps/web/production-authenticated.playwright.config.ts",
   );
+  const approvalWorklist = read(
+    "tests/e2e/inventory-approval-worklist.production-authenticated.spec.ts",
+  );
   const ordinaryPlaywright = read("apps/web/playwright.config.ts");
   const fixture = read("scripts/production-auth-e2e-fixture.ts");
   const runner = read("scripts/production-auth-e2e-runner.mjs");
@@ -103,6 +106,18 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
     /outputFolder: `test-results\/production-auth-\$\{evidenceLane\}-html`/,
   );
   assert.match(playwright, /ignoreHTTPSErrors: false/);
+  assert.doesNotMatch(
+    approvalWorklist,
+    /packages\/database\/src\/client/,
+  );
+  assert.match(
+    approvalWorklist,
+    /async function enterPassword\(/,
+  );
+  assert.match(
+    approvalWorklist,
+    /browser\.newContext\(\{[\s\S]*baseURL: "https:\/\/127\.0\.0\.1:3443"[\s\S]*ignoreHTTPSErrors: false/,
+  );
   assert.match(
     playwright,
     /gracefulShutdown: \{ signal: "SIGTERM", timeout: 180_000 \}/,
