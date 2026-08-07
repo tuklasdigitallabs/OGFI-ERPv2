@@ -638,28 +638,35 @@ function assertPrivateDatabaseTopology(
     environment,
     "OGFI_PRODUCTION_AUTH_E2E_HOST_UID",
   )}:${required(environment, "OGFI_PRODUCTION_AUTH_E2E_HOST_GID")}`;
+  const lifecycleDrift = [];
+  if (!lifecycle?.Id?.startsWith(lifecycleContainerId)) lifecycleDrift.push("id");
+  if (lifecycle?.Image !== requestedLifecycleImageId) lifecycleDrift.push("image");
+  if (lifecycle?.State?.Running !== true) lifecycleDrift.push("running");
+  if (lifecycle?.Config?.User !== expectedLifecycleUser) lifecycleDrift.push("user");
+  if (lifecycle?.HostConfig?.NetworkMode !== `container:${container.Id}`) lifecycleDrift.push("network_mode");
+  if (lifecycle?.HostConfig?.Privileged !== false) lifecycleDrift.push("privileged");
+  if (lifecycle?.HostConfig?.ReadonlyRootfs !== true) lifecycleDrift.push("readonly_rootfs");
   if (
-    !lifecycle?.Id?.startsWith(lifecycleContainerId) ||
-    lifecycle.Image !== requestedLifecycleImageId ||
-    lifecycle.State?.Running !== true ||
-    lifecycle.Config?.User !== expectedLifecycleUser ||
-    lifecycle.HostConfig?.NetworkMode !== `container:${container.Id}` ||
-    lifecycle.HostConfig?.Privileged !== false ||
-    lifecycle.HostConfig?.ReadonlyRootfs !== true ||
-    JSON.stringify(
-      normalizeSecurityOptions(lifecycle.HostConfig?.SecurityOpt),
-    ) !== JSON.stringify(["no-new-privileges"]) ||
-    JSON.stringify(normalizeCapabilities(lifecycle.HostConfig?.CapDrop)) !==
-      JSON.stringify(["ALL"]) ||
-    normalizeCapabilities(lifecycle.HostConfig?.CapAdd).length !== 0 ||
-    JSON.stringify(normalizeTmpfs(lifecycle.HostConfig?.Tmpfs)) !==
-      JSON.stringify(normalizeTmpfs({ "/tmp": "size=64m,mode=1777" })) ||
-    lifecycle.HostConfig?.PidMode === "host" ||
-    lifecycle.HostConfig?.IpcMode === "host" ||
-    Object.keys(lifecyclePorts).length !== 0 ||
-    !mountContract(lifecycleMounts, expectedLifecycleMounts)
-  ) {
-    throw new Error("PRODUCTION_AUTH_E2E_PRIVATE_DB_LIFECYCLE_DRIFT");
+    JSON.stringify(normalizeSecurityOptions(lifecycle?.HostConfig?.SecurityOpt)) !==
+    JSON.stringify(["no-new-privileges"])
+  ) lifecycleDrift.push("security_options");
+  if (
+    JSON.stringify(normalizeCapabilities(lifecycle?.HostConfig?.CapDrop)) !==
+    JSON.stringify(["ALL"])
+  ) lifecycleDrift.push("cap_drop");
+  if (normalizeCapabilities(lifecycle?.HostConfig?.CapAdd).length !== 0) lifecycleDrift.push("cap_add");
+  if (
+    JSON.stringify(normalizeTmpfs(lifecycle?.HostConfig?.Tmpfs)) !==
+    JSON.stringify(normalizeTmpfs({ "/tmp": "size=64m,mode=1777" }))
+  ) lifecycleDrift.push("tmpfs");
+  if (lifecycle?.HostConfig?.PidMode === "host") lifecycleDrift.push("pid_mode");
+  if (lifecycle?.HostConfig?.IpcMode === "host") lifecycleDrift.push("ipc_mode");
+  if (Object.keys(lifecyclePorts).length !== 0) lifecycleDrift.push("ports");
+  if (!mountContract(lifecycleMounts, expectedLifecycleMounts)) lifecycleDrift.push("mounts");
+  if (lifecycleDrift.length > 0) {
+    throw new Error(
+      `PRODUCTION_AUTH_E2E_PRIVATE_DB_LIFECYCLE_DRIFT:${lifecycleDrift.join(",")}`,
+    );
   }
 }
 

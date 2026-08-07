@@ -184,6 +184,8 @@ test("production-authenticated CI edge remains a pinned Nginx-owned shared names
   assert.match(runner, /PRODUCTION_AUTH_E2E_SERVICE_EXITED/);
   assert.match(runner, /lifecycle: lifecycleContainer/);
   assert.match(runner, /PRODUCTION_AUTH_E2E_PRIVATE_DB_LIFECYCLE_DRIFT/);
+  assert.match(runner, /lifecycleDrift\.push\("tmpfs"\)/);
+  assert.match(runner, /lifecycleDrift\.join\(","\)/);
   assert.match(runner, /PRODUCTION_AUTH_E2E_PRIVATE_DB_PROCESS_IDENTITY_DRIFT/);
   assert.match(runner, /databaseProcessUid !== "70"/);
   assert.match(runner, /container\.HostConfig\?\.ReadonlyRootfs !== true/);
