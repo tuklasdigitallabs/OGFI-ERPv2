@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { AlertTriangle, Search, SlidersHorizontal } from "lucide-react";
-import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
+import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import {
+  ReasonCodeRegisterSelection,
+  ReasonCodeSelectableRecord
+} from "@/components/ReasonCodeRegisterSelection";
 import { ShortMutationForm } from "@/components/OrganizationEditForm";
-import { TaskSheet } from "@/components/TaskSheet";
 import {
   getActionFeedback
 } from "@/server/services/actionFeedback";
@@ -303,24 +306,32 @@ export default async function AdminReasonCodesPage({
       </section>
 
       {selectedReasonCode ? (
-        <section className="ogfi-detail-card mb-5 rounded-2xl border border-blue-200 bg-blue-50/40 p-5" aria-label="Selected reason code detail">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
+        <EntryModal
+          defaultOpen
+          eyebrowLabel="Master data record"
+          returnHref={`/admin/reason-codes?${reasonCodeContext.toString()}`}
+          title={`${selectedReasonCode.code} · ${selectedReasonCode.label}`}
+        >
+          <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reason code details</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{session.context.companyName} · {workflowLabels[selectedReasonCode.workflow]}</p>
+              </div>
               <Badge tone={selectedReasonCode.status === "ACTIVE" ? "success" : "neutral"}>{selectedReasonCode.status}</Badge>
-              <h2 className="mt-2 text-xl font-bold text-slate-950">{selectedReasonCode.label}</h2>
-              <p className="text-sm text-slate-600">{workflowLabels[selectedReasonCode.workflow]} / {selectedReasonCode.code}</p>
             </div>
-            <ButtonLink href={`/admin/reason-codes?${reasonCodeContext.toString()}`} tone="ghost" className="min-h-10">Close detail</ButtonLink>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div><p className="text-xs font-semibold uppercase text-slate-500">Applicability</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.appliesTo ?? "Not used for new Wastage selection"}</p></div>
+              <div><p className="text-xs font-semibold uppercase text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.requiresEvidence ? "Required" : "Optional"}</p></div>
+              <div><p className="text-xs font-semibold uppercase text-slate-500">Sort order</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.sortOrder}</p></div>
+              <div><p className="text-xs font-semibold uppercase text-slate-500">History</p><p className="mt-1 font-semibold text-slate-900">Inactive codes remain on historical records.</p></div>
+            </div>
+            {selectedReasonCode.notes ? <p className="mt-4 text-sm text-slate-700">{selectedReasonCode.notes}</p> : null}
+            {selectedReasonCode.workflow === "WASTAGE" ? <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-white p-4 text-sm sm:grid-cols-2"><div><p className="text-xs font-semibold uppercase text-slate-500">Wastage event types</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.wastageTypes.length ? selectedReasonCode.wastageTypes.join(", ") : "Configuration required"}</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Inventory classes</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.inventoryClasses.length ? selectedReasonCode.inventoryClasses.join(", ") : "Configuration required"}</p></div></div> : null}
           </div>
-          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div><p className="text-xs font-semibold uppercase text-slate-500">Legacy applicability</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.appliesTo ?? "Not used for new Wastage selection"}</p></div>
-            <div><p className="text-xs font-semibold uppercase text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.requiresEvidence ? "Required" : "Optional"}</p></div>
-            <div><p className="text-xs font-semibold uppercase text-slate-500">Sort order</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.sortOrder}</p></div>
-            <div><p className="text-xs font-semibold uppercase text-slate-500">History</p><p className="mt-1 font-semibold text-slate-900">Inactive codes remain for historical records.</p></div>
-          </div>
-          {selectedReasonCode.notes ? <p className="mt-4 text-sm text-slate-700">{selectedReasonCode.notes}</p> : null}
-          {selectedReasonCode.workflow === "WASTAGE" ? <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-white p-4 text-sm sm:grid-cols-2"><div><p className="text-xs font-semibold uppercase text-slate-500">Wastage event types</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.wastageTypes.length ? selectedReasonCode.wastageTypes.join(", ") : "Configuration required"}</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Inventory classes</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.inventoryClasses.length ? selectedReasonCode.inventoryClasses.join(", ") : "Configuration required"}</p></div></div> : null}
-          <EntryModal title={`Edit ${selectedReasonCode.code}`} triggerLabel="Edit Reason Code">
+          <div className="mt-5 border-t border-slate-200 pt-1">
+            <h3 className="mt-4 text-base font-bold text-slate-950">Edit Reason Code</h3>
+            <p className="mt-1 text-sm text-slate-600">Update the controlled label and workflow behavior. A reason for change is required and retained in the audit trail.</p>
             <ShortMutationForm endpoint="/api/admin/reason-codes/update" pendingLabel="Saving…" submitLabel="Save Reason Code" className="gap-4">
               <input name="id" type="hidden" value={selectedReasonCode.id} />
               <label className="grid gap-1 text-sm font-medium text-slate-700">Label<input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedReasonCode.label} name="label" required /></label>
@@ -330,16 +341,18 @@ export default async function AdminReasonCodesPage({
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input defaultChecked={selectedReasonCode.requiresEvidence} name="requiresEvidence" type="checkbox" /> Require evidence for this reason</label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">Reason for change<textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
             </ShortMutationForm>
-          </EntryModal>
+          </div>
           {selectedReasonCode.status === "ACTIVE" ? (
-            <TaskSheet title={`Deactivate ${selectedReasonCode.code}`} defaultOpen description="Deactivation is a controlled, auditable action. The server rechecks company scope and active status before committing.">
-              <ShortMutationForm endpoint="/api/admin/reason-codes/deactivate" pendingLabel="Deactivating…" submitLabel="Deactivate Reason Code" className="gap-4">
+            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
+              <h3 className="font-bold text-red-950">Deactivate Reason Code</h3>
+              <p className="mt-1 text-sm text-red-800">This removes the code from future controlled-workflow choices while preserving it on historical records.</p>
+              <ShortMutationForm endpoint="/api/admin/reason-codes/deactivate" pendingLabel="Deactivating…" submitLabel="Deactivate Reason Code" className="gap-4 [&_button]:bg-red-600 [&_button]:hover:bg-red-700">
                 <input name="id" type="hidden" value={selectedReasonCode.id} />
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
               </ShortMutationForm>
-            </TaskSheet>
+            </div>
           ) : null}
-        </section>
+        </EntryModal>
       ) : selectedReasonCodeId ? (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">That reason code is not available in the selected company.</div>
       ) : null}
@@ -402,20 +415,24 @@ export default async function AdminReasonCodesPage({
             </p>
           </div>
         ) : (
-          <div>
-            <div className="ogfi-table-head hidden grid-cols-[12rem_1.1fr_0.75fr_8rem_8rem_auto] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500 lg:grid">
+          <ReasonCodeRegisterSelection
+            initialReasonCodeId={selectedReasonCode?.id}
+            options={reasonCodes.map((reason) => ({ id: reason.id, label: `${reason.code} · ${reason.label}` }))}
+            registerHref={`/admin/reason-codes?${reasonCodeContext.toString()}`}
+          >
+            <div className="ogfi-table-head hidden grid-cols-[12rem_1.1fr_0.75fr_8rem_8rem] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500 lg:grid">
               <span>Workflow</span>
               <span>Reason</span>
               <span>Applies to</span>
               <span>Evidence</span>
               <span>Status</span>
-              <span className="text-right">Action</span>
             </div>
             <div className="divide-y divide-slate-100">
             {reasonCodes.map((reason) => (
-              <div
-                className="ogfi-table-row grid gap-4 px-5 py-4 lg:grid-cols-[12rem_1.1fr_0.75fr_8rem_8rem_auto] lg:items-center"
+              <ReasonCodeSelectableRecord
                 key={reason.id}
+                label={`${reason.code} · ${reason.label}`}
+                reasonCodeId={reason.id}
               >
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -431,13 +448,6 @@ export default async function AdminReasonCodesPage({
                     {reason.code}
                     {reason.notes ? ` / ${reason.notes}` : ""}
                   </p>
-                  <ButtonLink
-                    href={`/admin/reason-codes?${reasonCodeContext.toString()}&reasonCodeId=${reason.id}`}
-                    tone="ghost"
-                    className="mt-2 min-h-9 text-xs"
-                  >
-                    View details
-                  </ButtonLink>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
@@ -459,17 +469,10 @@ export default async function AdminReasonCodesPage({
                 <Badge tone={reason.status === "ACTIVE" ? "success" : "neutral"}>
                   {reason.status}
                 </Badge>
-                {reason.status === "ACTIVE" ? (
-                  <div className="flex justify-start lg:justify-end">
-                    <ButtonLink href={`/admin/reason-codes?${reasonCodeContext.toString()}&reasonCodeId=${reason.id}`} tone="ghost" className="ogfi-mobile-action min-h-10 text-xs">Open details</ButtonLink>
-                  </div>
-                ) : (
-                  <span className="text-sm text-slate-500">Retained history</span>
-                )}
-              </div>
+              </ReasonCodeSelectableRecord>
             ))}
             </div>
-          </div>
+          </ReasonCodeRegisterSelection>
         )}
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>Showing {reasonCodes.length} of {reasonCodePage.totalItems} reason codes</span>

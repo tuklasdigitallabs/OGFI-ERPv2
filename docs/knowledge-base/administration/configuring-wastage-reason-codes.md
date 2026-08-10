@@ -26,18 +26,22 @@ must have both an eligible wastage event/type and eligible inventory classes.
 
 1. Select the `Wastage` workflow tab and use the status or search filters to
    find the company-scoped code.
-2. Open the code detail and confirm its status, Wastage event types, and
-   Inventory classes.
+2. Select the code row (select it again to clear the selection), then choose
+   `Open Reason Code`. Confirm its status, Wastage event types, and Inventory
+   classes in the centered detail modal.
 3. To create a Wastage code, select `Create Reason Code`, choose `Wastage`, and
    enter the code and label.
 4. Enter one or more comma-separated values in both `Wastage event types` and
    `Inventory classes`. Use only approved values for the selected company.
 5. Set evidence required, sort order, and notes only where the approved company
    configuration requires them, then save.
-6. To correct an existing Wastage code, open its detail, select `Edit Reason
-   Code`, update both applicability lists as needed, enter the required reason
-   for the change, and save.
-7. If an old code has no safe mapping, leave it unavailable for new Wastage
+6. To correct an existing Wastage code, use the edit section in that same modal,
+   update both applicability lists as needed, enter the required reason for the
+   change, and save.
+7. To stop an active code from appearing in future entries, use `Deactivate
+   Reason Code` in the same modal and enter the required deactivation reason.
+   Deactivation retains historical records and is not deletion.
+8. If an old code has no safe mapping, leave it unavailable for new Wastage
    entry until its event/type and item-class mapping is reviewed and configured.
    Do not broaden its applicability to make it selectable.
 

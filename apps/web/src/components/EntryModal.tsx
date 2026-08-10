@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@ogfi/ui";
 import { useActionToast } from "@/components/ActionToastProvider";
 import type { ActionFeedback } from "@/server/services/actionFeedback";
@@ -18,8 +19,11 @@ export function useEntryModalFeedback() {
 
 type EntryModalProps = {
   title: string;
-  triggerLabel: string;
+  eyebrowLabel?: string;
+  triggerLabel?: string;
   triggerClassName?: string;
+  defaultOpen?: boolean;
+  returnHref?: string;
   pending?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -28,14 +32,18 @@ type EntryModalProps = {
 
 export function EntryModal({
   title,
+  eyebrowLabel = "Transaction entry",
   triggerLabel,
   triggerClassName,
+  defaultOpen = false,
+  returnHref,
   pending = false,
   disabled = false,
   disabledReason,
   children
 }: EntryModalProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,7 +81,8 @@ export function EntryModal({
     window.setTimeout(() => {
       triggerRef.current?.focus();
     }, 0);
-  }, [isBusy, isDirty]);
+    if (returnHref) router.replace(returnHref, { scroll: false });
+  }, [isBusy, isDirty, returnHref, router]);
 
   const reportFeedback = useCallback((feedback: ActionFeedback) => {
     showActionToast(feedback);
@@ -81,10 +90,11 @@ export function EntryModal({
     if (feedback.tone !== "success") return;
     setIsDirty(false);
     setIsOpen(false);
+    if (returnHref) router.replace(returnHref, { scroll: false });
     window.setTimeout(() => {
       triggerRef.current?.focus();
     }, 0);
-  }, [showActionToast]);
+  }, [returnHref, router, showActionToast]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -125,6 +135,10 @@ export function EntryModal({
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
     window.setTimeout(() => {
+      if (!triggerLabel) {
+        dialogRef.current?.focus();
+        return;
+      }
       const firstField = dialogRef.current?.querySelector<
         HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement
       >("[data-modal-body] input:not([type='hidden']):not(:disabled), [data-modal-body] select:not(:disabled), [data-modal-body] textarea:not(:disabled), [data-modal-body] button:not(:disabled)");
@@ -134,11 +148,11 @@ export function EntryModal({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, closeModal]);
+  }, [isOpen, closeModal, triggerLabel]);
 
   return (
     <>
-      <div className="grid gap-1">
+      {triggerLabel ? <div className="grid gap-1">
         <button
           ref={triggerRef}
           aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
@@ -156,7 +170,7 @@ export function EntryModal({
           {triggerLabel}
         </button>
         {disabled && disabledReason ? <p id={disabledReasonId} className="max-w-72 text-xs leading-5 text-slate-500">{disabledReason}</p> : null}
-      </div>
+      </div> : null}
       {isOpen ? (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
@@ -173,11 +187,12 @@ export function EntryModal({
             aria-modal="true"
             className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
             role="dialog"
+            tabIndex={-1}
           >
             <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/70 px-5 py-4 sm:px-6 sm:py-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Transaction entry
+                  {eyebrowLabel}
                 </p>
                 <h2 id={titleId} className="mt-1 text-lg font-bold text-slate-950">
                   {title}

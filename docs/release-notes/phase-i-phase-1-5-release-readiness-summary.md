@@ -122,9 +122,11 @@ Admin Audit CSV export now requires a bounded UTC date range and rejects oversiz
 requests explicitly instead of streaming an unbounded result or silently truncating.
 
 Reason Codes administration now uses bounded server pagination, selected-company
-filters, exact counts, and a selected-code detail summary. Deactivation is a
-single URL-selected TaskSheet with preserved list context and an atomic expected-
-ACTIVE claim; history remains retained and concurrent/stale actions fail safely.
+filters, exact counts, and whole-row/card selection with one contextual Open
+Reason Code action. The selected code opens in one centered modal containing its
+detail, audited edit form, and active-only reason-required deactivation. List
+context is preserved, history remains retained, and concurrent/stale actions fail
+safely through the atomic expected-ACTIVE claim.
 
 Wastage reason codes now use two required applicability dimensions: Wastage
 event/type and item inventory class. Branch and warehouse users see an active

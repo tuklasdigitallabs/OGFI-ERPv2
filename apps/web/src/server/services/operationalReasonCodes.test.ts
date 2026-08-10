@@ -9,6 +9,14 @@ describe("operational reason-code registry contract", () => {
       path.resolve(__dirname, "../../app/(app)/admin/reason-codes/page.tsx"),
       "utf8",
     );
+    const selection = readFileSync(
+      path.resolve(__dirname, "../../components/ReasonCodeRegisterSelection.tsx"),
+      "utf8",
+    );
+    const modal = readFileSync(
+      path.resolve(__dirname, "../../components/EntryModal.tsx"),
+      "utf8",
+    );
     expect(service).toContain("listOperationalReasonCodePage");
     expect(service).toContain("assertCanManageReasonCodes(session)");
     expect(service).toContain("tenantId: session.context.tenantId");
@@ -26,10 +34,24 @@ describe("operational reason-code registry contract", () => {
     expect(service).toContain('status: "ACTIVE"');
     expect(service).toContain("transition.count !== 1");
     expect(page).toContain("PaginationBar");
-    expect(page).toContain("TaskSheet");
-    expect(page).toContain("Open details");
-    expect(page).toContain("View details");
+    expect(page).toContain("ReasonCodeRegisterSelection");
+    expect(page).toContain("ReasonCodeSelectableRecord");
+    expect(page).toContain("defaultOpen");
+    expect(page).toContain('eyebrowLabel="Master data record"');
+    expect(page).toContain('endpoint="/api/admin/reason-codes/update"');
+    expect(page).toContain('endpoint="/api/admin/reason-codes/deactivate"');
+    expect(page).not.toContain("TaskSheet");
+    expect(page).not.toContain("View details");
+    expect(page).not.toContain('>Open details<');
     expect(page).toContain("selectedReasonCodeId");
     expect(page).not.toContain("listOperationalReasonCodes(session)");
+    expect(selection).toContain('current === reasonCodeId ? "" : reasonCodeId');
+    expect(selection).toContain('destination.searchParams.set("reasonCodeId", selectedReasonCodeId)');
+    expect(selection).toContain("aria-pressed={selected}");
+    expect(selection).toContain('role="button"');
+    expect(selection).toContain("Open Reason Code");
+    expect(selection).not.toContain('type="radio"');
+    expect(modal).toContain("defaultOpen = false");
+    expect(modal).toContain('router.replace(returnHref, { scroll: false })');
   });
 });
