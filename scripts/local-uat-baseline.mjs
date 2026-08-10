@@ -53,7 +53,8 @@ const safeContainerPattern = /^[A-Za-z0-9][A-Za-z0-9_.-]{2,127}$/;
 const exactImageIdPattern = /^sha256:[a-f0-9]{64}$/;
 
 export function parseLocalUatArguments(argv) {
-  const [command = "", ...tokens] = argv;
+  const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
+  const [command = "", ...tokens] = normalizedArgv;
   const values = { command };
   for (let index = 0; index < tokens.length; index += 2) {
     const flag = tokens[index];
@@ -549,6 +550,7 @@ async function createBaseline(raw) {
   try {
   const targetContainer = `${options.project}-postgres-1`;
   compose(composeEnv, ["up", "-d", "postgres"]);
+  waitForHealthy(targetContainer);
   const targetPostgres = inspectContainer(targetContainer);
   if (targetPostgres.Id === source.inspected.Id || networkIds(targetPostgres).some((id) => networkIds(source.inspected).includes(id))) {
     throw new Error("LOCAL_UAT_SOURCE_TARGET_ISOLATION_FAILED");

@@ -68,8 +68,9 @@ needs the finance bundle, while active approved budget state depends on
 prohibited approval/audit history. Budget/finance-dependent UAT must newly
 configure and, when required, approve its clean target setup.
 
-Rejected old dumps are ACL-quarantined but await explicit owner deletion. Do not
-construct or admit a candidate until that deletion is authorized and complete.
+The product owner authorized deletion of the two rejected diagnostic dumps on
+2026-08-10. Before construction, verify that no `.dump` artifact remains under
+`backups/local-uat`.
 
 After that evidence is supplied and the candidate is admitted, start only its
 separate stack (the default web port is `3002`):

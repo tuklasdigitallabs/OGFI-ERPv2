@@ -15,6 +15,10 @@ import {
 test("requires explicit local source, isolated target, project, and confirmation", () => {
   const parsed = parseLocalUatArguments(["create", "--source-container", "ogfi-clean-postgres-1", "--source-project", "ogfi-clean", "--source-db", "ogfi_erp", "--target-db", "ogfi_rehearsal_local_aug10", "--project", "ogfi-uat-aug10", "--web-image-id", `sha256:${"a".repeat(64)}`, "--confirm", "CREATE_ISOLATED_LOCAL_UAT_BASELINE"]);
   assert.equal(assertLocalUatCreateOptions(parsed).targetDatabase, "ogfi_rehearsal_local_aug10");
+  assert.deepEqual(parseLocalUatArguments(["--", "create", "--source-db", "ogfi_erp"]), {
+    command: "create",
+    "source-db": "ogfi_erp",
+  });
   for (const unsafe of ["ogfi_erp", "production", "ogfi_rehearsal_local_x;drop"])
     assert.throws(() => assertLocalUatCreateOptions({ ...parsed, "target-db": unsafe }), /LOCAL_UAT_TARGET_DATABASE_INVALID/);
   assert.throws(() => assertLocalUatCreateOptions({ ...parsed, confirm: "yes" }), /LOCAL_UAT_CONFIRMATION_REQUIRED/);
@@ -140,6 +144,7 @@ test("standalone compose stays source-isolated and requires the application data
   assert.match(builder, /org\.opencontainers\.image\.revision/);
   assert.match(builder, /LOCAL_UAT_REVIEWED_WORKTREE_NOT_CLEAN/);
   assert.match(builder, /OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN/);
+  assert.match(builder, /compose\(composeEnv, \["up", "-d", "postgres"\]\);\s*waitForHealthy\(targetContainer\);/);
   assert.match(builder, /label=com\.docker\.compose\.project=/);
   assert.match(builder, /LOCAL_UAT_FAILED_CONSTRUCTION_CLEANUP_INCOMPLETE/);
   const manifestBlock = builder.slice(builder.indexOf("const manifest ="), builder.indexOf("writeSecure(manifestFile"));

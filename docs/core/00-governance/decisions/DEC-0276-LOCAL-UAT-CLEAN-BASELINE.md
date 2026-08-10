@@ -61,9 +61,9 @@ Independent QA and Security rejected it; it was never admitted. Its previous
 claims of admission, retained full-backup/export evidence, and readiness for
 rehearsal are superseded by this record.
 
-Rejected old dumps are ACL-quarantined but await explicit owner deletion. Until
-that deletion is authorized and completed, candidate construction and admission
-remain blocked.
+The product owner authorized deletion of the two rejected full-database dumps on
+2026-08-10, and verification found no remaining `.dump` artifact under the local
+UAT evidence root.
 
 Named-user UAT remains blocked: only **1 of 7** retained users currently has an
 authentication identity, credential, and MFA record, and only **5** role
@@ -155,8 +155,8 @@ GPT-5.6 fallback was used without relaxing any hard gate.
     startup-health check passes. Only then write the final marker and prove final
     health with no construction token. A failed fresh target is destructively
     torn down rather than repaired in place.
-11. Rejected old dumps remain ACL-quarantined pending explicit owner deletion;
-    no candidate may be constructed or admitted before that deletion completes.
+11. Retain no rejected full-database dump. The two prior diagnostic dumps were
+    deleted with product-owner authorization on 2026-08-10.
 12. Named-user UAT is blocked until all seven required actors have valid
    identity/credential/MFA coverage and the necessary role/scope assignments;
    the present 1/7 and five assignments do not meet that gate.
@@ -186,8 +186,8 @@ GPT-5.6 fallback was used without relaxing any hard gate.
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Authorize deletion of ACL-quarantined rejected old dumps. | UAT Owner | Before new candidate construction | Blocked — explicit owner direction required |
-| Build an isolated target with the prescribed CLI, exact image provenance, repeatable-read snapshot, and minimal redacted evidence. | Database Engineering | After old-dump deletion | Blocked |
+| Authorize and complete deletion of rejected old full-database dumps. | UAT Owner | Before new candidate construction | Complete — no `.dump` artifact remains |
+| Build an isolated target with the prescribed CLI, exact image provenance, repeatable-read snapshot, and minimal redacted evidence. | Database Engineering | After old-dump deletion | In progress |
 | Verify source unchanged, tenant/scope assertions, isolated Compose topology, restricted role contracts, zero prohibited/history state, pending-token/startup health, final-marker/no-token health, and teardown path. | QA / Security / Database Engineering | Before finalization | Blocked |
 | Review the construction-complete candidate and admit it for human UAT. | QA / Security / UAT Owner | Only after independent passing evidence | Blocked — no passing evidence supplied |
 | Provision identity, credential, MFA, role, and scope coverage for all seven named UAT actors. | UAT Owner / Access Administration | Before named-user UAT | Blocked — 1/7 covered; 5 role assignments |
