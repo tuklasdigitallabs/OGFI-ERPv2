@@ -6,5 +6,11 @@ export async function register() {
       await import("./server/services/evidenceStorageConfig");
     assertProductionAuthConfiguration();
     assertProductionEvidenceStorageConfiguration();
+
+    if (process.env.OGFI_LOCAL_UAT_BASELINE_REQUIRED === "true") {
+      const { assertLocalUatDatabaseAdmission } =
+        await import("./server/services/localUatDatabaseAdmission");
+      await assertLocalUatDatabaseAdmission();
+    }
   }
 }

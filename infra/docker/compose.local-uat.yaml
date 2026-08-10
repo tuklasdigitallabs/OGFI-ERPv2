@@ -1,0 +1,89 @@
+name: ${OGFI_LOCAL_UAT_PROJECT:?Set OGFI_LOCAL_UAT_PROJECT}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${OGFI_LOCAL_UAT_DATABASE:?Set OGFI_LOCAL_UAT_DATABASE}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${OGFI_LOCAL_UAT_POSTGRES_ADMIN_PASSWORD:?Set OGFI_LOCAL_UAT_POSTGRES_ADMIN_PASSWORD}
+    volumes:
+      - uat_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - uat_private
+
+  web:
+    image: ${OGFI_LOCAL_UAT_WEB_IMAGE_ID:?Set an exact existing local sha256 image ID}
+    pull_policy: never
+    env_file:
+      - path: ${OGFI_LOCAL_UAT_RUNTIME_ENV_FILE:?Set OGFI_LOCAL_UAT_RUNTIME_ENV_FILE}
+        required: true
+    environment:
+      APP_ENV: development
+      APP_URL: http://localhost:${OGFI_LOCAL_UAT_WEB_PORT:-3002}
+      AUTH_MODE: local
+      DATABASE_URL: ${OGFI_LOCAL_UAT_RUNTIME_DATABASE_URL:?Set OGFI_LOCAL_UAT_RUNTIME_DATABASE_URL}
+      DIRECT_DATABASE_URL: ""
+      AUTH_THROTTLE_HMAC_KEY: ${AUTH_THROTTLE_HMAC_KEY:?Set AUTH_THROTTLE_HMAC_KEY}
+      AUTH_THROTTLE_KEY_VERSION: ${AUTH_THROTTLE_KEY_VERSION:?Set AUTH_THROTTLE_KEY_VERSION}
+      AUTH_THROTTLE_WINDOW_MINUTES: ${AUTH_THROTTLE_WINDOW_MINUTES:-15}
+      AUTH_THROTTLE_RETENTION_DAYS: ${AUTH_THROTTLE_RETENTION_DAYS:-30}
+      AUTH_THROTTLE_IDENTIFIER_SHARDS: ${AUTH_THROTTLE_IDENTIFIER_SHARDS:-16}
+      AUTH_THROTTLE_SOURCE_SHARDS: ${AUTH_THROTTLE_SOURCE_SHARDS:-16}
+      AUTH_THROTTLE_PASSWORD_GLOBAL_LIMIT: ${AUTH_THROTTLE_PASSWORD_GLOBAL_LIMIT:-1000000}
+      AUTH_THROTTLE_PASSWORD_IDENTIFIER_SHARD_LIMIT: ${AUTH_THROTTLE_PASSWORD_IDENTIFIER_SHARD_LIMIT:-1000000}
+      AUTH_THROTTLE_PASSWORD_SOURCE_SHARD_LIMIT: ${AUTH_THROTTLE_PASSWORD_SOURCE_SHARD_LIMIT:-1000000}
+      AUTH_THROTTLE_PASSWORD_TENANT_LIMIT: ${AUTH_THROTTLE_PASSWORD_TENANT_LIMIT:-1000000}
+      AUTH_THROTTLE_PASSWORD_ACCOUNT_LIMIT: ${AUTH_THROTTLE_PASSWORD_ACCOUNT_LIMIT:-100}
+      AUTH_THROTTLE_MFA_GLOBAL_LIMIT: ${AUTH_THROTTLE_MFA_GLOBAL_LIMIT:-1000000}
+      AUTH_THROTTLE_MFA_IDENTIFIER_SHARD_LIMIT: ${AUTH_THROTTLE_MFA_IDENTIFIER_SHARD_LIMIT:-1000000}
+      AUTH_THROTTLE_MFA_SOURCE_SHARD_LIMIT: ${AUTH_THROTTLE_MFA_SOURCE_SHARD_LIMIT:-1000000}
+      AUTH_THROTTLE_MFA_TENANT_LIMIT: ${AUTH_THROTTLE_MFA_TENANT_LIMIT:-1000000}
+      AUTH_THROTTLE_MFA_ACCOUNT_LIMIT: ${AUTH_THROTTLE_MFA_ACCOUNT_LIMIT:-100}
+      OGFI_LOCAL_UAT_BASELINE_REQUIRED: "true"
+      OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME: ${OGFI_LOCAL_UAT_DATABASE:?Set OGFI_LOCAL_UAT_DATABASE}
+      OGFI_DISPOSABLE_DATABASE_RUN_ID: ${OGFI_DISPOSABLE_DATABASE_RUN_ID:?Set OGFI_DISPOSABLE_DATABASE_RUN_ID}
+      OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: ${OGFI_DISPOSABLE_DATABASE_NONCE_SHA256:?Set OGFI_DISPOSABLE_DATABASE_NONCE_SHA256}
+      OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN: ${OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN:-}
+      OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN_SHA256: ${OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN_SHA256:-}
+    command:
+      - sh
+      - -ec
+      - cd /app/apps/web && exec node node_modules/next/dist/bin/next start
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:3000/health').then(response=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:${OGFI_LOCAL_UAT_WEB_PORT:-3002}:3000"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - uat_private
+
+networks:
+  uat_private:
+    internal: true
+    driver: bridge
+
+volumes:
+  uat_postgres_data:

@@ -52,6 +52,8 @@
     "test:item-option-catalog-operations": "node --test scripts/item-option-catalog-operations.test.mjs",
     "db:seed": "pnpm --filter @ogfi/database seed",
     "db:seed:reset-demo": "pnpm --filter @ogfi/database seed:reset-demo",
+    "db:local-uat-baseline": "node scripts/local-uat-baseline.mjs",
+    "test:local-uat-baseline": "node --test scripts/local-uat-baseline.test.mjs",
     "db:backup": "node scripts/db-backup.mjs",
     "db:restore-check": "node scripts/db-restore-check.mjs",
     "release:backup-restore-preflight": "node scripts/release-backup-restore-preflight.mjs",

@@ -1,7 +1,7 @@
 # OGFI ERP — Phase I Local End-to-End Functional Verification Runbook
 
 **Audience:** UAT coordinator, system administrator, purchasing, warehouse, branch operations, inventory control, and assigned approvers  
-**Environment:** Local Docker environment at `http://localhost:3001`  
+**Environment:** Admitted isolated local UAT Docker environment at `http://localhost:3002` (when independently admitted)
 **Scope:** Supplier and Item setup through purchasing, receiving, inventory, transfers, wastage, stock counts, stock adjustments, reporting, and audit verification  
 **Status:** Local rehearsal only; not formal UAT, release evidence, or a production GO decision  
 
@@ -20,6 +20,82 @@ The test must demonstrate that:
 
 ## Preconditions
 
+### Clean local UAT database baseline
+
+`ogfi_uat_clean_20260810` is not an admitted baseline. It was a same-cluster
+diagnostic target rejected by independent QA and Security. Do not use it for
+this rehearsal or cite its health, count, or authentication-primitives results
+as UAT evidence.
+
+Build a separate candidate only when instructed by the UAT owner. The source is
+`ogfi-clean-postgres-1` / `ogfi_erp`, and it must remain untouched. Never clean,
+truncate, migrate-reset, seed, repair, or otherwise write to the source.
+
+Choose a new safe suffix and run the prescribed builder from Git Bash:
+
+```bash
+cd "$HOME/Documents/OGFI ERP - V2"
+docker context use desktop-linux
+
+docker image inspect ogfi-clean-web --format '{{.Id}}'
+
+pnpm.cmd db:local-uat-baseline -- create \
+  --source-container ogfi-clean-postgres-1 \
+  --source-project ogfi-clean \
+  --source-db ogfi_erp \
+  --target-db ogfi_rehearsal_local_<suffix> \
+  --project ogfi-uat-<suffix> \
+  --web-image-id sha256:<64-hex-local-image-id> \
+  --confirm CREATE_ISOLATED_LOCAL_UAT_BASELINE
+```
+
+The design uses an isolated standalone Compose project, a newly migrated target,
+and restricted target-only owner, migrator, and runtime roles. The builder must
+load only the dependency-closed setup/master allowlist, retain no full source
+backup, dump, or export, leave prohibited/history state and inventory at zero,
+and prove the source stayed unchanged. Source preflight and allowlist export use
+one read-only repeatable-read snapshot with explicit tenant and
+Company/Brand/Location/Department scope assertions. The exact `release-runner`
+image must be bound to clean committed `HEAD` and include the schema/migrations
+used for the target. Construction starts with a pending token, must pass startup
+health, then writes the final marker and must pass final health with no token.
+Independent QA and Security must still approve the candidate before human UAT
+begins; a failed fresh target is destructively torn down, never repaired.
+
+`Budget`, `BudgetLine`, `FinanceAccountClass`, `ChartOfAccount`, `FiscalYear`,
+and `AccountingPeriod` are intentionally excluded. No retained non-budget table
+needs the finance bundle, while active approved budget state depends on
+prohibited approval/audit history. Budget/finance-dependent UAT must newly
+configure and, when required, approve its clean target setup.
+
+Rejected old dumps are ACL-quarantined but await explicit owner deletion. Do not
+construct or admit a candidate until that deletion is authorized and complete.
+
+After that evidence is supplied and the candidate is admitted, start only its
+separate stack (the default web port is `3002`):
+
+```bash
+docker compose --env-file backups/local-uat/ogfi_rehearsal_local_<suffix>/compose.env \
+  -f infra/docker/compose.local-uat.yaml up -d web
+
+curl http://localhost:3002/health
+```
+
+Do not substitute the ordinary `ogfi-clean` project, its `.env`, port `3001`, or
+the source database. Clear browser cookies and sign in only after the admission
+gate. Sessions and recovery state are prohibited from the candidate.
+
+Named-user UAT is still blocked: only **1 of 7** retained users has an identity,
+credential, and MFA record, and only **5** role assignments exist. A pending or
+even finalized clean target is not permission to use one account for the whole
+workflow or to bypass required named actors, scoped roles, or segregation.
+
+This baseline begins with zero stock. Receive stock through an issued Purchase
+Order or complete the controlled Opening Inventory workflow before testing a
+transfer dispatch, wastage posting, or a negative stock adjustment. Controlled
+evidence configuration for recount recovery is prohibited from this candidate,
+so that default-off recovery path remains out of the local rehearsal.
+
 ### Local environment
 
 From Git Bash in the repository:
@@ -30,20 +106,28 @@ docker context use desktop-linux
 
 grep -E '^(APP_ENV|APP_URL|AUTH_MODE)=' .env
 
-POSTGRES_PORT=55433 WEB_PORT=3001 \
-docker compose -p ogfi-clean --env-file .env up -d --no-build postgres web
+docker compose --env-file backups/local-uat/ogfi_rehearsal_local_<suffix>/compose.env \
+  -f infra/docker/compose.local-uat.yaml up -d web
 
-curl http://localhost:3001/health
+curl http://localhost:3002/health
 ```
 
-Confirm that `.env` reports `APP_URL=http://localhost:3001` before starting this stack. Do not print or overwrite unrelated secrets. The candidate image must already have passed the full local build gate before using `up --no-build`.
+Confirm that the isolated candidate environment reports `APP_URL=http://localhost:3002` before starting this stack. Do not print or overwrite unrelated secrets. The candidate image must already have passed the full local build gate before using `up --no-build`.
 
-The health endpoint must return HTTP `200` with `"status":"ok"`. Use `http://localhost:3001` in the browser. Port `3000` shown by Next.js is the web container's internal port.
+The environment file must identify the new `ogfi_rehearsal_local_<suffix>` target
+and `ogfi-uat-<suffix>` project created by the builder. Never point this Compose
+file at `ogfi_erp`, reuse the source project, or manually alter the pending/final
+admission marker.
+
+The health endpoint must return HTTP `200` with `"status":"ok"`, but health
+alone is not admission evidence. Use `http://localhost:3002` in the browser only
+after admission. Port `3000` shown by Next.js is the web container's internal
+port.
 
 Monitor application errors in a separate terminal when testing:
 
 ```bash
-docker logs -f ogfi-clean-web-1
+docker logs -f ogfi-uat-<suffix>-web-1
 ```
 
 Do not rebuild merely to restart the environment. Rebuild only after source changes and only after the required local build gate is clean.
@@ -349,8 +433,8 @@ The expected result is a user-safe denial with no unauthorized mutation, no inve
 
 ## Common errors and recovery
 
-- **Application opens on the wrong port:** Use `http://localhost:3001`. Port `3000` is internal to the web container.
-- **Action fails without a useful page change:** Check `docker logs --tail=150 ogfi-clean-web-1`, record the safe error, and do not repeat a posting action until its current status is confirmed.
+- **Application opens on the wrong port:** For an admitted isolated candidate, use `http://localhost:3002`. Port `3000` is internal to the web container; do not fall back to the ordinary source stack on `3001`.
+- **Action fails without a useful page change:** Check `docker logs --tail=150 ogfi-uat-<suffix>-web-1`, record the safe error, and do not repeat a posting action until its current status is confirmed.
 - **Approval Inbox is unavailable in the ordinary local stack:** This is the expected fail-closed state. Do not change the ordinary `.env` to bypass it. Use only the separately admitted hardened bounded-UAT lane.
 - **A bounded worklist item is unavailable:** Verify that another named user owns the active approval step and has current Company and Location scope.
 - **MFA or assurance is stale:** Refresh MFA assurance using the account-security workflow, then reopen the current record.
