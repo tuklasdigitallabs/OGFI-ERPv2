@@ -74,6 +74,14 @@ health, then writes the final marker and must pass final health with no token.
 Independent QA and Security must still approve the candidate before human UAT
 begins; a failed fresh target is destructively torn down, never repaired.
 
+Current evidence checkpoint: candidate `ogfi_rehearsal_local_aug10a` in project
+`ogfi-uat-aug10a` was constructed from commit `f16304e` and passed the automated
+source-unchanged, allowlist, zero-history, role, exact-image, private-network,
+source-connectivity-denial, and loopback-health checks. Its manifest remains
+`uatAdmitted: false`; do not begin named-user workflow UAT until independent live
+admission and the required 7/7 identity, credential, MFA, role, and scope coverage
+are complete.
+
 `Budget`, `BudgetLine`, `FinanceAccountClass`, `ChartOfAccount`, `FiscalYear`,
 and `AccountingPeriod` are intentionally excluded. No retained non-budget table
 needs the finance bundle, while active approved budget state depends on

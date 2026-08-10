@@ -208,9 +208,9 @@ private-only.
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
 | Authorize and complete deletion of rejected old full-database dumps. | UAT Owner | Before new candidate construction | Complete — no `.dump` artifact remains |
-| Build an isolated target with the prescribed CLI, exact image provenance, repeatable-read snapshot, and minimal redacted evidence. | Database Engineering | After old-dump deletion | In progress |
-| Verify source unchanged, tenant/scope assertions, isolated Compose topology, restricted role contracts, zero prohibited/history state, pending-token/startup health, final-marker/no-token health, and teardown path. | QA / Security / Database Engineering | Before finalization | Blocked |
-| Review the construction-complete candidate and admit it for human UAT. | QA / Security / UAT Owner | Only after independent passing evidence | Blocked — no passing evidence supplied |
+| Build an isolated target with the prescribed CLI, exact image provenance, repeatable-read snapshot, and minimal redacted evidence. | Database Engineering | After old-dump deletion | Complete for candidate `f16304e` / `ogfi_rehearsal_local_aug10a` |
+| Verify source unchanged, tenant/scope assertions, isolated Compose topology, restricted role contracts, zero prohibited/history state, pending-token/startup health, final-marker/no-token health, and teardown path. | QA / Security / Database Engineering | Before finalization | Construction checks complete; independent live Docker inspection still pending |
+| Review the construction-complete candidate and admit it for human UAT. | QA / Security / UAT Owner | Only after independent passing evidence | Blocked — QA construction-integrity GO; independent live admission and named-user coverage pending |
 | Provision identity, credential, MFA, role, and scope coverage for all seven named UAT actors. | UAT Owner / Access Administration | Before named-user UAT | Blocked — 1/7 covered; 5 role assignments |
 | Assess and hand off user-facing instructions. | Dunong / UAT Owner | After named-user UAT becomes actionable | Pending |
 
