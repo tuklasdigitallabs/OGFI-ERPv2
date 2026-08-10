@@ -13,7 +13,7 @@ import {
 } from "./local-uat-baseline.mjs";
 
 test("requires explicit local source, isolated target, project, and confirmation", () => {
-  const parsed = parseLocalUatArguments(["create", "--source-container", "ogfi-clean-postgres-1", "--source-project", "ogfi-clean", "--source-db", "ogfi_erp", "--target-db", "ogfi_rehearsal_local_aug10", "--project", "ogfi-uat-aug10", "--web-image-id", `sha256:${"a".repeat(64)}`, "--confirm", "CREATE_ISOLATED_LOCAL_UAT_BASELINE"]);
+  const parsed = parseLocalUatArguments(["create", "--source-container", "ogfi-clean-postgres-1", "--source-project", "ogfi-clean", "--source-db", "ogfi_erp", "--target-db", "ogfi_rehearsal_local_aug10", "--project", "ogfi-uat-aug10", "--web-image-id", `sha256:${"a".repeat(64)}`, "--edge-image-id", `sha256:${"b".repeat(64)}`, "--confirm", "CREATE_ISOLATED_LOCAL_UAT_BASELINE"]);
   assert.equal(assertLocalUatCreateOptions(parsed).targetDatabase, "ogfi_rehearsal_local_aug10");
   assert.deepEqual(parseLocalUatArguments(["--", "create", "--source-db", "ogfi_erp"]), {
     command: "create",
@@ -24,6 +24,7 @@ test("requires explicit local source, isolated target, project, and confirmation
   assert.throws(() => assertLocalUatCreateOptions({ ...parsed, confirm: "yes" }), /LOCAL_UAT_CONFIRMATION_REQUIRED/);
   assert.throws(() => assertLocalUatCreateOptions({ ...parsed, "source-project": "production" }), /LOCAL_UAT_SOURCE_PROJECT_INVALID/);
   assert.throws(() => assertLocalUatCreateOptions({ ...parsed, "web-image-id": "ogfi-clean-web:latest" }), /LOCAL_UAT_WEB_IMAGE_ID_INVALID/);
+  assert.throws(() => assertLocalUatCreateOptions({ ...parsed, "edge-image-id": "nginx:latest" }), /LOCAL_UAT_EDGE_IMAGE_ID_INVALID/);
 });
 
 test("exports one canonical allowlist and excludes execution, auth-token, ledger, and sequence state", () => {
@@ -116,10 +117,11 @@ test("failed-candidate cleanup continues deleting secrets after an individual re
   assert.deepEqual(removals, ["compose.env", "operator.env", "runtime.env"]);
 });
 
-test("standalone compose stays source-isolated and requires the application database admission guard", async () => {
+test("standalone compose stays source-isolated behind a pinned credential-free loopback edge", async () => {
   const { readFile } = await import("node:fs/promises");
   const compose = await readFile(new URL("../infra/docker/compose.local-uat.yaml", import.meta.url), "utf8");
   assert.match(compose, /uat_private:\n    internal: true/);
+  assert.match(compose, /uat_edge:\n    driver: bridge/);
   assert.match(compose, /OGFI_LOCAL_UAT_BASELINE_REQUIRED: "true"/);
   assert.match(compose, /OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME/);
   assert.match(compose, /OGFI_DISPOSABLE_DATABASE_RUN_ID/);
@@ -127,9 +129,33 @@ test("standalone compose stays source-isolated and requires the application data
   assert.doesNotMatch(compose, /external: true|ogfi-clean|postgres:5432\/ogfi_erp/);
   assert.match(compose, /DIRECT_DATABASE_URL: ""/);
   assert.match(compose, /image: \$\{OGFI_LOCAL_UAT_WEB_IMAGE_ID/);
+  assert.match(compose, /image: \$\{OGFI_LOCAL_UAT_EDGE_IMAGE_ID/);
   assert.match(compose, /pull_policy: never/);
   assert.doesNotMatch(compose, /\n\s+build:/);
   assert.doesNotMatch(compose, /\.\.\/\.\.\/\.env/);
+  const postgresBlock = compose.slice(compose.indexOf("  postgres:"), compose.indexOf("  web:"));
+  const webBlock = compose.slice(compose.indexOf("  web:"), compose.indexOf("  edge:"));
+  const edgeBlock = compose.slice(compose.indexOf("  edge:"), compose.indexOf("\nnetworks:"));
+  assert.match(postgresBlock, /networks:\n      - uat_private/);
+  assert.doesNotMatch(postgresBlock, /uat_edge|\n    ports:/);
+  assert.match(webBlock, /networks:\n      - uat_private/);
+  assert.doesNotMatch(webBlock, /uat_edge/);
+  assert.doesNotMatch(webBlock, /\n    ports:/);
+  assert.match(edgeBlock, /127\.0\.0\.1:\$\{OGFI_LOCAL_UAT_WEB_PORT:-3002\}:8080/);
+  assert.match(edgeBlock, /user: "101:101"/);
+  assert.match(edgeBlock, /read_only: true/);
+  assert.match(edgeBlock, /cap_drop:\n      - ALL/);
+  assert.match(edgeBlock, /networks:\n      - uat_private\n      - uat_edge/);
+  assert.doesNotMatch(edgeBlock, /env_file:|DATABASE_URL|AUTH_SECRET|volumes:/);
+  const edgeConfig = await readFile(new URL("../infra/docker/local-uat-nginx.conf", import.meta.url), "utf8");
+  assert.match(edgeConfig, /proxy_pass http:\/\/web:3000;/);
+  assert.match(edgeConfig, /access_log off;/);
+  assert.doesNotMatch(edgeConfig, /\bresolver\b|proxy_pass\s+http:\/\/\$|\bCONNECT\b/i);
+  const edgeDockerfile = await readFile(new URL("../infra/docker/Dockerfile.local-uat-edge", import.meta.url), "utf8");
+  assert.match(edgeDockerfile, /nginx:1\.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10/);
+  assert.match(edgeDockerfile, /COPY local-uat-nginx\.conf \/etc\/nginx\/nginx\.conf/);
+  assert.match(edgeDockerfile, /USER 101:101/);
+  assert.match(edgeDockerfile, /ENTRYPOINT \["nginx", "-c", "\/etc\/nginx\/nginx\.conf"/);
   const builder = await readFile(new URL("./local-uat-baseline.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(builder, /\bpg_dump\b|full source backup|allowlist-export\.json/i);
   assert.match(builder, /PGOPTIONS=-c default_transaction_read_only=on/);
@@ -148,6 +174,10 @@ test("standalone compose stays source-isolated and requires the application data
   assert.match(builder, /\/app\/packages\/database\/node_modules\/\.bin\/prisma/);
   assert.match(builder, /\/app\/apps\/web\/node_modules\/\.bin\/tsx/);
   assert.doesNotMatch(builder, /\/app\/node_modules\/(?:prisma|tsx)\//);
+  assert.match(builder, /assertSourceDatabaseUnreachable\(webContainer, source\)/);
+  assert.match(builder, /waitForLoopbackHealth\(options\.webPort\)/);
+  assert.match(builder, /assertEdgeRuntime\(targetEdge, options\)/);
+  assert.match(builder, /sourceConnectivityDeniedFromWeb: true/);
   assert.match(builder, /label=com\.docker\.compose\.project=/);
   assert.match(builder, /LOCAL_UAT_FAILED_CONSTRUCTION_CLEANUP_INCOMPLETE/);
   const manifestBlock = builder.slice(builder.indexOf("const manifest ="), builder.indexOf("writeSecure(manifestFile"));

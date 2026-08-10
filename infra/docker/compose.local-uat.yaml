@@ -70,8 +70,6 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-    ports:
-      - "127.0.0.1:${OGFI_LOCAL_UAT_WEB_PORT:-3002}:3000"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -80,9 +78,39 @@ services:
     networks:
       - uat_private
 
+  edge:
+    image: ${OGFI_LOCAL_UAT_EDGE_IMAGE_ID:?Set an exact existing local sha256 edge image ID}
+    pull_policy: never
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:8080/health
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:${OGFI_LOCAL_UAT_WEB_PORT:-3002}:8080"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - uat_private
+      - uat_edge
+
 networks:
   uat_private:
     internal: true
+    driver: bridge
+  uat_edge:
     driver: bridge
 
 volumes:

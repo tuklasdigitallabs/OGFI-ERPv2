@@ -37,7 +37,15 @@ Choose a new safe suffix and run the prescribed builder from Git Bash:
 cd "$HOME/Documents/OGFI ERP - V2"
 docker context use desktop-linux
 
-docker image inspect ogfi-clean-web --format '{{.Id}}'
+commit_sha="$(git rev-parse HEAD)"
+edge_config_sha="$(sha256sum infra/docker/local-uat-nginx.conf | cut -d' ' -f1)"
+docker build -f infra/docker/Dockerfile.local-uat-edge \
+  --build-arg RELEASE_COMMIT_SHA="$commit_sha" \
+  --build-arg EDGE_CONFIG_SHA256="$edge_config_sha" \
+  -t ogfi-local-uat-edge:"${commit_sha:0:7}" infra/docker
+
+docker image inspect ogfi-local-uat-candidate:"${commit_sha:0:7}" --format '{{.Id}}'
+docker image inspect ogfi-local-uat-edge:"${commit_sha:0:7}" --format '{{.Id}}'
 
 pnpm.cmd db:local-uat-baseline -- create \
   --source-container ogfi-clean-postgres-1 \
@@ -46,6 +54,7 @@ pnpm.cmd db:local-uat-baseline -- create \
   --target-db ogfi_rehearsal_local_<suffix> \
   --project ogfi-uat-<suffix> \
   --web-image-id sha256:<64-hex-local-image-id> \
+  --edge-image-id sha256:<64-hex-local-edge-image-id> \
   --confirm CREATE_ISOLATED_LOCAL_UAT_BASELINE
 ```
 
@@ -57,7 +66,10 @@ and prove the source stayed unchanged. Source preflight and allowlist export use
 one read-only repeatable-read snapshot with explicit tenant and
 Company/Brand/Location/Department scope assertions. The exact `release-runner`
 image must be bound to clean committed `HEAD` and include the schema/migrations
-used for the target. Construction starts with a pending token, must pass startup
+used for the target. A separate exact local Nginx edge image must be bound to the
+same commit and the reviewed proxy-configuration digest. Only that credential-free
+edge publishes `127.0.0.1:3002`; web and PostgreSQL remain private-only with no
+published ports. Construction starts with a pending token, must pass startup
 health, then writes the final marker and must pass final health with no token.
 Independent QA and Security must still approve the candidate before human UAT
 begins; a failed fresh target is destructively torn down, never repaired.

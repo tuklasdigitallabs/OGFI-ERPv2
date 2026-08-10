@@ -17,8 +17,11 @@
 Use an isolated, standalone Docker Compose project to create a local-only Phase I
 UAT candidate in a fresh migrated database. The source is fixed at
 `ogfi-clean-postgres-1` / `ogfi_erp`; it remains untouched. Each target uses the
-names `ogfi_rehearsal_local_<suffix>` and `ogfi-uat-<suffix>`, with the target web
-service loopback-published on its separate default port, `3002`.
+names `ogfi_rehearsal_local_<suffix>` and `ogfi-uat-<suffix>`. The credential-bearing
+web runtime and PostgreSQL remain exclusively on an internal private network and
+publish no ports. A separate pinned, credential-free Nginx edge joins that private
+network and a project-only edge network, and alone publishes the loopback default
+port, `127.0.0.1:3002`.
 
 The baseline builder may copy only the explicit dependency-closed setup and
 master-data allowlist. `Budget`, `BudgetLine`, `FinanceAccountClass`,
@@ -41,7 +44,12 @@ Source preflight and allowlist export operate in one read-only repeatable-read
 snapshot. Explicit tenant and Company/Brand/Location/Department scope assertions
 must prove every retained relation is in the expected scope before target load.
 The exact `release-runner` image must be bound to clean committed `HEAD`, with the
-schema and migrations used for the target embedded in that image.
+schema and migrations used for the target embedded in that image. The edge must
+also be an exact local image bound to the same commit and fixed proxy-configuration
+digest. It runs non-root with a read-only filesystem, no added capabilities, no
+ERP environment or secrets, no Docker socket or host mount, and no dynamic proxy
+target. Its access log is disabled so authorization headers and cookies are not
+recorded.
 
 Construction records a pending construction token first. The builder may advance it to the
 final runtime-identity marker only after every automated construction,
@@ -89,6 +97,13 @@ GPT-5.6 fallback was used without relaxing any hard gate.
 - **Why selected:** It preserves source recovery and fail-closed admission while
   supporting realistic local setup.
 
+The initially considered direct two-network web attachment is rejected. A
+controlled non-mutating probe proved that a container on the non-internal bridge
+could connect to both the source PostgreSQL container IP and its
+`host.docker.internal` published port. The selected topology therefore exposes
+only the hardened, secretless fixed-proxy edge; web and PostgreSQL remain
+private-only.
+
 ### Option B — rejected: reuse or clean `ogfi_erp`
 
 - **Failure modes:** Destroys or alters the source rollback point and can erase
@@ -122,12 +137,17 @@ GPT-5.6 fallback was used without relaxing any hard gate.
      --target-db ogfi_rehearsal_local_<suffix> \
      --project ogfi-uat-<suffix> \
      --web-image-id sha256:<64-hex-local-image-id> \
+     --edge-image-id sha256:<64-hex-local-edge-image-id> \
      --confirm CREATE_ISOLATED_LOCAL_UAT_BASELINE
    ```
 
-2. The target must be a new standalone Compose project; its web service is
-   loopback-only and defaults to `http://localhost:3002`. It must not share a
-   network, database, credentials, or runtime identity with the source stack.
+2. The target must be a new standalone Compose project. Only its pinned,
+   credential-free Nginx edge is loopback-published and defaults to
+   `http://localhost:3002`; web and PostgreSQL publish no ports and remain on the
+   internal private network. No target service may share a network, database,
+   credentials, or runtime identity with the source stack. The builder must also
+   prove that web cannot reach the source by hostname, container IP, or Docker
+   host gateway.
 3. The source is read-only for construction. Verify it is unchanged before and
    after construction; never truncate, reset, seed, repair, or otherwise mutate
    `ogfi_erp`.
@@ -167,7 +187,8 @@ GPT-5.6 fallback was used without relaxing any hard gate.
 ## Implementation and documentation impact
 
 - **Code / architecture:** A standalone local Compose topology, restricted
-  owner/migrator/runtime roles, and pending-to-final marker are required. No
+  owner/migrator/runtime roles, pinned secretless loopback proxy edge, and
+  pending-to-final marker are required. No
   source database change or production/staging architecture change is authorized.
 - **Data / schema:** New migrated target only; no retained full backup/export;
   the budget/finance bundle and prohibited/history state must be zero, source
