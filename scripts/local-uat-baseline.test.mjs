@@ -145,6 +145,9 @@ test("standalone compose stays source-isolated and requires the application data
   assert.match(builder, /LOCAL_UAT_REVIEWED_WORKTREE_NOT_CLEAN/);
   assert.match(builder, /OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN/);
   assert.match(builder, /compose\(composeEnv, \["up", "-d", "postgres"\]\);\s*waitForHealthy\(targetContainer\);/);
+  assert.match(builder, /\/app\/packages\/database\/node_modules\/\.bin\/prisma/);
+  assert.match(builder, /\/app\/apps\/web\/node_modules\/\.bin\/tsx/);
+  assert.doesNotMatch(builder, /\/app\/node_modules\/(?:prisma|tsx)\//);
   assert.match(builder, /label=com\.docker\.compose\.project=/);
   assert.match(builder, /LOCAL_UAT_FAILED_CONSTRUCTION_CLEANUP_INCOMPLETE/);
   const manifestBlock = builder.slice(builder.indexOf("const manifest ="), builder.indexOf("writeSecure(manifestFile"));
