@@ -1,6 +1,6 @@
 # OGFI ERP — Current Pending Implementation Plan
 
-**As of:** August 7, 2026
+**As of:** August 11, 2026
 **Status:** Active implementation register  
 **Scope:** Production-readiness implementation remaining outside formal user UAT execution and final owner signoff
 
@@ -28,12 +28,71 @@ Runner safety validation passes **15/15** lifecycle-contract tests, including ta
 
 `DEC-0258` replaces broad workspace expansion as the immediate release priority. The confirmed target is a bounded connected Inventory Control Pilot for one warehouse, one or two branches, named users, and a selected catalog of high-risk items. The admitted control chain is organization/scope and production identity; supplier/item/UOM/location master data; Purchase Request, quotation, Purchase Order, and independent approval; receiving and discrepancy/reversal handling; immutable ledger-derived balances; transfers; blind counts and recount/correction lineage; wastage; controlled stock adjustments and reversals; evidence, audit, exception reporting/export; and hosted deployment/recovery.
 
-Phase 1.5 Projects, Expansion, Marketing, Workforce, broad Restaurant Operations, recipe/POS consumption integration, and Finance transaction workspaces are deferred from this pilot but remain visible in navigation by explicit owner direction. They must be clearly labeled `Deferred`, `Preview`, or `Not in Inventory Pilot`, receive no current delivery effort or pilot production-readiness credit, and must not gain new authority through pilot roles. Existing server authorization remains mandatory; unsafe or incomplete actions stay disabled with an explicit reason while already-safe working behavior need not be removed. Deferring Finance delivery does not remove independent Accounting review for opening values, material or repeated loss, suspicious wastage, or stock adjustments. A variance is an investigation signal, not proof of theft; the current ledger has no ordinary sales/POS or recipe-consumption movement and those events must not be disguised as wastage or adjustments.
+Phase 1.5 Projects, Expansion, Marketing, Workforce, broad Restaurant Operations, POS integration, and Finance transaction workspaces are deferred from this pilot but remain visible in navigation by explicit owner direction. The owner-authorized `DEC-0279` Restaurant Ops servings/consumption slice is the sole documented exception: it is implemented locally and branch-default-off, remains outside Inventory Control Pilot release scoring, and gains no authority through pilot roles. Other deferred work must be clearly labeled `Deferred`, `Preview`, or `Not in Inventory Pilot`. Existing server authorization remains mandatory; unsafe or incomplete actions stay disabled with an explicit reason while already-safe working behavior need not be removed. Deferring Finance delivery does not remove independent Accounting review for opening values, material or repeated loss, suspicious wastage, or stock adjustments. A variance is an investigation signal, not proof of theft. Only a verified, separately posted `DEC-0279` declaration may create ordinary recipe `CONSUMPTION_OUT`; POS data alone cannot post stock, and service depletion must never be disguised as wastage or adjustment.
 
 Delivery is split into two controlled stages:
 
 1. **Test-data/shadow UAT:** may start on staging after named roles, pilot scope, test opening stock, approval routes, and read-only pilot-readiness checks are complete. It receives no operational stock-of-record or production-authentication credit.
 2. **Operational pilot:** remains **NO-GO** until unique production accounts/MFA, exact-scope authorization, active named pilot approval routes and no-self controls, an approved immutable opening-stock cutover, count/recount correction lineage, exact-candidate database and production-authenticated desktop/mobile evidence, hosted backup/isolated restore/rollback, and signed human UAT all pass.
+
+### DEC-0279 manual servings and controlled consumption — implemented locally, default-off
+
+- The August 11, 2026 owner-confirmed Phase II design is implemented locally under
+  Restaurant Ops: source-neutral immutable serving declarations, independent fact
+  verification, a separate explicit exactly-once `CONSUMPTION_OUT` posting command,
+  full reversal, corrected revisions, filtered register/export, branch configuration,
+  menu-recipe assignment, issue-location selection, and sentinel-count settings.
+  It remains outside the Inventory Control Pilot release scope and is default-off
+  per branch. It receives no UAT-ready, operational-stock, physical-actual
+  food-cost, or production-readiness credit.
+- Paid and complimentary prepared/issued menu items consume recipes;
+  complimentary service also requires reason, authorizer, and equivalent controlled
+  approval/evidence. Staff meals remain separate Authorized Consumption;
+  pre-preparation cancels create no movement; prepared-not-served is Wastage;
+  served/refunded remains consumed; and a remake is original Wastage plus issued
+  replacement Consumption. These sources must never double-own one depletion.
+- The local slice enforces one authoritative non-overlapping service-period
+  source, encoder/non-encoder manager segregation, remote Area/Operations review
+  for small branches, separate live verify/post permissions, exact scope and MFA,
+  whole-document readiness with zero movements on failure, deterministic FEFO,
+  no negative or partial posting, count freeze/cutoff and late-post controls, and
+  full-document reversal followed by corrected replacement.
+- Pilot count configuration begins with daily blind closing counts for bounded
+  high-shrink sentinel items, weekly counts for other high-risk/perishable items,
+  and monthly general counts. Review requires at least four weeks and evidence;
+  cadence never relaxes automatically.
+- Local implementation admission requires the clean authorization manifest,
+  focused schema/service checks, full lint/type/build, and fresh PostgreSQL
+  migration/lifecycle evidence. Branch activation remains blocked on
+  production-authenticated responsive browser evidence, named-user UAT, recovery,
+  and Operations/Inventory/Security/QA/Release/Product signoff for the exact
+  candidate and configuration. Reporting must say `Expected/Book Consumption`,
+  not independent physical actual usage. Formal record:
+  `docs/core/00-governance/decisions/DEC-0279-MANUAL-SERVINGS-CONTROLLED-INVENTORY-CONSUMPTION.md`.
+- Fresh disposable PostgreSQL 17 evidence applied all 152 migrations and passed
+  zero-movement fact verification, deterministic FEFO posting, exact replay, full
+  reversal/balance neutrality, corrected-revision lineage, self-verification denial,
+  mutable-state return/cancel controls, and insufficient-stock all-or-zero rollback.
+  Responsive named-role browser UAT and production activation remain pending.
+
+### DEC-0280 brand-default recipe adoption — confirmed, implementation pending
+
+- `DEC-0280` supersedes only the current exact-branch menu-recipe mapping target.
+  The pending additive design uses one effective-dated brand-default published
+  recipe per active brand menu item, inherited by active same-brand `BRANCH`
+  locations, with exact-location unavailability and override exceptions resolving
+  `UNAVAILABLE > LOCATION_OVERRIDE > BRAND_DEFAULT > blocked`.
+- Company-shared recipes require explicit brand adoption; cross-brand and implicit
+  fallback fail closed. Publication creates a candidate only. Only an already
+  adopted menu item may receive a controlled effective-dated successor rollout.
+  Pending cost evidence does not block otherwise valid quantity readiness.
+- Publication, adoption, exceptions, and rollout create zero inventory movement.
+  The existing default-off `DEC-0279` code receives no activation credit from its
+  current exact-branch assignment shape. Branch activation remains blocked until
+  the additive migration, resolver, separate authority policy, historical snapshot
+  preservation, database/authorization/concurrency/browser tests, named-role UAT,
+  and exact-candidate owner signoff pass. Formal record:
+  `docs/core/00-governance/decisions/DEC-0280-BRAND-DEFAULT-RECIPE-ADOPTION-AND-BRANCH-RESOLUTION.md`.
 
 The dependency order is therefore: define and validate the exact pilot configuration baseline; activate only approved pilot-family routing with a usable work surface; complete the opening-stock cutover and immutable count/recount-to-correction path; close receiving, transfer, wastage, adjustment, reversal, audit, reconciliation, and exception-report browser/data-integrity gaps; close production-authenticated desktop/mobile and full local database/authorization evidence; execute local test-data UAT with `P1-UAT-011` receiving no credit until its disabled runtime is replaced by the approved lineage-safe implementation; prepare the signed release/cutover/recovery evidence locally; then wait for explicit owner authorization before any hosted deployment or supervised branch/warehouse cohort. Broader module work resumes only for a demonstrated pilot blocker or after pilot stabilization.
 
@@ -2899,3 +2958,32 @@ Update this register only when implementation state, release scope, a confirmed 
 - Fresh successor `ogfi_rehearsal_local_aug10a` / `ogfi-uat-aug10a` was constructed from clean commit `f16304e399fadf27e7090416202d33083e5757f6`. The builder contract passes **9/9**; the exact ERP image passed Prisma generation plus the complete optimized Next compile, lint, TypeScript, static-generation, trace, non-root assembly, and image-export gate. The manifest records matching pre/post source digest `4ed583d7…b09d3ae0`, zero prohibited/history tables, restricted runtime authority, exact web image `sha256:6aa663f…f7fe3b8`, exact edge image `sha256:9c4ed52…50bc9b25`, same-commit edge configuration digest `f7873841…f7d86a0`, and successful source-database connectivity denial from web. Runtime inspection confirms PostgreSQL and web are `uat_private`-only with no published ports; the edge alone joins `uat_private` plus `uat_edge`, binds `127.0.0.1:3002`, runs as `101:101` with a read-only filesystem, `no-new-privileges`, all capabilities dropped, no mounts, and no ERP secrets. Windows-host `/health` and `/sign-in` return HTTP 200 and `/` returns the expected 307 to `/sign-in`; the original `ogfi-clean` stack remains healthy on ports 3001/55433, and no rejected `.dump` remains. Independent QA returned **GO for construction integrity** but could not independently access Docker Desktop for live admission; therefore the manifest remains truthfully `uatAdmitted: false`. Named-user UAT remains blocked at **1/7** authentication/MFA coverage and five role assignments. No inventory, procurement, approval-instance, session, notification, attachment, audit, or other transaction history is carried into the candidate.
 - `ogfi_uat_clean_20260810` was a same-cluster diagnostic target and was rejected by independent QA and Security. It was never admitted; its former migration/count, health, and authentication-primitives claims earn no UAT credit. Do not label any new candidate admitted until the parent supplies actual independent passing evidence and the pending marker is finalized.
 - The product owner authorized deletion of both rejected diagnostic full-database dumps on August 10, and verification found no remaining `.dump` artifact under `backups/local-uat`; that construction blocker is closed. Named-user UAT remains blocked: only **1 of 7** retained users has an auth identity, credential, and MFA record, and only **5** role assignments exist. Health checks, one working identity, or a zero-history target do not establish named-user sign-in, scoped-role coverage, approval segregation, or UAT readiness. Phase I remains **77% local implementation / NO-GO** and Inventory Control Pilot remains **89% local implementation / NO-GO**.
+
+### Phase I UAT usability correction batch — August 10, 2026
+
+- Core Administration role creation now uses the shared trusted JSON short-mutation boundary instead of a redirecting nested Server Action. Both visible `Create Role` entry points await the response, prevent duplicate submission, close on success, keep the form open on a user-safe error, show application toast feedback, revalidate the register, and retain the existing server-side tenant/company authority and audit service.
+- Role permission editing now owns a browser-memory draft per role. Toggle changes survive bounded permission-page and filter navigation, the complete selected-code set is submitted on save, and a hard refresh or explicit `Cancel and Return` clears the draft. Failed native validation, authorization, MFA, or concurrency checks do not clear the draft; applying the recommended set clears it only after the confirmed server result changes the saved baseline. No permission, role, or scope authority was broadened.
+- The Purchase Request entry surface no longer presents a detached catalog/UOM/budget search strip. Those controls were lookup filters for the active line and had no independent transaction meaning. The active line now contains server-paged, keyboard-accessible browse-and-type search dropdowns for catalog items, item-valid UOMs, and optional budget lines. A blank item search returns the first bounded selected-company catalog page, UOM choices are cleared and refetched whenever the item changes, and emergency free-text remains a separately identified exception path.
+- The dashboard was restructured as a compact role-and-capability-aware operational command center: selected operating scope, role, assembly time, trust/availability status, and accessible views are compact; `Today's Work` and positive exception indicators precede zero-value cards; at most six authorized indicators are shown; unlike queue grains are not added together; and unavailable/partial sources remain explicitly distinguished from zero. Existing service-owned values, exact source links, authorization, and read-only truthfulness controls are unchanged.
+- Independent ERP UX, Frontend, and Business specialists unanimously selected the action-first dashboard option, and independent QA identified the blank item-catalog guard, premature recommended-permission draft clearing, stale UOM risk, shared lookup-error ambiguity, capability-ordering risk, and keyboard/pending-state gaps before admission. Requested Code Spark and GPT-5.4-mini subagent models were unavailable in the active toolset; the closest permitted inherited GPT-5.6 role-specialist fallbacks were used without relaxing any hard gate or treating model output as validation evidence.
+- User-facing Administration, Purchase Request, Dashboard, and administrator-training guidance now describes the implemented interaction behavior. No new business term or changed definition was introduced, so the project glossary requires no content change for this batch.
+- Validation evidence: the fresh `ogfi-clean-web` optimized Docker build completed Prisma generation, Next compilation, lint, TypeScript validation, page-data/static generation, tracing, non-root assembly, image export, and unpack. Only the local port-3001 web container was recreated; the isolated port-3002 UAT candidate was not changed. In-container `/health` returned `status: ok` with the application and database configuration checks healthy. Focused regressions pass **4/4 files and 84/84 tests** across the shared short-mutation route, Core Administration, Purchase Requests, and Dashboard presentation; `git diff --check` passes.
+- Manual desktop/mobile interaction remains required for the four corrected visible surfaces before this batch receives browser-UAT credit. The separate named-user cohort, production-authenticated hosted lanes, recovery/deployment rehearsal, formal human UAT, and owner signoff remain open. Phase I therefore remains **77% local implementation / NO-GO** and Inventory Control Pilot remains **89% local implementation / NO-GO**; no VPS deployment was authorized or performed.
+
+### Shared single-open summary rollout — August 10, 2026
+
+- The dashboard disclosure behavior is now a reusable application component rather than a one-page exception. Every summary list starts closed, opens one row at a time, closes the open row when it is selected again, mounts only the expanded body, and exposes the required keyboard and screen-reader disclosure semantics. Collapsed rows retain up to three concise source-backed snapshots so users can understand the available information without opening every section.
+- Release Readiness now presents its five readiness categories as summary rows with ready-outcome, blocking/hold, and required-gate snapshots. Expansion is intentionally bounded to the relevant gate preview; the authoritative gate register, filters, ownership, and controlled actions remain outside the summaries.
+- Opening Inventory pilot readiness now presents the eight readiness families as closed summary rows with Status, Blockers, and Evidence cutoff snapshots. Expanded content preserves the existing blocker or no-blocker explanation. Resolver evidence, validation, sealing, and other controlled configuration actions remain in their authoritative workspace surfaces.
+- Notifications keeps the Notification Center, grouping tabs, and notification rows as the primary surface. Permission-gated manual reminder scans are consolidated beneath it as one secondary summary row whose collapsed state reports available scan families and current-result availability; the existing scan actions and results are unchanged inside the expanded body.
+- Component-library, administrator knowledge-base, dashboard/notification guidance, opening-inventory guidance, and the local Phase I UAT runbook now describe the implemented interaction. No business term or definition changed, so the project glossary requires no content change. Requested Code Spark and GPT-5.4-mini subagent models were unavailable in the active toolset; the closest permitted inherited GPT-5.6 role-specialist fallbacks were used without relaxing any production-readiness gate.
+- Validation evidence: focused presentation and behavior regressions pass **5/5 files and 55/55 tests**; the complete web lint gate passes; web TypeScript passes with the approved 4 GiB heap; and `git diff --check` passes. The fresh optimized Docker web build completed Prisma generation, Next compilation, lint/TypeScript validation, static generation, tracing, non-root assembly, image export, and unpack as manifest `sha256:565e157e34d6fe77eea355000eccda9bfcd92ddf38373951aa012fa7a102b5f5`. Only `ogfi-clean-web-1` was recreated on port `3001`; `/health` returned HTTP 200 with application and database-configuration checks healthy. Manual desktop/tablet/mobile and keyboard interaction evidence remains required before browser-UAT credit. Phase I remains **77% local implementation / NO-GO** and Inventory Control Pilot remains **89% local implementation / NO-GO**; no VPS action was authorized or performed.
+
+### Dashboard row-disclosure correction and approval admission audit — August 10, 2026
+
+- The Overview card/grid presentation is replaced by four ordered, full-width server-authorized summaries where their source is enrolled: `Assigned Approvals`, `Operational Exceptions`, `Priority Indicators`, and `Stock Balance Signals`. All summaries start closed. Selecting a summary expands its details directly below it, selecting it again closes it, and selecting another closes the previously open summary. Keyboard and screen-reader disclosure semantics are present, and only the expanded body is mounted.
+- Each closed summary now carries up to three visual source-backed snapshots so users can see queue availability/counts, urgent exception preview, role-prioritized signals, and stock balance-row measures without expanding it. The expanded Operational Exceptions surface is a bounded triage list with concise priority/status, reference, Location, timing, owner/assignee, next action, and exact record link rather than paragraph-heavy full-width rows. Priority and stock details use restrained metric tiles appropriate to dashboard indicators.
+- Summary values retain their separate source grains and never add approval, exception, indicator, or stock populations together. Critical exceptions receive first-open priority, followed by actionable assigned approvals, other exceptions, positive indicators, and available stock signals. Unauthorized source sections are omitted; unavailable and partial sources remain explicit and are never presented as zero.
+- The local `ogfi-clean` runtime on port `3001` was audited rather than force-enabled. It is an ordinary development application runtime and does not satisfy the bounded approval identity contract (`APP_ENV=uat`, production Node runtime, CI admission, local authentication, hardened-UAT flag, bounded-worklist flag, disposable admitted database, trusted TLS, and teardown evidence). Global routing remains disabled and no approval authority was broadened. A separate approved hardened operator-UAT procedure is still required before interactive approval UAT can be claimed.
+- Independent ERP UX, Frontend, and Business specialists reviewed the information architecture and approval boundary. Requested Code Spark and GPT-5.4-mini subagent models were unavailable in the active toolset; the closest permitted inherited GPT-5.6 role-specialist fallbacks were used. No specialist recommendation overrides release or authorization gates.
+- Validation evidence: the final optimized Docker web build passed Prisma generation, Next compilation, lint, TypeScript validation, static generation, tracing, non-root assembly, image export, and unpack. `ogfi-clean-web-1` was recreated from the final image; `/health` reports `status: ok`. Dashboard presentation and service contracts pass **2/2 files and 59/59 tests**. Manual desktop/mobile disclosure behavior remains required before browser-UAT credit. Phase I remains **77% local implementation / NO-GO** and Inventory Control Pilot remains **89% local implementation / NO-GO**; no VPS action was taken.

@@ -331,6 +331,7 @@ export default async function InventoryLedgerPage({
               <option value="TRANSFER_OUT">Transfer out</option>
               <option value="TRANSFER_IN">Transfer in</option>
               <option value="WASTAGE_OUT">Wastage out</option>
+              <option value="CONSUMPTION_OUT">Recipe consumption out</option>
               <option value="ADJUSTMENT_IN">Adjustment in</option>
               <option value="ADJUSTMENT_OUT">Adjustment out</option>
               <option value="OPENING_BALANCE_IN">Opening balance in</option>

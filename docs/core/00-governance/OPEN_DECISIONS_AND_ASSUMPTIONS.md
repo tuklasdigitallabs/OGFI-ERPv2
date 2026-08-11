@@ -237,6 +237,38 @@ scope, and activation/readiness remains blocked until every migration,
 authorization, concurrency, database, browser, and UAT gate in the decision
 record passes.
 
+21. **Manual menu-servings capture and controlled consumption posting (`DEC-0279`, confirmed/resolved):**
+The authorized human confirmed source-neutral immutable serving facts, independent
+manager verification, and a separate explicit exactly-once `CONSUMPTION_OUT`
+posting command. Paid and complimentary prepared/issued menu items consume their
+effective published recipes; complimentary service also requires a reason,
+authorizer, and equivalent controlled approval/evidence. Staff meals remain a
+separate Authorized Consumption source; pre-preparation cancellations create no
+movement; prepared-not-served items are Wastage; served/refunded items remain
+consumed; and a remake records the original as Wastage and the issued replacement
+as Consumption. One configured non-overlapping service-period source is
+authoritative, using either period capture plus a read-only daily rollup or `DAILY`
+as the sole period. Encoder self-verification is prohibited; an exactly scoped
+remote Area/Operations manager supplies small-branch review. A non-encoder manager
+may verify and post only through separate actions with both live permissions and
+current MFA. Missing or ambiguous recipe, UOM, issue-location, lot, or stock
+readiness blocks the whole post with zero movements. Deterministic FEFO, no negative
+stock, count freeze/cutoff and late-post controls, full-document reversal followed
+by corrected replacement, and daily/weekly/monthly blind-count pilot cohorts remain
+mandatory. Recipe-derived consumption is labeled expected/book consumption, not
+independent physical actual evidence. Additive local implementation may begin
+default-off, but production activation and UAT/readiness claims remain blocked
+until every `DEC-0279` gate passes. `DEC-0280` now confirms the effective recipe
+dependency: brand-default published-recipe adoption with exact-branch
+unavailability/location-override exceptions resolves
+`UNAVAILABLE > LOCATION_OVERRIDE > BRAND_DEFAULT > blocked`. Publication creates
+only a candidate; shared recipes require explicit brand adoption, cross-brand and
+implicit fallback fail closed, and successor rollout is controlled and effective-
+dated. The existing exact-branch assignment shape is not authoritative for
+activation. `DEC-0280` is implemented and automated locally; activation remains
+blocked until named-role browser UAT and the remaining `DEC-0279` release gates
+pass for the exact candidate.
+
 ## 6. Change request format
 
 Every policy change request should include:

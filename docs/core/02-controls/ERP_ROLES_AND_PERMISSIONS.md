@@ -287,6 +287,65 @@ The following defaults should be enforced unless a formally approved exception i
 7. IT Administrators cannot access confidential finance or HR data unless explicitly granted a temporary, logged support role.
 8. Auditors are read-only and cannot approve, amend, or close operational transactions.
 9. Emergency purchase workflows require post-transaction review by an independent approver.
+10. A serving-declaration encoder cannot verify or post the same declaration.
+    Branch Managers or an exact-scope remote Operations/Admin reviewer may verify
+    and post only through separate permissions and explicit actions with required
+    MFA. Verification never changes inventory.
+
+### 6.1 Restaurant serving-consumption permissions (`DEC-0279`)
+
+| Permission | Intended authority |
+|---|---|
+| `restaurant.consumption.view` | View exact-scope declarations, derivation readiness, posting allocations, export and audit history. |
+| `restaurant.consumption.create` | Branch Staff/Supervisor capture, edit, submit and cancel branch serving facts. |
+| `restaurant.consumption.verify` | Different exact-scope Branch Manager or remote reviewer verifies/returns facts and freezes the recipe derivation. |
+| `restaurant.consumption.post` | Different-from-encoder authorized manager explicitly posts the verified complete recipe consumption to inventory. |
+| `restaurant.consumption.reverse` | Authorized manager reverses the full posting with reason and linked movements. |
+| `restaurant.consumption.configure` | Authorized Admin configures versioned branch schedules, issue location, sentinel cohort, and effective recipe assignments. |
+
+The seed maps configured requester access to view/create, configured approver
+access to view/verify/post/reverse, and configured Admin/Super User access to the
+full set. These seed mappings do not replace live branch/company scope or MFA.
+
+The Servings & Consumption workspace exposes the selected branch's effective
+configuration as read-only operational context to users holding any consumption
+workspace permission. Only `restaurant.consumption.configure` may create or
+activate branch configuration versions. Brand adoption, branch recipe exceptions,
+and successor rollout remain separately protected by the sensitive permissions in
+section 6.2. A role name, visible configuration page, or broad company visibility
+never grants a configuration mutation.
+
+### 6.2 Recipe adoption and branch-exception authority (`DEC-0280`)
+
+Recipe publication approves a formula only. It does not grant or execute brand
+adoption, branch unavailability, location override, or successor rollout. Those
+operations require separate explicit server actions and live permission checks for
+the exact tenant/company/brand and, for an exception, exact active `BRANCH` scope.
+
+Existing `restaurant.recipe.publish`, `restaurant.recipe.manage`,
+`restaurant.consumption.configure`, a generic Admin/System Administrator role, or
+Company-wide visibility does not by itself grant adoption or exception authority.
+The confirmed sensitive authorities are:
+
+| Permission | Intended authority |
+|---|---|
+| `restaurant.menu_recipe.adopt` | Adopt or supersede one effective-dated, published recipe version as the brand default for an exact same-brand menu item. This does not publish a recipe, create a branch exception, roll out a successor, or post inventory. |
+| `restaurant.menu_recipe.branch_exception` | Create or supersede an effective-dated availability/unavailability exception for an authorized active branch of the same brand. An exact-location recipe override additionally requires `restaurant.menu_recipe.adopt` and live Brand/Company `MANAGE`; this does not change the brand default, publish recipes, or post inventory. |
+| `restaurant.menu_recipe.rollout` | Together with `restaurant.recipe.publish`, advance an already adopted brand menu item to an explicit published successor at a controlled future effective time after impact preview. This does not create initial adoption, change branch exceptions, or post inventory. |
+
+All three permissions are sensitive for privileged-role classification and require
+fresh privileged MFA at the command boundary. Cross-brand actions are denied even
+when the actor can access both brands. Every adoption, exclude/restore,
+override/remove, and successor-rollout action requires live exact-scope authority,
+actor, reason, effective date, audit history, concurrency control, and zero
+inventory movement.
+
+The generic role baseline deliberately grants none of these permissions to
+`CONFIGURED_REQUESTER`, `CONFIGURED_APPROVER`, or `CONFIGURED_ADMIN`. The local/UAT
+demo seed grants all seeded permissions to `CONFIGURED_SUPER_USER`; this is test
+convenience only and is not a production role-name bypass. Production grants must
+use the controlled tenant-role administration workflow, and existing broad recipe,
+consumption, or administration permissions never imply these codes.
 
 ---
 

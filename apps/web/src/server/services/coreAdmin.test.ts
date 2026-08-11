@@ -113,6 +113,24 @@ describe("core administration audit search wiring", () => {
     expect(adminPageSource).not.toContain("const workspaces = [");
   });
 
+  test("role creation uses the shared short-mutation feedback boundary", () => {
+    const adminPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/page.tsx"),
+      "utf8",
+    );
+    const routeSource = readFileSync(
+      path.resolve(__dirname, "../../app/api/admin/roles/create/route.ts"),
+      "utf8",
+    );
+    expect(adminPageSource).toContain('endpoint="/api/admin/roles/create"');
+    expect(adminPageSource).toContain('pendingLabel="Creating role…"');
+    expect(adminPageSource).not.toContain("async function createRoleAction");
+    expect(routeSource).toContain("shortMutationResponse");
+    expect(routeSource).toContain("mutate: createCoreAdminRole");
+    expect(routeSource).toContain('successCode: "CORE_ADMIN_ROLE_CREATED"');
+    expect(routeSource).toContain('revalidate: "/admin"');
+  });
+
   test("Organization Scope uses a server-authorized selected-record action surface", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const adminPageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8");
@@ -800,21 +818,25 @@ describe("core administration audit search wiring", () => {
       path.resolve(__dirname, "rolePermissionCatalog.ts"),
       "utf8"
     );
+    const editorSource = readFileSync(
+      path.resolve(__dirname, "../../components/RolePermissionEditor.tsx"),
+      "utf8",
+    );
 
     expect(catalogSource).toContain("getPermissionPresentation");
     expect(catalogSource).toContain("getRecommendedPermissionCodesForRole");
     expect(catalogSource).toContain("Create purchase requests");
     expect(catalogSource).toContain("Post receiving");
 
-    expect(rolePageSource).toContain("Save Permission Overrides");
+    expect(editorSource).toContain("Save Permission Overrides");
     expect(rolePageSource).toContain("Apply Recommended Set");
     expect(rolePageSource).toContain("Back to Roles Workspace");
     expect(rolePageSource).toContain('href="/admin?tab=roles"');
-    expect(rolePageSource).toContain('type="checkbox"');
-    expect(rolePageSource).toContain('name="permissionCodes"');
-    expect(rolePageSource).toContain("permission.label");
-    expect(rolePageSource).toContain("Recommended");
-    expect(rolePageSource).toContain("Sensitive");
+    expect(editorSource).toContain('type="checkbox"');
+    expect(editorSource).toContain('name="permissionCodes"');
+    expect(editorSource).toContain("permission.label");
+    expect(editorSource).toContain("Recommended");
+    expect(editorSource).toContain("Sensitive");
 
     expect(serviceSource).toContain("role_permissions.updated");
     expect(serviceSource).toContain("role_permissions.recommended_applied");
@@ -910,8 +932,18 @@ describe("core administration audit search wiring", () => {
   });
 
   test("role permission matrix uses bounded server paging and preserves hidden grants", () => {
-    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
-    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"), "utf8");
+    const serviceSource = readFileSync(
+      path.resolve(__dirname, "coreAdmin.ts"),
+      "utf8",
+    );
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"),
+      "utf8",
+    );
+    const editorSource = readFileSync(
+      path.resolve(__dirname, "../../components/RolePermissionEditor.tsx"),
+      "utf8",
+    );
     expect(serviceSource).toContain("permissionPageSize");
     expect(serviceSource).toContain("permissionQuery");
     expect(serviceSource).toContain("permissionFilter");
@@ -920,20 +952,50 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("take: permissionPageSize");
     expect(serviceSource).toContain("enabledPermissionCodes");
     expect(serviceSource).toContain("AND: [");
-    expect(serviceSource).toContain('OR: [{ tenantId: session.context.tenantId }, { tenantId: null }]');
-    expect(serviceSource).not.toContain("const [role, assignmentCount, allPermissions]");
-    expect(pageSource).toContain('name="permissionQuery"');
-    expect(pageSource).toContain('name="permissionFilter"');
-    expect(pageSource).toContain('name="permissionCodes" type="hidden"');
-    expect(pageSource).toContain('<form method="get" className="mt-5 grid gap-2');
-    expect(pageSource).toContain('<form action={updateRolePermissionsAction} className="mt-5">');
-    expect(pageSource).toContain('itemLabel="permissions"');
+    expect(serviceSource).toContain(
+      "OR: [{ tenantId: session.context.tenantId }, { tenantId: null }]",
+    );
+    expect(serviceSource).not.toContain(
+      "const [role, assignmentCount, allPermissions]",
+    );
+    expect(pageSource).toContain("RolePermissionEditor");
+    expect(editorSource).toContain('name="permissionQuery"');
+    expect(editorSource).toContain('name="permissionFilter"');
+    expect(editorSource).toContain('name="permissionCodes"');
+    expect(editorSource).toContain('type="hidden"');
+    expect(editorSource).toContain("permissionDrafts");
+    expect(editorSource).toContain("baselineSignature");
+    expect(editorSource).toContain(
+      "Permission selections are retained while you browse pages or apply",
+    );
+    expect(editorSource).toContain(
+      "filters. They reset when you refresh or cancel.",
+    );
+    expect(editorSource).toContain("router.push(href, { scroll: false })");
+    expect(editorSource).toContain("permissionDrafts.delete(roleId)");
+    const recommendedButtonSource = editorSource.slice(
+      editorSource.indexOf(
+        "export function ApplyRecommendedRolePermissionsButton",
+      ),
+      editorSource.indexOf("function SavePermissionOverridesButton"),
+    );
+    expect(recommendedButtonSource).not.toContain(
+      "onClick={() => permissionDrafts.delete(roleId)}",
+    );
+    expect(editorSource).toContain("Cancel and Return");
+    expect(editorSource).toContain('pending ? "Applying…"');
+    expect(editorSource).toContain('pending ? "Saving…"');
+    expect(pageSource).toContain(
+      "CORE_ADMIN_ROLE_RECOMMENDED_PERMISSIONS_APPLIED",
+    );
     expect(pageSource).toContain("permissionPage");
-    expect(pageSource).toContain("on this page");
+    expect(editorSource).toContain("on this page");
     expect(pageSource).toContain("role.assignedUsersPage.totalItems");
-    expect(pageSource).toContain("No permissions match the current search or filter");
+    expect(editorSource).toContain(
+      "No permissions match the current search or filter",
+    );
     expect(pageSource).toContain("permissionReturnPath");
-    expect(pageSource).not.toContain('<button className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>');
+    expect(editorSource).toContain("Save Permission Overrides");
   });
 
   test("location detail uses a bounded assigned-access register", () => {

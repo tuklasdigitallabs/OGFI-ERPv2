@@ -1,17 +1,24 @@
 import { prisma, type Prisma } from "@ogfi/database";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   assertPermissionAllowed,
   canUseRecipesAndCosting,
   permissions,
-  requirePermission
+  requirePermission,
 } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import {
   assertPhase2WorkflowTransitionAllowed,
-  getPhase2WorkflowActionsForStatus
+  getPhase2WorkflowActionsForStatus,
 } from "./phase2WorkflowPolicy";
 import { parseDateOnlyUtc } from "./projectDates";
+import {
+  assertLiveMenuRecipeAuthority,
+  menuRecipePolicyPermissions,
+  parseCompanyLocalDateTime,
+} from "./restaurantConsumption";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 type RecipeWithCostingDetails = Prisma.RecipeGetPayload<{
   include: {
@@ -35,6 +42,15 @@ type RecipeWithCostingDetails = Prisma.RecipeGetPayload<{
         menuItems: {
           include: {
             prices: true;
+          };
+        };
+        menuRecipeAssignments: {
+          include: {
+            menuItem: {
+              include: {
+                prices: true;
+              };
+            };
           };
         };
       };
@@ -73,7 +89,7 @@ type ItemUomConversionSnapshot = {
 const actualConsumptionMovementTypes = [
   "WASTAGE_OUT",
   "ADJUSTMENT_OUT",
-  "COUNT_VARIANCE_OUT"
+  "COUNT_VARIANCE_OUT",
 ] as const;
 
 export type RecipeCostingLineSummary = {
@@ -98,6 +114,7 @@ export type RecipeCostingSummary = {
   recipeCode: string;
   recipeName: string;
   recipeType: string;
+  brandId?: string | null;
   brandName: string;
   versionId: string | null;
   versionNo: number | null;
@@ -168,7 +185,11 @@ export type FoodCostAnalysisSummary = {
   actualCost: number | null;
   varianceAmount: number | null;
   variancePercent: number | null;
-  status: "WITHIN_TARGET" | "ABOVE_TARGET" | "MISSING_COST" | "AWAITING_ACTUALS";
+  status:
+    | "WITHIN_TARGET"
+    | "ABOVE_TARGET"
+    | "MISSING_COST"
+    | "AWAITING_ACTUALS";
 };
 
 export type FoodCostAnalysisStatusCounts = Record<
@@ -218,9 +239,26 @@ export type FoodCostAnalysisDashboard = {
 };
 
 export type RecipeCostingExportFilters = {
+  brandId?: string | null;
   q?: string;
   type?: string;
   status?: string;
+};
+
+export type RecipeCostingScopeOptions = {
+  brandId?: string | null;
+};
+
+export type RecipeBrandScopeOption = {
+  id: string;
+  code: string;
+  name: string;
+  canManage: boolean;
+};
+
+export type RecipeBrandScopeOptions = {
+  brands: RecipeBrandScopeOption[];
+  canManageCompanyShared: boolean;
 };
 
 export type FoodCostAnalysisExportFilters = {
@@ -236,6 +274,8 @@ export type FoodCostAnalysisDashboardOptions = {
 };
 
 export type RecipeCreateOptions = {
+  brands: RecipeBrandScopeOption[];
+  canManageCompanyShared: boolean;
   items: Array<{
     id: string;
     code: string;
@@ -265,7 +305,16 @@ const recipeVersionWorkflowSchema = z.object({
   action: z.string().min(1),
   reason: z.string().trim().optional(),
   evidenceReference: z.string().trim().optional(),
-  idempotencyKey: z.string().trim().optional()
+  idempotencyKey: z.string().trim().optional(),
+});
+
+const recipeSuccessorRolloutSchema = z.object({
+  brandId: z.string().uuid(),
+  recipeVersionId: z.string().uuid(),
+  effectiveFrom: z.union([z.date(), z.string().trim().min(1)]),
+  reason: z.string().trim().min(5).max(500),
+  idempotencyKey: z.string().trim().min(8).max(200),
+  previewSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 const menuPriceDecisionSchema = z.object({
@@ -276,7 +325,7 @@ const menuPriceDecisionSchema = z.object({
   effectiveTo: z.string().trim().optional(),
   reason: z.string().trim().min(1),
   evidenceReference: z.string().trim().optional(),
-  idempotencyKey: z.string().trim().optional()
+  idempotencyKey: z.string().trim().optional(),
 });
 
 const menuPriceDecisionWorkflowSchema = z.object({
@@ -284,10 +333,11 @@ const menuPriceDecisionWorkflowSchema = z.object({
   action: z.string().min(1),
   reason: z.string().trim().optional(),
   evidenceReference: z.string().trim().optional(),
-  idempotencyKey: z.string().trim().optional()
+  idempotencyKey: z.string().trim().optional(),
 });
 
 const createDraftRecipeSchema = z.object({
+  brandId: z.string().trim().optional(),
   recipeCode: z.string().trim().min(2).max(60),
   recipeName: z.string().trim().min(3).max(160),
   recipeType: z.enum(["MENU", "SUB_RECIPE", "PREP"]),
@@ -297,14 +347,14 @@ const createDraftRecipeSchema = z.object({
   servingQuantity: z.coerce.number().positive(),
   servingUomId: z.string().uuid(),
   targetFoodCostPercent: z.string().trim().optional(),
-  notes: z.string().trim().max(2000).optional()
+  notes: z.string().trim().max(2000).optional(),
 });
 
 const createDraftRecipeLineSchema = z.object({
   itemId: z.string().uuid(),
   quantity: z.coerce.number().positive(),
   uomId: z.string().uuid(),
-  preparationNote: z.string().trim().max(1000).optional()
+  preparationNote: z.string().trim().max(1000).optional(),
 });
 
 const createRecipeRevisionDraftSchema = z.object({
@@ -316,12 +366,12 @@ const createRecipeRevisionDraftSchema = z.object({
   servingUomId: z.string().uuid(),
   targetFoodCostPercent: z.string().trim().optional(),
   notes: z.string().trim().max(2000).optional(),
-  reason: z.string().trim().min(1).max(1000)
+  reason: z.string().trim().min(1).max(1000),
 });
 
 const archiveRecipeSchema = z.object({
   recipeId: z.string().uuid(),
-  reason: z.string().trim().min(1).max(1000)
+  reason: z.string().trim().min(1).max(1000),
 });
 
 const openRecipeVersionStatuses = [
@@ -329,7 +379,7 @@ const openRecipeVersionStatuses = [
   "SUBMITTED",
   "UNDER_REVIEW",
   "RETURNED",
-  "APPROVED"
+  "APPROVED",
 ] as const;
 
 function numberOrNull(value: unknown) {
@@ -344,6 +394,124 @@ function assertRecipeAccess(session: SessionContext) {
   if (!canUseRecipesAndCosting(session.permissionCodes)) {
     assertPermissionAllowed(session.permissionCodes, permissions.recipeView);
   }
+}
+
+type RecipeScopeAccess = "VIEW" | "MANAGE";
+
+async function loadRecipeBrandScopeOptions(
+  session: SessionContext,
+  client: typeof prisma | Prisma.TransactionClient = prisma,
+): Promise<RecipeBrandScopeOptions> {
+  const now = new Date();
+  const scopedClient = client as typeof prisma;
+  const assignments = await scopedClient.userScopeAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      scopeType: { in: ["COMPANY", "BRAND", "LOCATION"] },
+    },
+    select: {
+      scopeType: true,
+      scopeId: true,
+      accessLevel: true,
+    },
+  });
+  const companyAssignments = assignments.filter(
+    (assignment) =>
+      assignment.scopeType === "COMPANY" &&
+      assignment.scopeId === session.context.companyId,
+  );
+  const companyCanView = companyAssignments.length > 0;
+  const companyCanManage = companyAssignments.some(
+    (assignment) => assignment.accessLevel === "MANAGE",
+  );
+  const brandAssignments = assignments.filter(
+    (assignment) => assignment.scopeType === "BRAND",
+  );
+  const locationAssignments = assignments.filter(
+    (assignment) => assignment.scopeType === "LOCATION",
+  );
+  const scopedLocations = locationAssignments.length
+    ? await scopedClient.location.findMany({
+        where: {
+          id: {
+            in: locationAssignments.map((assignment) => assignment.scopeId),
+          },
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "ACTIVE",
+          brandId: { not: null },
+        },
+        select: { id: true, brandId: true },
+      })
+    : [];
+  const locationById = new Map(
+    scopedLocations.map((location) => [location.id, location]),
+  );
+  const visibleBrandIds = new Set<string>();
+  const manageableBrandIds = new Set<string>();
+  for (const assignment of brandAssignments) {
+    visibleBrandIds.add(assignment.scopeId);
+    if (assignment.accessLevel === "MANAGE") {
+      manageableBrandIds.add(assignment.scopeId);
+    }
+  }
+  for (const assignment of locationAssignments) {
+    const brandId = locationById.get(assignment.scopeId)?.brandId;
+    if (!brandId) continue;
+    visibleBrandIds.add(brandId);
+    if (assignment.accessLevel === "MANAGE") {
+      manageableBrandIds.add(brandId);
+    }
+  }
+
+  const brands = await scopedClient.brand.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE",
+      ...(companyCanView ? {} : { id: { in: Array.from(visibleBrandIds) } }),
+    },
+    select: { id: true, code: true, name: true },
+    orderBy: [{ name: "asc" }],
+  });
+
+  return {
+    brands: brands.map((brand) => ({
+      ...brand,
+      canManage: companyCanManage || manageableBrandIds.has(brand.id),
+    })),
+    canManageCompanyShared: companyCanManage,
+  };
+}
+
+async function assertRecipeBrandScope(
+  session: SessionContext,
+  brandId: string | null,
+  requiredAccess: RecipeScopeAccess,
+  client: typeof prisma | Prisma.TransactionClient = prisma,
+) {
+  const scope = await loadRecipeBrandScopeOptions(session, client);
+  if (brandId === null) {
+    if (scope.canManageCompanyShared) {
+      return;
+    }
+    throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+  }
+  const brand = scope.brands.find((candidate) => candidate.id === brandId);
+  if (brand && (requiredAccess === "VIEW" || brand.canManage)) {
+    return;
+  }
+  throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+}
+
+export async function getRecipeBrandScopeOptions(
+  session: SessionContext,
+): Promise<RecipeBrandScopeOptions> {
+  assertRecipeAccess(session);
+  return loadRecipeBrandScopeOptions(session);
 }
 
 function dateOnlyOrNull(value?: Date | null) {
@@ -377,7 +545,7 @@ function summarizeActualConsumption(movements: InventoryMovementWithItem[]) {
       itemName: movement.item.itemName,
       movementType: movement.movementType,
       quantityBaseUom: 0,
-      totalCost: 0
+      totalCost: 0,
     };
     current.quantityBaseUom += Math.abs(Number(movement.quantityDeltaBaseUom));
     current.totalCost += movementCost(movement);
@@ -388,7 +556,7 @@ function summarizeActualConsumption(movements: InventoryMovementWithItem[]) {
     .map((summary) => ({
       ...summary,
       quantityBaseUom: Number(summary.quantityBaseUom.toFixed(6)),
-      totalCost: Number(summary.totalCost.toFixed(2))
+      totalCost: Number(summary.totalCost.toFixed(2)),
     }))
     .sort((left, right) => right.totalCost - left.totalCost);
 }
@@ -412,6 +580,25 @@ function parseBusinessDateFilter(value?: string) {
 
 function dateOrNull(value?: Date | null) {
   return value ? value.toISOString() : null;
+}
+
+function canonicalizeRecipePolicy(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalizeRecipePolicy);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalizeRecipePolicy(child)]),
+    );
+  }
+  return value;
+}
+
+function recipePolicyHash(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalizeRecipePolicy(value)), "utf8")
+    .digest("hex");
 }
 
 function dateOnlyInputOrNull(value?: string | null) {
@@ -442,7 +629,9 @@ function parseDraftRecipeLines(formData: FormData) {
     activeLineNumbers.add(Number(match[1]));
   }
 
-  const sortedLineNumbers = [...activeLineNumbers].sort((left, right) => left - right);
+  const sortedLineNumbers = [...activeLineNumbers].sort(
+    (left, right) => left - right,
+  );
   if (sortedLineNumbers.length === 0) {
     throw new Error("RECIPE_LINES_REQUIRED");
   }
@@ -455,11 +644,12 @@ function parseDraftRecipeLines(formData: FormData) {
       itemId: formData.get(`line.${lineNumber}.itemId`),
       quantity: formData.get(`line.${lineNumber}.quantity`),
       uomId: formData.get(`line.${lineNumber}.uomId`),
-      preparationNote: formData.get(`line.${lineNumber}.preparationNote`) || undefined
+      preparationNote:
+        formData.get(`line.${lineNumber}.preparationNote`) || undefined,
     });
     return {
       ...line,
-      lineNo: index + 1
+      lineNo: index + 1,
     };
   });
 }
@@ -477,7 +667,7 @@ function parseRevisionLineOverrides(formData: FormData) {
 
   for (const [key, value] of formData.entries()) {
     const match = key.match(
-      /^line\.(\d+)\.(quantity|preparationNote|remove|sortOrder)$/
+      /^line\.(\d+)\.(quantity|preparationNote|remove|sortOrder)$/,
     );
     if (!match) {
       continue;
@@ -535,17 +725,20 @@ function parseRevisionAddedLines(formData: FormData) {
         quantity: formData.get(`newLine.${lineNumber}.quantity`),
         uomId: formData.get(`newLine.${lineNumber}.uomId`),
         preparationNote:
-          formData.get(`newLine.${lineNumber}.preparationNote`) || undefined
+          formData.get(`newLine.${lineNumber}.preparationNote`) || undefined,
       }),
       sortOrder: parseRevisionSortOrder(
         formData.get(`newLine.${lineNumber}.sortOrder`),
-        lineNumber
+        lineNumber,
       ),
-      requestedLineNo: lineNumber
+      requestedLineNo: lineNumber,
     }));
 }
 
-function parseRevisionSortOrder(value: FormDataEntryValue | null, fallback: number) {
+function parseRevisionSortOrder(
+  value: FormDataEntryValue | null,
+  fallback: number,
+) {
   if (!hasFormValue(value)) {
     return fallback;
   }
@@ -584,24 +777,28 @@ function parseRevisionAddedSubRecipeLines(formData: FormData) {
         .number()
         .positive()
         .parse(formData.get(`newSubRecipe.${lineNumber}.quantity`)),
-      preparationNote: z
-        .string()
-        .trim()
-        .max(1000)
-        .optional()
-        .parse(formData.get(`newSubRecipe.${lineNumber}.preparationNote`) || undefined) ?? null,
+      preparationNote:
+        z
+          .string()
+          .trim()
+          .max(1000)
+          .optional()
+          .parse(
+            formData.get(`newSubRecipe.${lineNumber}.preparationNote`) ||
+              undefined,
+          ) ?? null,
       sortOrder: parseRevisionSortOrder(
         formData.get(`newSubRecipe.${lineNumber}.sortOrder`),
-        lineNumber
+        lineNumber,
       ),
-      requestedLineNo: lineNumber
+      requestedLineNo: lineNumber,
     }));
 }
 
 function pickEffectiveSupplierPriceSnapshot(
   priceRows: SupplierPriceSnapshot[],
   itemId: string,
-  effectiveAt?: Date | null
+  effectiveAt?: Date | null,
 ) {
   const itemPrices = priceRows
     .filter((row) => row.itemId === itemId)
@@ -621,9 +818,12 @@ function pickEffectiveSupplierPriceSnapshot(
     ? itemPrices.find(
         (row) =>
           row.effectiveFrom.getTime() <= effectiveAt.getTime() &&
-          (!row.effectiveTo || row.effectiveTo.getTime() > effectiveAt.getTime())
+          (!row.effectiveTo ||
+            row.effectiveTo.getTime() > effectiveAt.getTime()),
       )
-    : itemPrices.find((row) => row.effectiveTo === null || row.effectiveTo === undefined);
+    : itemPrices.find(
+        (row) => row.effectiveTo === null || row.effectiveTo === undefined,
+      );
 
   return matchedPrice ?? itemPrices[0] ?? null;
 }
@@ -631,10 +831,11 @@ function pickEffectiveSupplierPriceSnapshot(
 export function pickEffectiveSupplierUnitPrice(
   priceRows: SupplierPriceSnapshot[],
   itemId: string,
-  effectiveAt?: Date | null
+  effectiveAt?: Date | null,
 ) {
   return numberOrNull(
-    pickEffectiveSupplierPriceSnapshot(priceRows, itemId, effectiveAt)?.unitPrice
+    pickEffectiveSupplierPriceSnapshot(priceRows, itemId, effectiveAt)
+      ?.unitPrice,
   );
 }
 
@@ -643,7 +844,7 @@ export function convertRecipeQuantityToPriceUom(
   itemId: string,
   fromUomId: string,
   priceUomId: string,
-  conversions: ItemUomConversionSnapshot[]
+  conversions: ItemUomConversionSnapshot[],
 ) {
   if (fromUomId === priceUomId) {
     return quantity;
@@ -653,7 +854,7 @@ export function convertRecipeQuantityToPriceUom(
     (row) =>
       row.itemId === itemId &&
       row.fromUomId === fromUomId &&
-      row.toUomId === priceUomId
+      row.toUomId === priceUomId,
   );
   if (!conversion) {
     return null;
@@ -664,11 +865,13 @@ export function convertRecipeQuantityToPriceUom(
 
 export function filterRecipeCostingSummaries(
   recipes: RecipeCostingSummary[],
-  filters: RecipeCostingExportFilters = {}
+  filters: RecipeCostingExportFilters = {},
 ) {
   const query = normalizedFilterText(filters.q);
-  const recipeType = filters.type && filters.type !== "ALL" ? filters.type : null;
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
+  const recipeType =
+    filters.type && filters.type !== "ALL" ? filters.type : null;
+  const status =
+    filters.status && filters.status !== "ALL" ? filters.status : null;
 
   return recipes.filter((recipe) => {
     const matchesSearch =
@@ -683,8 +886,8 @@ export function filterRecipeCostingSummaries(
         ...recipe.lines.flatMap((line) => [
           line.itemCode,
           line.itemName,
-          line.preparationNote ?? ""
-        ])
+          line.preparationNote ?? "",
+        ]),
       ]
         .join(" ")
         .toLowerCase()
@@ -697,10 +900,11 @@ export function filterRecipeCostingSummaries(
 
 export function filterFoodCostAnalysisRows(
   rows: FoodCostAnalysisSummary[],
-  filters: FoodCostAnalysisExportFilters = {}
+  filters: FoodCostAnalysisExportFilters = {},
 ) {
   const query = normalizedFilterText(filters.q);
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
+  const status =
+    filters.status && filters.status !== "ALL" ? filters.status : null;
 
   return rows.filter((row) => {
     const matchesSearch =
@@ -716,7 +920,7 @@ export function filterFoodCostAnalysisRows(
 
 export function filterActualConsumptionRows(
   rows: ActualConsumptionSummary[],
-  filters: FoodCostAnalysisExportFilters = {}
+  filters: FoodCostAnalysisExportFilters = {},
 ) {
   const query = normalizedFilterText(filters.actualQ);
   const movementType =
@@ -738,21 +942,35 @@ export function filterActualConsumptionRows(
 }
 
 export async function getRecipeCreateOptions(
-  session: SessionContext
+  session: SessionContext,
+  options: RecipeCostingScopeOptions = {},
 ): Promise<RecipeCreateOptions> {
   assertRecipeAccess(session);
+  const brandScope = await loadRecipeBrandScopeOptions(session);
+  const selectedBrandId =
+    options.brandId === undefined
+      ? session.context.brandId || null
+      : options.brandId;
+  if (selectedBrandId) {
+    const selectedBrand = brandScope.brands.find(
+      (brand) => brand.id === selectedBrandId,
+    );
+    if (!selectedBrand) {
+      throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+    }
+  }
 
   const [items, subRecipes, uoms] = await Promise.all([
     prisma.item.findMany({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "ACTIVE"
+        status: "ACTIVE",
       },
       include: {
-        baseUom: true
+        baseUom: true,
       },
-      orderBy: [{ itemName: "asc" }]
+      orderBy: [{ itemName: "asc" }],
     }),
     prisma.recipeVersion.findMany({
       where: {
@@ -762,34 +980,36 @@ export async function getRecipeCreateOptions(
         recipe: {
           recipeType: { in: ["SUB_RECIPE", "PREP"] },
           status: "ACTIVE",
-          ...(session.context.brandId
-            ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-            : {})
-        }
+          ...(selectedBrandId
+            ? { OR: [{ brandId: null }, { brandId: selectedBrandId }] }
+            : {}),
+        },
       },
       include: {
         recipe: true,
-        servingUom: true
+        servingUom: true,
       },
-      orderBy: [{ recipe: { recipeName: "asc" } }, { versionNo: "desc" }]
+      orderBy: [{ recipe: { recipeName: "asc" } }, { versionNo: "desc" }],
     }),
     prisma.uom.findMany({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "ACTIVE"
+        status: "ACTIVE",
       },
-      orderBy: [{ uomCode: "asc" }]
-    })
+      orderBy: [{ uomCode: "asc" }],
+    }),
   ]);
 
   return {
+    brands: brandScope.brands,
+    canManageCompanyShared: brandScope.canManageCompanyShared,
     items: items.map((item) => ({
       id: item.id,
       code: item.itemCode,
       name: item.itemName,
       baseUomId: item.baseUomId,
-      baseUomCode: item.baseUom.uomCode
+      baseUomCode: item.baseUom.uomCode,
     })),
     subRecipes: subRecipes.map((version) => ({
       id: version.id,
@@ -799,13 +1019,13 @@ export async function getRecipeCreateOptions(
       type: version.recipe.recipeType,
       versionNo: version.versionNo,
       servingUomId: version.servingUomId,
-      servingUomCode: version.servingUom.uomCode
+      servingUomCode: version.servingUom.uomCode,
     })),
     uoms: uoms.map((uom) => ({
       id: uom.id,
       code: uom.uomCode,
-      name: uom.uomName
-    }))
+      name: uom.uomName,
+    })),
   };
 }
 
@@ -813,6 +1033,16 @@ export async function createDraftRecipe(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.recipeManage);
   const values = createDraftRecipeSchema.parse(Object.fromEntries(formData));
+  const requestedBrandId =
+    values.brandId === "COMPANY_SHARED"
+      ? null
+      : values.brandId || session.context.brandId || null;
+  if (
+    requestedBrandId &&
+    !z.string().uuid().safeParse(requestedBrandId).success
+  ) {
+    throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+  }
   const lines = parseDraftRecipeLines(formData);
   const targetFoodCostPercent = values.targetFoodCostPercent
     ? Number(values.targetFoodCostPercent)
@@ -828,6 +1058,7 @@ export async function createDraftRecipe(formData: FormData) {
 
   const recipe = await prisma.$transaction(async (tx) => {
     const txAny = tx as Prisma.TransactionClient & Record<string, any>;
+    await assertRecipeBrandScope(session, requestedBrandId, "MANAGE", tx);
     const scopedUomIds = new Set(
       (
         await tx.uom.findMany({
@@ -839,13 +1070,13 @@ export async function createDraftRecipe(formData: FormData) {
               in: [
                 values.yieldUomId,
                 values.servingUomId,
-                ...lines.map((line) => line.uomId)
-              ]
-            }
+                ...lines.map((line) => line.uomId),
+              ],
+            },
           },
-          select: { id: true }
+          select: { id: true },
         })
-      ).map((uom) => uom.id)
+      ).map((uom) => uom.id),
     );
     if (
       !scopedUomIds.has(values.yieldUomId) ||
@@ -862,11 +1093,11 @@ export async function createDraftRecipe(formData: FormData) {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             status: "ACTIVE",
-            id: { in: lines.map((line) => line.itemId) }
+            id: { in: lines.map((line) => line.itemId) },
           },
-          select: { id: true }
+          select: { id: true },
         })
-      ).map((item) => item.id)
+      ).map((item) => item.id),
     );
     if (lines.some((line) => !scopedItemIds.has(line.itemId))) {
       throw new Error("RECIPE_LINE_ITEM_NOT_FOUND");
@@ -878,7 +1109,7 @@ export async function createDraftRecipe(formData: FormData) {
         data: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          brandId: session.context.brandId || null,
+          brandId: requestedBrandId,
           recipeCode: values.recipeCode.toUpperCase(),
           recipeName: values.recipeName,
           recipeType: values.recipeType,
@@ -907,18 +1138,18 @@ export async function createDraftRecipe(formData: FormData) {
                   itemId: line.itemId,
                   quantity: line.quantity,
                   uomId: line.uomId,
-                  preparationNote: line.preparationNote || null
-                }))
-              }
-            }
-          }
+                  preparationNote: line.preparationNote || null,
+                })),
+              },
+            },
+          },
         },
         include: {
           versions: {
             orderBy: { versionNo: "desc" },
-            take: 1
-          }
-        }
+            take: 1,
+          },
+        },
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
@@ -944,14 +1175,15 @@ export async function createDraftRecipe(formData: FormData) {
           status: created.status,
           versionId: version?.id,
           versionStatus: version?.status,
-          lineCount: lines.length
+          lineCount: lines.length,
         },
         metadata: {
           brandId: created.brandId,
           lineCount: lines.length,
-          boundary: "recipe_draft_create_only_no_inventory_menu_price_pos_or_finance_mutation"
-        }
-      }
+          boundary:
+            "recipe_draft_create_only_no_inventory_menu_price_pos_or_finance_mutation",
+        },
+      },
     });
 
     return created;
@@ -963,7 +1195,9 @@ export async function createDraftRecipe(formData: FormData) {
 export async function createRecipeRevisionDraft(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.recipeManage);
-  const values = createRecipeRevisionDraftSchema.parse(Object.fromEntries(formData));
+  const values = createRecipeRevisionDraftSchema.parse(
+    Object.fromEntries(formData),
+  );
   const lineOverrides = parseRevisionLineOverrides(formData);
   const addedLines = parseRevisionAddedLines(formData);
   const addedSubRecipeLines = parseRevisionAddedSubRecipeLines(formData);
@@ -986,31 +1220,29 @@ export async function createRecipeRevisionDraft(formData: FormData) {
         id: values.recipeId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        ...(session.context.brandId
-          ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-          : {})
       },
       include: {
         versions: {
           orderBy: { versionNo: "desc" },
           include: {
             lines: {
-              orderBy: { lineNo: "asc" }
-            }
-          }
-        }
-      }
+              orderBy: { lineNo: "asc" },
+            },
+          },
+        },
+      },
     });
 
     if (!current) {
       throw new Error("RECIPE_NOT_FOUND");
     }
+    await assertRecipeBrandScope(session, current.brandId, "MANAGE", tx);
     if (current.status === "ARCHIVED") {
       throw new Error("RECIPE_ARCHIVED_NOT_EDITABLE");
     }
 
     const sourceVersion = current.versions.find(
-      (version: { id: string }) => version.id === values.sourceVersionId
+      (version: { id: string }) => version.id === values.sourceVersionId,
     );
     if (!sourceVersion) {
       throw new Error("RECIPE_VERSION_NOT_FOUND");
@@ -1023,8 +1255,8 @@ export async function createRecipeRevisionDraft(formData: FormData) {
       (version: { id: string; status: string }) =>
         version.id !== sourceVersion.id &&
         openRecipeVersionStatuses.includes(
-          version.status as (typeof openRecipeVersionStatuses)[number]
-        )
+          version.status as (typeof openRecipeVersionStatuses)[number],
+        ),
     );
     if (openVersion) {
       throw new Error("RECIPE_OPEN_VERSION_EXISTS");
@@ -1033,7 +1265,7 @@ export async function createRecipeRevisionDraft(formData: FormData) {
     const requestedUomIds = [
       values.yieldUomId,
       values.servingUomId,
-      ...addedLines.map((line) => line.uomId)
+      ...addedLines.map((line) => line.uomId),
     ];
     const scopedUomIds = new Set(
       (
@@ -1042,11 +1274,11 @@ export async function createRecipeRevisionDraft(formData: FormData) {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             status: "ACTIVE",
-            id: { in: requestedUomIds }
+            id: { in: requestedUomIds },
           },
-          select: { id: true }
+          select: { id: true },
         })
-      ).map((uom) => uom.id)
+      ).map((uom) => uom.id),
     );
     if (requestedUomIds.some((uomId) => !scopedUomIds.has(uomId))) {
       throw new Error("RECIPE_LINE_UOM_NOT_FOUND");
@@ -1060,46 +1292,53 @@ export async function createRecipeRevisionDraft(formData: FormData) {
               tenantId: session.context.tenantId,
               companyId: session.context.companyId,
               status: "ACTIVE",
-              id: { in: addedLines.map((line) => line.itemId) }
+              id: { in: addedLines.map((line) => line.itemId) },
             },
-            select: { id: true }
+            select: { id: true },
           })
-        ).map((item) => item.id)
+        ).map((item) => item.id),
       );
       if (addedLines.some((line) => !scopedItemIds.has(line.itemId))) {
         throw new Error("RECIPE_LINE_ITEM_NOT_FOUND");
       }
     }
 
-    const subRecipeVersionById = new Map<string, { id: string; recipeId: string; servingUomId: string }>();
+    const subRecipeVersionById = new Map<
+      string,
+      { id: string; recipeId: string; servingUomId: string }
+    >();
     if (addedSubRecipeLines.length) {
       const subRecipeVersions = await txAny.recipeVersion.findMany({
         where: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           status: "PUBLISHED",
-          id: { in: addedSubRecipeLines.map((line) => line.subRecipeVersionId) },
+          id: {
+            in: addedSubRecipeLines.map((line) => line.subRecipeVersionId),
+          },
           recipe: {
             id: { not: current.id },
             recipeType: { in: ["SUB_RECIPE", "PREP"] },
             status: "ACTIVE",
-            ...(session.context.brandId
-              ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-              : {})
-          }
+            ...(current.brandId
+              ? {
+                  OR: [{ brandId: null }, { brandId: current.brandId }],
+                }
+              : {}),
+          },
         },
         select: {
           id: true,
           recipeId: true,
-          servingUomId: true
-        }
+          servingUomId: true,
+        },
       });
       for (const version of subRecipeVersions) {
         subRecipeVersionById.set(version.id, version);
       }
       if (
         addedSubRecipeLines.some(
-          (line) => !subRecipeVersionById.has(line.subRecipeVersionId)
+          (line) => !subRecipeVersionById.has(line.subRecipeVersionId),
         )
       ) {
         throw new Error("RECIPE_SUB_RECIPE_VERSION_NOT_FOUND");
@@ -1107,7 +1346,9 @@ export async function createRecipeRevisionDraft(formData: FormData) {
     }
 
     const copiedLines = sourceVersion.lines
-      .filter((line: { lineNo: number }) => !lineOverrides.get(line.lineNo)?.remove)
+      .filter(
+        (line: { lineNo: number }) => !lineOverrides.get(line.lineNo)?.remove,
+      )
       .map(
         (line: {
           lineNo: number;
@@ -1132,9 +1373,9 @@ export async function createRecipeRevisionDraft(formData: FormData) {
             preparationNote:
               override && "preparationNote" in override
                 ? override.preparationNote
-                : line.preparationNote
+                : line.preparationNote,
           };
-        }
+        },
       );
     const appendedLines = addedLines.map((line) => ({
       tenantId: session.context.tenantId,
@@ -1146,10 +1387,12 @@ export async function createRecipeRevisionDraft(formData: FormData) {
       subRecipeVersionId: null,
       quantity: line.quantity,
       uomId: line.uomId,
-      preparationNote: line.preparationNote || null
+      preparationNote: line.preparationNote || null,
     }));
     const appendedSubRecipeLines = addedSubRecipeLines.map((line) => {
-      const subRecipeVersion = subRecipeVersionById.get(line.subRecipeVersionId);
+      const subRecipeVersion = subRecipeVersionById.get(
+        line.subRecipeVersionId,
+      );
       if (!subRecipeVersion) {
         throw new Error("RECIPE_SUB_RECIPE_VERSION_NOT_FOUND");
       }
@@ -1163,10 +1406,14 @@ export async function createRecipeRevisionDraft(formData: FormData) {
         subRecipeVersionId: subRecipeVersion.id,
         quantity: line.quantity,
         uomId: subRecipeVersion.servingUomId,
-        preparationNote: line.preparationNote
+        preparationNote: line.preparationNote,
       };
     });
-    const finalLines = [...copiedLines, ...appendedLines, ...appendedSubRecipeLines].sort((left, right) => {
+    const finalLines = [
+      ...copiedLines,
+      ...appendedLines,
+      ...appendedSubRecipeLines,
+    ].sort((left, right) => {
       const orderDelta = left.sortOrder - right.sortOrder;
       if (orderDelta !== 0) {
         return orderDelta;
@@ -1176,7 +1423,9 @@ export async function createRecipeRevisionDraft(formData: FormData) {
       if (leftSource !== rightSource) {
         return leftSource - rightSource;
       }
-      return String(left.itemId ?? "").localeCompare(String(right.itemId ?? ""));
+      return String(left.itemId ?? "").localeCompare(
+        String(right.itemId ?? ""),
+      );
     });
     if (finalLines.length === 0) {
       throw new Error("RECIPE_LINES_REQUIRED");
@@ -1203,7 +1452,9 @@ export async function createRecipeRevisionDraft(formData: FormData) {
     const nextVersionNo =
       Math.max(
         0,
-        ...current.versions.map((version: { versionNo: number }) => version.versionNo)
+        ...current.versions.map(
+          (version: { versionNo: number }) => version.versionNo,
+        ),
       ) + 1;
     const created = await txAny.recipeVersion.create({
       data: {
@@ -1231,10 +1482,10 @@ export async function createRecipeRevisionDraft(formData: FormData) {
             subRecipeVersionId: line.subRecipeVersionId,
             quantity: line.quantity,
             uomId: line.uomId,
-            preparationNote: line.preparationNote
-          }))
-        }
-      }
+            preparationNote: line.preparationNote,
+          })),
+        },
+      },
     });
 
     await txAny.auditEvent.create({
@@ -1248,14 +1499,14 @@ export async function createRecipeRevisionDraft(formData: FormData) {
         beforeData: {
           sourceVersionId: sourceVersion.id,
           sourceVersionNo: sourceVersion.versionNo,
-          sourceVersionStatus: sourceVersion.status
+          sourceVersionStatus: sourceVersion.status,
         },
         afterData: {
           revisionVersionId: created.id,
           revisionVersionNo: created.versionNo,
           revisionVersionStatus: created.status,
           sourceLineCount: sourceVersion.lines.length,
-          revisionLineCount: finalLines.length
+          revisionLineCount: finalLines.length,
         },
         metadata: {
           brandId: current.brandId,
@@ -1265,14 +1516,16 @@ export async function createRecipeRevisionDraft(formData: FormData) {
           addedSubRecipeLineCount: appendedSubRecipeLines.length,
           removedLineCount: sourceVersion.lines.length - copiedLines.length,
           updatedLineCount: copiedLines.filter((line) =>
-            lineOverrides.has(line.sourceLineNo ?? -1)
+            lineOverrides.has(line.sourceLineNo ?? -1),
           ).length,
           reorderedLineCount: finalLines.filter(
-            (line, index) => line.sourceLineNo !== null && line.sourceLineNo !== index + 1
+            (line, index) =>
+              line.sourceLineNo !== null && line.sourceLineNo !== index + 1,
           ).length,
-          boundary: "recipe_revision_draft_only_no_inventory_menu_price_pos_or_finance_mutation"
-        }
-      }
+          boundary:
+            "recipe_revision_draft_only_no_inventory_menu_price_pos_or_finance_mutation",
+        },
+      },
     });
 
     return current;
@@ -1293,32 +1546,29 @@ export async function archiveRecipe(formData: FormData) {
         id: values.recipeId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        ...(session.context.brandId
-          ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-          : {})
       },
       include: {
         versions: {
           select: {
             id: true,
             versionNo: true,
-            status: true
-          }
-        }
-      }
+            status: true,
+          },
+        },
+      },
     });
 
     if (!current) {
       throw new Error("RECIPE_NOT_FOUND");
     }
+    await assertRecipeBrandScope(session, current.brandId, "MANAGE", tx);
     if (current.status === "ARCHIVED") {
       throw new Error("RECIPE_ALREADY_ARCHIVED");
     }
-    const openVersion = current.versions.find(
-      (version: { status: string }) =>
-        openRecipeVersionStatuses.includes(
-          version.status as (typeof openRecipeVersionStatuses)[number]
-        )
+    const openVersion = current.versions.find((version: { status: string }) =>
+      openRecipeVersionStatuses.includes(
+        version.status as (typeof openRecipeVersionStatuses)[number],
+      ),
     );
     if (openVersion) {
       throw new Error("RECIPE_OPEN_VERSION_BLOCKS_ARCHIVE");
@@ -1327,11 +1577,11 @@ export async function archiveRecipe(formData: FormData) {
     const result = await txAny.recipe.updateMany({
       where: {
         id: current.id,
-        status: current.status
+        status: current.status,
       },
       data: {
-        status: "ARCHIVED"
-      }
+        status: "ARCHIVED",
+      },
     });
     if (result.count !== 1) {
       throw new Error("RECIPE_ARCHIVE_CONFLICT");
@@ -1346,17 +1596,18 @@ export async function archiveRecipe(formData: FormData) {
         entityType: "Recipe",
         entityId: current.id,
         beforeData: {
-          status: current.status
+          status: current.status,
         },
         afterData: {
-          status: "ARCHIVED"
+          status: "ARCHIVED",
         },
         metadata: {
           brandId: current.brandId,
           reason: values.reason,
-          boundary: "recipe_archive_only_no_inventory_menu_price_pos_or_finance_mutation"
-        }
-      }
+          boundary:
+            "recipe_archive_only_no_inventory_menu_price_pos_or_finance_mutation",
+        },
+      },
     });
 
     return current;
@@ -1388,8 +1639,8 @@ export async function createMenuPriceDecision(formData: FormData) {
         companyId: session.context.companyId,
         ...(session.context.brandId
           ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-          : {})
-      }
+          : {}),
+      },
     });
 
     if (!menuItem) {
@@ -1403,8 +1654,8 @@ export async function createMenuPriceDecision(formData: FormData) {
           companyId: session.context.companyId,
           menuItemId: menuItem.id,
           locationId: session.context.locationId,
-          idempotencyKey: values.idempotencyKey
-        }
+          idempotencyKey: values.idempotencyKey,
+        },
       });
       if (existing) {
         return existing;
@@ -1426,8 +1677,8 @@ export async function createMenuPriceDecision(formData: FormData) {
         requestedByUserId: session.user.id,
         reason: values.reason,
         evidenceReference: values.evidenceReference || null,
-        idempotencyKey: values.idempotencyKey || null
-      }
+        idempotencyKey: values.idempotencyKey || null,
+      },
     });
 
     await txAny.auditEvent.create({
@@ -1444,7 +1695,7 @@ export async function createMenuPriceDecision(formData: FormData) {
           requestedPrice: Number(created.requestedPrice),
           currencyCode: created.currencyCode,
           effectiveFrom: dateOrNull(created.effectiveFrom),
-          effectiveTo: dateOrNull(created.effectiveTo)
+          effectiveTo: dateOrNull(created.effectiveTo),
         },
         metadata: {
           menuItemId: menuItem.id,
@@ -1452,9 +1703,10 @@ export async function createMenuPriceDecision(formData: FormData) {
           locationId: session.context.locationId,
           reason: values.reason,
           evidenceReference: values.evidenceReference,
-          boundary: "menu_price_decision_only_no_recipe_inventory_pos_or_finance_mutation"
-        }
-      }
+          boundary:
+            "menu_price_decision_only_no_recipe_inventory_pos_or_finance_mutation",
+        },
+      },
     });
 
     return created;
@@ -1465,228 +1717,877 @@ export async function createMenuPriceDecision(formData: FormData) {
 
 export async function transitionMenuPriceDecision(formData: FormData) {
   const session = await requireSessionContext();
-  const values = menuPriceDecisionWorkflowSchema.parse(Object.fromEntries(formData));
+  const values = menuPriceDecisionWorkflowSchema.parse(
+    Object.fromEntries(formData),
+  );
 
-  const decision = await prisma.$transaction(async (tx) => {
-    const txAny = tx as Prisma.TransactionClient & Record<string, any>;
-    const current = await txAny.menuPriceDecision.findFirst({
-      where: {
-        id: values.menuPriceDecisionId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        AND: [
-          ...(session.context.brandId
-            ? [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }]
-            : []),
-          { OR: [{ locationId: null }, { locationId: session.context.locationId }] }
-        ]
-      }
-    });
-
-    if (!current) {
-      throw new Error("MENU_PRICE_DECISION_NOT_FOUND");
-    }
-
-    if (values.idempotencyKey) {
-      const existingTransition = await txAny.operationalStatusTransition.findFirst({
+  const decision = await prisma.$transaction(
+    async (tx) => {
+      const txAny = tx as Prisma.TransactionClient & Record<string, any>;
+      const current = await txAny.menuPriceDecision.findFirst({
         where: {
+          id: values.menuPriceDecisionId,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          targetEntityType: "MenuPriceDecision",
-          targetEntityId: current.id,
-          idempotencyKey: values.idempotencyKey
-        }
+          AND: [
+            ...(session.context.brandId
+              ? [
+                  {
+                    OR: [
+                      { brandId: null },
+                      { brandId: session.context.brandId },
+                    ],
+                  },
+                ]
+              : []),
+            {
+              OR: [
+                { locationId: null },
+                { locationId: session.context.locationId },
+              ],
+            },
+          ],
+        },
       });
-      if (existingTransition) {
-        return current;
+
+      if (!current) {
+        throw new Error("MENU_PRICE_DECISION_NOT_FOUND");
       }
-    }
 
-    const transition = assertPhase2WorkflowTransitionAllowed({
-      domain: "MENU_PRICE_DECISION",
-      action: values.action,
-      fromStatus: current.status,
-      permissionCodes: session.permissionCodes,
-      reason: values.reason ?? null,
-      evidenceReference: values.evidenceReference ?? null
-    });
-    await requirePermission(session, transition.permissionCode);
-
-    if (
-      ["APPROVE", "APPLY"].includes(values.action) &&
-      current.requestedByUserId === session.user.id
-    ) {
-      throw new Error("MENU_PRICE_DECISION_SELF_APPROVAL_BLOCKED");
-    }
-
-    const overlappingPrices =
-      values.action === "APPLY"
-        ? await txAny.menuPrice.findMany({
+      if (values.idempotencyKey) {
+        const existingTransition =
+          await txAny.operationalStatusTransition.findFirst({
             where: {
               tenantId: session.context.tenantId,
               companyId: session.context.companyId,
-              menuItemId: current.menuItemId,
-              locationId: current.locationId,
-              ...(current.effectiveTo
-                ? { effectiveFrom: { lt: current.effectiveTo } }
-                : {}),
-              OR: [
-                { effectiveTo: null },
-                { effectiveTo: { gt: current.effectiveFrom } }
-              ]
+              targetEntityType: "MenuPriceDecision",
+              targetEntityId: current.id,
+              idempotencyKey: values.idempotencyKey,
             },
-            orderBy: { effectiveFrom: "asc" }
-          })
-        : [];
-    const overlappingPrice = overlappingPrices[0];
-    const supersededPrice =
-      overlappingPrices.length === 1 &&
-      overlappingPrice &&
-      current.effectiveTo === null &&
-      overlappingPrice.effectiveTo === null &&
-      overlappingPrice.effectiveFrom < current.effectiveFrom
-        ? overlappingPrice
-        : null;
-
-    if (overlappingPrices.length > 0 && !supersededPrice) {
-      throw new Error("MENU_PRICE_EFFECTIVE_RANGE_OVERLAP");
-    }
-
-    const now = new Date();
-    const result = await txAny.menuPriceDecision.updateMany({
-      where: {
-        id: current.id,
-        status: current.status
-      },
-      data: {
-        status: transition.toStatus,
-        ...(values.action === "APPROVE"
-          ? { approvedAt: now, approvedByUserId: session.user.id }
-          : {}),
-        ...(values.action === "APPLY"
-          ? { appliedAt: now, appliedByUserId: session.user.id }
-          : {}),
-        ...(values.reason ? { reason: values.reason } : {}),
-        ...(values.evidenceReference
-          ? { evidenceReference: values.evidenceReference }
-          : {})
-      }
-    });
-    if (result.count !== 1) {
-      throw new Error("MENU_PRICE_DECISION_TRANSITION_CONFLICT");
-    }
-
-    if (values.action === "APPLY") {
-      if (supersededPrice) {
-        const superseded = await txAny.menuPrice.updateMany({
-          where: {
-            id: supersededPrice.id,
-            effectiveTo: null
-          },
-          data: {
-            effectiveTo: current.effectiveFrom,
-            status: "SUPERSEDED"
-          }
-        });
-        if (superseded.count !== 1) {
-          throw new Error("MENU_PRICE_EFFECTIVE_RANGE_CONFLICT");
+          });
+        if (existingTransition) {
+          return current;
         }
       }
-      await txAny.menuPrice.create({
+
+      const transition = assertPhase2WorkflowTransitionAllowed({
+        domain: "MENU_PRICE_DECISION",
+        action: values.action,
+        fromStatus: current.status,
+        permissionCodes: session.permissionCodes,
+        reason: values.reason ?? null,
+        evidenceReference: values.evidenceReference ?? null,
+      });
+      await requirePermission(session, transition.permissionCode);
+
+      const now = new Date();
+
+      if (
+        ["APPROVE", "APPLY"].includes(values.action) &&
+        current.requestedByUserId === session.user.id
+      ) {
+        throw new Error("MENU_PRICE_DECISION_SELF_APPROVAL_BLOCKED");
+      }
+
+      const overlappingPrices =
+        values.action === "APPLY"
+          ? await txAny.menuPrice.findMany({
+              where: {
+                tenantId: session.context.tenantId,
+                companyId: session.context.companyId,
+                menuItemId: current.menuItemId,
+                locationId: current.locationId,
+                ...(current.effectiveTo
+                  ? { effectiveFrom: { lt: current.effectiveTo } }
+                  : {}),
+                OR: [
+                  { effectiveTo: null },
+                  { effectiveTo: { gt: current.effectiveFrom } },
+                ],
+              },
+              orderBy: { effectiveFrom: "asc" },
+            })
+          : [];
+      const overlappingPrice = overlappingPrices[0];
+      const supersededPrice =
+        overlappingPrices.length === 1 &&
+        overlappingPrice &&
+        current.effectiveTo === null &&
+        overlappingPrice.effectiveTo === null &&
+        overlappingPrice.effectiveFrom < current.effectiveFrom
+          ? overlappingPrice
+          : null;
+
+      if (overlappingPrices.length > 0 && !supersededPrice) {
+        throw new Error("MENU_PRICE_EFFECTIVE_RANGE_OVERLAP");
+      }
+
+      const result = await txAny.menuPriceDecision.updateMany({
+        where: {
+          id: current.id,
+          status: current.status,
+        },
+        data: {
+          status: transition.toStatus,
+          ...(values.action === "APPROVE"
+            ? { approvedAt: now, approvedByUserId: session.user.id }
+            : {}),
+          ...(values.action === "APPLY"
+            ? { appliedAt: now, appliedByUserId: session.user.id }
+            : {}),
+          ...(values.reason ? { reason: values.reason } : {}),
+          ...(values.evidenceReference
+            ? { evidenceReference: values.evidenceReference }
+            : {}),
+        },
+      });
+      if (result.count !== 1) {
+        throw new Error("MENU_PRICE_DECISION_TRANSITION_CONFLICT");
+      }
+
+      if (values.action === "APPLY") {
+        if (supersededPrice) {
+          const superseded = await txAny.menuPrice.updateMany({
+            where: {
+              id: supersededPrice.id,
+              effectiveTo: null,
+            },
+            data: {
+              effectiveTo: current.effectiveFrom,
+              status: "SUPERSEDED",
+            },
+          });
+          if (superseded.count !== 1) {
+            throw new Error("MENU_PRICE_EFFECTIVE_RANGE_CONFLICT");
+          }
+        }
+        await txAny.menuPrice.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            menuItemId: current.menuItemId,
+            locationId: current.locationId,
+            decisionId: current.id,
+            status: "APPLIED",
+            currencyCode: current.currencyCode,
+            price: current.requestedPrice,
+            effectiveFrom: current.effectiveFrom,
+            effectiveTo: current.effectiveTo,
+          },
+        });
+      }
+
+      const updated = await txAny.menuPriceDecision.findUniqueOrThrow({
+        where: { id: current.id },
+      });
+
+      await txAny.operationalStatusTransition.create({
         data: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          menuItemId: current.menuItemId,
+          brandId: current.brandId,
           locationId: current.locationId,
-          decisionId: current.id,
-          status: "APPLIED",
-          currencyCode: current.currencyCode,
-          price: current.requestedPrice,
-          effectiveFrom: current.effectiveFrom,
-          effectiveTo: current.effectiveTo
-        }
-      });
-    }
-
-    const updated = await txAny.menuPriceDecision.findUniqueOrThrow({
-      where: { id: current.id }
-    });
-
-    await txAny.operationalStatusTransition.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        brandId: current.brandId,
-        locationId: current.locationId,
-        targetEntityType: "MenuPriceDecision",
-        targetEntityId: current.id,
-        action: transition.action,
-        fromStatus: transition.fromStatus,
-        toStatus: transition.toStatus,
-        actorUserId: session.user.id,
-        reason: values.reason ?? null,
-        evidenceReference: values.evidenceReference ?? null,
-        idempotencyKey: values.idempotencyKey ?? null
-      }
-    });
-
-    await txAny.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: `menu_price_decision.${transition.action.toLowerCase()}`,
-        entityType: "MenuPriceDecision",
-        entityId: updated.id,
-        beforeData: {
-          status: current.status,
-          approvedAt: dateOrNull(current.approvedAt),
-          approvedByUserId: current.approvedByUserId,
-          appliedAt: dateOrNull(current.appliedAt),
-          appliedByUserId: current.appliedByUserId
-        },
-        afterData: {
-          status: updated.status,
-          approvedAt: dateOrNull(updated.approvedAt),
-          approvedByUserId: updated.approvedByUserId,
-          appliedAt: dateOrNull(updated.appliedAt),
-          appliedByUserId: updated.appliedByUserId
-        },
-        metadata: {
-          menuItemId: current.menuItemId,
-          locationId: current.locationId,
+          targetEntityType: "MenuPriceDecision",
+          targetEntityId: current.id,
           action: transition.action,
-          reason: values.reason,
-          evidenceReference: values.evidenceReference,
-          idempotencyKey: values.idempotencyKey,
-          boundary:
-            values.action === "APPLY"
-              ? "menu_price_apply_inserts_effective_dated_price_only"
-              : "menu_price_decision_transition_only_no_recipe_inventory_pos_or_finance_mutation"
-        }
-      }
-    });
+          fromStatus: transition.fromStatus,
+          toStatus: transition.toStatus,
+          actorUserId: session.user.id,
+          reason: values.reason ?? null,
+          evidenceReference: values.evidenceReference ?? null,
+          idempotencyKey: values.idempotencyKey ?? null,
+        },
+      });
 
-    return updated;
-  }, { isolationLevel: "Serializable" });
+      await txAny.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: `menu_price_decision.${transition.action.toLowerCase()}`,
+          entityType: "MenuPriceDecision",
+          entityId: updated.id,
+          beforeData: {
+            status: current.status,
+            approvedAt: dateOrNull(current.approvedAt),
+            approvedByUserId: current.approvedByUserId,
+            appliedAt: dateOrNull(current.appliedAt),
+            appliedByUserId: current.appliedByUserId,
+          },
+          afterData: {
+            status: updated.status,
+            approvedAt: dateOrNull(updated.approvedAt),
+            approvedByUserId: updated.approvedByUserId,
+            appliedAt: dateOrNull(updated.appliedAt),
+            appliedByUserId: updated.appliedByUserId,
+          },
+          metadata: {
+            menuItemId: current.menuItemId,
+            locationId: current.locationId,
+            action: transition.action,
+            reason: values.reason,
+            evidenceReference: values.evidenceReference,
+            idempotencyKey: values.idempotencyKey,
+            boundary:
+              values.action === "APPLY"
+                ? "menu_price_apply_inserts_effective_dated_price_only"
+                : "menu_price_decision_transition_only_no_recipe_inventory_pos_or_finance_mutation",
+          },
+        },
+      });
+
+      return updated;
+    },
+    { isolationLevel: "Serializable" },
+  );
 
   return decision.id;
 }
 
 export function getMenuPriceDecisionActionsForStatus(
   status: string,
-  permissionCodes: string[]
+  permissionCodes: string[],
 ) {
   return getPhase2WorkflowActionsForStatus(
     "MENU_PRICE_DECISION",
     status,
-    permissionCodes
+    permissionCodes,
+  );
+}
+
+async function assertRecipePublicationQuantityReady(
+  txAny: any,
+  recipeVersion: any,
+  visited = new Set<string>(),
+  isRoot = true,
+) {
+  if (visited.size >= 12 || visited.has(recipeVersion.id)) {
+    throw new Error("RECIPE_SUBRECIPE_CYCLE_OR_DEPTH_INVALID");
+  }
+  const allowedStatuses = isRoot
+    ? ["APPROVED", "PUBLISHED"]
+    : ["PUBLISHED", "SUPERSEDED"];
+  if (!allowedStatuses.includes(recipeVersion.status)) {
+    throw new Error("RECIPE_VERSION_NOT_PUBLISHED");
+  }
+  if (recipeVersion.yieldUomId !== recipeVersion.servingUomId) {
+    throw new Error("RECIPE_OUTPUT_UOM_CONVERSION_UNRESOLVED");
+  }
+  const lines = await txAny.recipeLine.findMany({
+    where: {
+      recipeVersionId: recipeVersion.id,
+      tenantId: recipeVersion.tenantId,
+      companyId: recipeVersion.companyId,
+    },
+    include: { item: true, subRecipeVersion: true },
+  });
+  if (lines.length === 0) throw new Error("RECIPE_HAS_NO_LINES");
+  const nextVisited = new Set(visited).add(recipeVersion.id);
+  for (const line of lines) {
+    if (line.item) {
+      if (!line.item.trackInventory || line.item.status !== "ACTIVE") {
+        throw new Error("RECIPE_ITEM_NOT_POSTABLE");
+      }
+      if (line.uomId !== line.item.baseUomId) {
+        const conversion = await txAny.itemUomConversion.findFirst({
+          where: {
+            itemId: line.item.id,
+            fromUomId: line.uomId,
+            toUomId: line.item.baseUomId,
+          },
+        });
+        if (!conversion) throw new Error("UOM_CONVERSION_MISSING");
+      }
+      continue;
+    }
+    if (!line.subRecipeVersion) throw new Error("RECIPE_LINE_SOURCE_INVALID");
+    if (line.uomId !== line.subRecipeVersion.yieldUomId) {
+      throw new Error("SUBRECIPE_OUTPUT_UOM_MISMATCH");
+    }
+    await assertRecipePublicationQuantityReady(
+      txAny,
+      line.subRecipeVersion,
+      nextVisited,
+      false,
+    );
+  }
+}
+
+async function loadRecipePublicationConsumptionImpact(
+  txAny: any,
+  session: SessionContext,
+  brandId: string,
+  recipeVersionId: string,
+  effectiveFrom: Date,
+) {
+  const recipeVersion = await txAny.recipeVersion.findFirst({
+    where: {
+      id: recipeVersionId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      recipe: {
+        OR: [
+          { brandId },
+          {
+            brandId: null,
+            brandAdoptions: {
+              some: {
+                tenantId: session.context.tenantId,
+                companyId: session.context.companyId,
+                brandId,
+                status: "ACTIVE",
+                effectiveFrom: { lte: effectiveFrom },
+                OR: [
+                  { effectiveTo: null },
+                  { effectiveTo: { gt: effectiveFrom } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    },
+    include: { recipe: true },
+  });
+  if (!recipeVersion) throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+
+  const sharedAdoption =
+    recipeVersion.recipe.brandId === null
+      ? await txAny.recipeBrandAdoption.findFirst({
+          where: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            brandId,
+            recipeId: recipeVersion.recipeId,
+            status: "ACTIVE",
+            effectiveFrom: { lte: effectiveFrom },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+          },
+          orderBy: { effectiveFrom: "desc" },
+        })
+      : null;
+
+  const currentDefaults = await txAny.menuRecipeAssignment.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId,
+      scopeType: "BRAND_DEFAULT",
+      locationId: null,
+      status: "ACTIVE",
+      effectiveFrom: { lte: effectiveFrom },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+      recipeVersion: { recipeId: recipeVersion.recipeId },
+      menuItem: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId,
+        status: "ACTIVE",
+      },
+    },
+    include: {
+      menuItem: {
+        select: {
+          id: true,
+          menuItemCode: true,
+          menuItemName: true,
+        },
+      },
+    },
+    orderBy: { menuItem: { menuItemName: "asc" } },
+  });
+  const blockers: string[] = [];
+  try {
+    await assertRecipePublicationQuantityReady(txAny, recipeVersion);
+  } catch (error) {
+    blockers.push(
+      error instanceof Error ? error.message : "MENU_RECIPE_NOT_QUANTITY_READY",
+    );
+  }
+  if (currentDefaults.length === 0) {
+    blockers.push("MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE");
+  }
+  const locations = await txAny.location.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId,
+      locationType: "BRANCH",
+      status: "ACTIVE",
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      timezone: true,
+      consumptionConfigurations: {
+        where: {
+          status: "ACTIVE",
+          enabled: true,
+          effectiveFrom: { lte: effectiveFrom },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+        },
+        orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }],
+        take: 1,
+        select: { id: true, timezone: true, servicePeriods: true },
+      },
+    },
+    orderBy: { code: "asc" },
+  });
+  const menuItemIds = currentDefaults.map(
+    (assignment: any) => assignment.menuItemId,
+  );
+  const [unavailableRows, overrideRows] = await Promise.all([
+    txAny.menuItemLocationAvailability.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId,
+        menuItemId: { in: menuItemIds },
+        locationId: { in: locations.map((location: any) => location.id) },
+        state: "UNAVAILABLE",
+        status: "ACTIVE",
+        effectiveFrom: { lte: effectiveFrom },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+      },
+      select: { locationId: true, menuItemId: true },
+    }),
+    txAny.menuRecipeAssignment.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId,
+        menuItemId: { in: menuItemIds },
+        locationId: { in: locations.map((location: any) => location.id) },
+        scopeType: "LOCATION_OVERRIDE",
+        status: "ACTIVE",
+        effectiveFrom: { lte: effectiveFrom },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+      },
+      select: { locationId: true, menuItemId: true },
+    }),
+  ]);
+  const unavailableKeys = new Set(
+    unavailableRows.map((row: any) => `${row.locationId}:${row.menuItemId}`),
+  );
+  const overrideKeys = new Set(
+    overrideRows.map((row: any) => `${row.locationId}:${row.menuItemId}`),
+  );
+  const localParts = (value: Date, timeZone: string) =>
+    Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(value)
+        .map((part) => [part.type, part.value]),
+    );
+  const branchReadiness = locations
+    .map((location: any) => {
+      const inheritedMenuItemIds = menuItemIds.filter(
+        (menuItemId: string) =>
+          !unavailableKeys.has(`${location.id}:${menuItemId}`) &&
+          !overrideKeys.has(`${location.id}:${menuItemId}`),
+      );
+      if (inheritedMenuItemIds.length === 0) return null;
+      const configuration = location.consumptionConfigurations[0] ?? null;
+      const periods = Array.isArray(configuration?.servicePeriods)
+        ? configuration.servicePeriods
+        : [];
+      const parts = configuration
+        ? localParts(
+            effectiveFrom,
+            configuration.timezone || location.timezone || "Asia/Manila",
+          )
+        : null;
+      const localClock = parts ? `${parts.hour}:${parts.minute}` : null;
+      const atServiceBoundary = Boolean(
+        parts?.second === "00" &&
+        effectiveFrom.getUTCMilliseconds() === 0 &&
+        periods.some(
+          (period: any) =>
+            typeof period?.start === "string" && period.start === localClock,
+        ),
+      );
+      const readinessBlockers = [
+        ...(!configuration
+          ? ["MENU_RECIPE_ROLLOUT_BRANCH_CONFIGURATION_MISSING"]
+          : []),
+        ...(configuration && !atServiceBoundary
+          ? ["MENU_RECIPE_ROLLOUT_NOT_SERVICE_BOUNDARY"]
+          : []),
+      ];
+      return {
+        locationId: location.id,
+        locationCode: location.code,
+        locationName: location.name,
+        inheritedMenuItemIds,
+        configurationId: configuration?.id ?? null,
+        localEffectiveTime: localClock,
+        atServiceBoundary,
+        blockers: readinessBlockers,
+      };
+    })
+    .filter(Boolean);
+  if (branchReadiness.some((branch: any) => branch.blockers.length > 0)) {
+    blockers.push("MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE");
+  }
+  return {
+    recipeVersion,
+    recipeVersionId: recipeVersion.id,
+    recipeId: recipeVersion.recipeId,
+    brandId,
+    effectiveFrom,
+    adoptedMenuItemCount: currentDefaults.length,
+    adoptedMenuItems: currentDefaults.map((assignment: any) => ({
+      menuItemId: assignment.menuItem.id,
+      menuItemCode: assignment.menuItem.menuItemCode,
+      menuItemName: assignment.menuItem.menuItemName,
+      currentAssignmentId: assignment.id,
+      currentRecipeVersionId: assignment.recipeVersionId,
+    })),
+    currentDefaults,
+    sharedAdoption,
+    branchReadiness,
+    safeToAdvance: blockers.length === 0,
+    blockers,
+  };
+}
+
+export async function previewRecipePublicationConsumptionImpact(
+  session: SessionContext,
+  input:
+    | string
+    | {
+        brandId: string;
+        recipeVersionId: string;
+        effectiveFrom?: Date | string;
+      },
+  legacyEffectiveFrom: Date | string = new Date(),
+) {
+  assertRecipeAccess(session);
+  const values =
+    typeof input === "string"
+      ? {
+          brandId: session.context.brandId,
+          recipeVersionId: input,
+          effectiveFrom: legacyEffectiveFrom,
+        }
+      : {
+          ...input,
+          effectiveFrom: input.effectiveFrom ?? new Date(),
+        };
+  if (!values.brandId) {
+    throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+  }
+  await assertRecipeBrandScope(session, values.brandId, "VIEW");
+  const company = await prisma.company.findFirst({
+    where: {
+      id: session.context.companyId,
+      tenantId: session.context.tenantId,
+      status: "ACTIVE",
+    },
+    select: { timezone: true },
+  });
+  if (!company) throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+  const effectiveInstant = parseCompanyLocalDateTime(
+    values.effectiveFrom,
+    company.timezone,
+  );
+  const impact = await loadRecipePublicationConsumptionImpact(
+    prisma as typeof prisma & Record<string, any>,
+    session,
+    values.brandId,
+    values.recipeVersionId,
+    effectiveInstant,
+  );
+  const snapshot = publicationImpactSnapshot(impact);
+  return {
+    ...snapshot,
+    previewSnapshotHash: recipePolicyHash(snapshot),
+  };
+}
+
+function publicationImpactSnapshot(
+  impact: Awaited<ReturnType<typeof loadRecipePublicationConsumptionImpact>>,
+) {
+  const {
+    recipeVersion: _recipeVersion,
+    currentDefaults: _defaults,
+    sharedAdoption,
+    ...publicImpact
+  } = impact;
+  const snapshot = {
+    ...publicImpact,
+    sharedAdoptionId: sharedAdoption?.id ?? null,
+    sharedAdoptionEffectiveTo: dateOrNull(sharedAdoption?.effectiveTo),
+  };
+  return snapshot;
+}
+
+async function advancePublishedRecipeBrandDefaults(input: {
+  txAny: any;
+  session: SessionContext;
+  impact: Awaited<ReturnType<typeof loadRecipePublicationConsumptionImpact>>;
+  effectiveFrom: Date;
+  reason: string;
+}) {
+  const assignments: any[] = [];
+  for (const current of input.impact.currentDefaults) {
+    await input.txAny
+      .$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.session.context.companyId}:${input.impact.brandId}:${current.menuItemId}:BRAND_DEFAULT`}, 0))`;
+    const futureConflict = await input.txAny.menuRecipeAssignment.findFirst({
+      where: {
+        tenantId: input.session.context.tenantId,
+        companyId: input.session.context.companyId,
+        brandId: input.impact.brandId,
+        scopeType: "BRAND_DEFAULT",
+        locationId: null,
+        menuItemId: current.menuItemId,
+        status: "ACTIVE",
+        effectiveFrom: { gte: input.effectiveFrom },
+      },
+    });
+    if (futureConflict) {
+      throw new Error("MENU_RECIPE_ASSIGNMENT_EFFECTIVE_RANGE_CONFLICT");
+    }
+    const previousEffectiveTo = current.effectiveTo ?? null;
+    const boundedEnds = [
+      current.effectiveTo,
+      input.impact.sharedAdoption?.effectiveTo,
+    ].filter((value): value is Date => value instanceof Date);
+    const successorEffectiveTo =
+      boundedEnds.length > 0
+        ? new Date(Math.min(...boundedEnds.map((value) => value.getTime())))
+        : null;
+    if (successorEffectiveTo && successorEffectiveTo <= input.effectiveFrom) {
+      throw new Error("MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE");
+    }
+    const closed = await input.txAny.menuRecipeAssignment.updateMany({
+      where: {
+        id: current.id,
+        tenantId: input.session.context.tenantId,
+        companyId: input.session.context.companyId,
+        effectiveFrom: { lt: input.effectiveFrom },
+        OR: [
+          { effectiveTo: null },
+          { effectiveTo: { gt: input.effectiveFrom } },
+        ],
+      },
+      data: { effectiveTo: input.effectiveFrom },
+    });
+    if (closed.count !== 1) {
+      throw new Error("MENU_RECIPE_ASSIGNMENT_EFFECTIVE_RANGE_CONFLICT");
+    }
+    const assignment = await input.txAny.menuRecipeAssignment.create({
+      data: {
+        tenantId: input.session.context.tenantId,
+        companyId: input.session.context.companyId,
+        brandId: input.impact.brandId,
+        scopeType: "BRAND_DEFAULT",
+        locationId: null,
+        menuItemId: current.menuItemId,
+        recipeVersionId: input.impact.recipeVersionId,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: successorEffectiveTo,
+        status: "ACTIVE",
+        reason: input.reason,
+        createdByUserId: input.session.user.id,
+      },
+    });
+    await input.txAny.auditEvent.create({
+      data: {
+        tenantId: input.session.context.tenantId,
+        companyId: input.session.context.companyId,
+        actorUserId: input.session.user.id,
+        eventType: "recipe_version.brand_default_successor_scheduled",
+        entityType: "MenuRecipeAssignment",
+        entityId: assignment.id,
+        beforeData: {
+          assignmentId: current.id,
+          recipeVersionId: current.recipeVersionId,
+          effectiveTo: previousEffectiveTo,
+        },
+        afterData: {
+          assignmentId: assignment.id,
+          recipeVersionId: input.impact.recipeVersionId,
+          effectiveFrom: input.effectiveFrom,
+          effectiveTo: successorEffectiveTo,
+        },
+        metadata: {
+          reason: input.reason,
+          sourceDecisionId: "DEC-0280",
+          boundary:
+            "brand_default_recipe_successor_only_no_location_override_availability_inventory_or_finance_mutation",
+        },
+      },
+    });
+    assignments.push(assignment);
+  }
+  return assignments;
+}
+
+export async function rolloutPublishedRecipeSuccessor(input: unknown) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.menuRecipeRollout);
+  await requirePermission(session, permissions.recipePublish);
+  const parsedValues = recipeSuccessorRolloutSchema.parse(input);
+  return prisma.$transaction(
+    async (tx) => {
+      const txAny = tx as Prisma.TransactionClient & Record<string, any>;
+      const company = await txAny.company.findFirst({
+        where: {
+          id: session.context.companyId,
+          tenantId: session.context.tenantId,
+          status: "ACTIVE",
+        },
+        select: { timezone: true },
+      });
+      if (!company) throw new Error("MENU_RECIPE_BRAND_SCOPE_DENIED");
+      const effectiveFrom = parseCompanyLocalDateTime(
+        parsedValues.effectiveFrom,
+        company.timezone,
+      );
+      const values = {
+        ...parsedValues,
+        effectiveFrom,
+        timezone: company.timezone,
+      };
+      const requestHash = recipePolicyHash(values);
+      await assertLiveMenuRecipeAuthority(txAny, session, {
+        permissionCodes: [
+          menuRecipePolicyPermissions.rollout,
+          permissions.recipePublish,
+        ],
+        scope: {
+          mode: "BRAND_OR_COMPANY",
+          brandId: values.brandId,
+        },
+      });
+      await assertPrivilegedMfaForAction(
+        session,
+        {
+          action: "restaurant_menu_policy.rollout_successor",
+          enforcementScope: "all_sensitive",
+          entityType: "RecipeVersion",
+          entityId: values.recipeVersionId,
+          reason: values.reason,
+          metadata: { sourceDecisionId: "DEC-0280" },
+        },
+        { transaction: tx, forceEnforcement: true },
+      );
+      await txAny.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${session.context.tenantId}:${session.context.companyId}:${values.brandId}:${values.idempotencyKey}:MENU_POLICY_COMMAND`}, 0))`;
+      const replay = await txAny.restaurantMenuPolicyCommand.findFirst({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: values.brandId,
+          idempotencyKey: values.idempotencyKey,
+        },
+      });
+      if (replay) {
+        if (replay.requestHash !== requestHash) {
+          throw new Error("RESTAURANT_MENU_POLICY_IDEMPOTENCY_CONFLICT");
+        }
+        return replay.outcome;
+      }
+      if (effectiveFrom < new Date()) {
+        throw new Error("MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE");
+      }
+      await txAny.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${session.context.companyId}:${values.brandId}:${values.recipeVersionId}:ROLLOUT_SUCCESSOR`}, 0))`;
+      const impact = await loadRecipePublicationConsumptionImpact(
+        txAny,
+        session,
+        values.brandId,
+        values.recipeVersionId,
+        effectiveFrom,
+      );
+      if (impact.recipeVersion.status !== "PUBLISHED") {
+        throw new Error("RECIPE_VERSION_NOT_PUBLISHED");
+      }
+      const snapshot = publicationImpactSnapshot(impact);
+      const previewSnapshotHash = recipePolicyHash(snapshot);
+      if (previewSnapshotHash !== values.previewSnapshotHash) {
+        throw new Error("MENU_RECIPE_ROLLOUT_PREVIEW_STALE");
+      }
+      if (!impact.safeToAdvance) {
+        throw new Error(
+          impact.blockers.some(
+            (blocker) => blocker !== "MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE",
+          )
+            ? "MENU_RECIPE_NOT_QUANTITY_READY"
+            : "MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE",
+        );
+      }
+      const assignments = await advancePublishedRecipeBrandDefaults({
+        txAny,
+        session,
+        impact,
+        effectiveFrom,
+        reason: values.reason,
+      });
+      const outcome = {
+        recipeVersionId: values.recipeVersionId,
+        effectiveFrom: effectiveFrom.toISOString(),
+        assignmentIds: assignments.map((assignment) => assignment.id),
+        adoptedMenuItemCount: assignments.length,
+        branchReadiness: snapshot.branchReadiness,
+      };
+      await txAny.restaurantMenuPolicyCommand.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: values.brandId,
+          locationId: null,
+          commandType: "ROLLOUT_SUCCESSOR",
+          idempotencyKey: values.idempotencyKey,
+          requestHash,
+          targetType: null,
+          targetId: null,
+          previewSnapshotHash,
+          outcome,
+          actorUserId: session.user.id,
+        },
+      });
+      await txAny.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "recipe_version.brand_default_successor_rollout",
+          entityType: "RecipeVersion",
+          entityId: values.recipeVersionId,
+          beforeData: {
+            currentAssignmentIds: impact.currentDefaults.map(
+              (assignment: any) => assignment.id,
+            ),
+          },
+          afterData: outcome,
+          metadata: {
+            reason: values.reason,
+            previewSnapshotHash,
+            requestHash,
+            idempotencyKey: values.idempotencyKey,
+            sourceDecisionId: "DEC-0280",
+            boundary:
+              "successor_brand_defaults_only_no_location_override_availability_inventory_or_finance_mutation",
+          },
+        },
+      });
+      return outcome;
+    },
+    { isolationLevel: "Serializable" },
   );
 }
 
 export async function transitionRecipeVersion(formData: FormData) {
   const session = await requireSessionContext();
-  const values = recipeVersionWorkflowSchema.parse(Object.fromEntries(formData));
+  const values = recipeVersionWorkflowSchema.parse(
+    Object.fromEntries(formData),
+  );
 
   const recipeVersion = await prisma.$transaction(async (tx) => {
     const txAny = tx as Prisma.TransactionClient & Record<string, any>;
@@ -1695,27 +2596,23 @@ export async function transitionRecipeVersion(formData: FormData) {
         id: values.recipeVersionId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        recipe: {
-          ...(session.context.brandId
-            ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-            : {})
-        }
       },
       include: {
-        recipe: true
-      }
+        recipe: true,
+      },
     });
 
     if (!current) {
       throw new Error("RECIPE_VERSION_NOT_FOUND");
     }
+    await assertRecipeBrandScope(session, current.recipe.brandId, "VIEW", tx);
 
     if (values.idempotencyKey) {
       const existingTransition = await txAny.recipeVersionTransition.findFirst({
         where: {
           recipeVersionId: current.id,
-          idempotencyKey: values.idempotencyKey
-        }
+          idempotencyKey: values.idempotencyKey,
+        },
       });
       if (existingTransition) {
         return current;
@@ -1728,10 +2625,11 @@ export async function transitionRecipeVersion(formData: FormData) {
       fromStatus: current.status,
       permissionCodes: session.permissionCodes,
       reason: values.reason ?? null,
-      evidenceReference: values.evidenceReference ?? null
+      evidenceReference: values.evidenceReference ?? null,
     });
     await requirePermission(session, transition.permissionCode);
 
+    const now = new Date();
     if (
       ["APPROVE", "PUBLISH"].includes(values.action) &&
       current.createdByUserId === session.user.id
@@ -1739,11 +2637,10 @@ export async function transitionRecipeVersion(formData: FormData) {
       throw new Error("RECIPE_VERSION_SELF_APPROVAL_BLOCKED");
     }
 
-    const now = new Date();
     const result = await txAny.recipeVersion.updateMany({
       where: {
         id: current.id,
-        status: current.status
+        status: current.status,
       },
       data: {
         status: transition.toStatus,
@@ -1754,11 +2651,11 @@ export async function transitionRecipeVersion(formData: FormData) {
           ? {
               publishedAt: now,
               publishedByUserId: session.user.id,
-              effectiveFrom: current.effectiveFrom ?? now
+              effectiveFrom: current.effectiveFrom ?? now,
             }
           : {}),
-        ...(values.reason ? { reason: values.reason } : {})
-      }
+        ...(values.reason ? { reason: values.reason } : {}),
+      },
     });
     if (result.count !== 1) {
       throw new Error("RECIPE_VERSION_TRANSITION_CONFLICT");
@@ -1769,24 +2666,24 @@ export async function transitionRecipeVersion(formData: FormData) {
         where: {
           recipeId: current.recipeId,
           id: { not: current.id },
-          status: "PUBLISHED"
+          status: "PUBLISHED",
         },
         data: {
           status: "SUPERSEDED",
-          effectiveTo: now
-        }
+          effectiveTo: now,
+        },
       });
       await txAny.recipe.update({
         where: { id: current.recipeId },
         data: {
           currentVersionId: current.id,
-          publishedVersionId: current.id
-        }
+          publishedVersionId: current.id,
+        },
       });
     }
 
     const updated = await txAny.recipeVersion.findUniqueOrThrow({
-      where: { id: current.id }
+      where: { id: current.id },
     });
 
     await txAny.recipeVersionTransition.create({
@@ -1806,8 +2703,8 @@ export async function transitionRecipeVersion(formData: FormData) {
         approvedAt: ["APPROVE", "PUBLISH"].includes(values.action) ? now : null,
         reason: values.reason ?? null,
         evidenceReference: values.evidenceReference ?? null,
-        idempotencyKey: values.idempotencyKey ?? null
-      }
+        idempotencyKey: values.idempotencyKey ?? null,
+      },
     });
 
     await txAny.auditEvent.create({
@@ -1823,14 +2720,14 @@ export async function transitionRecipeVersion(formData: FormData) {
           approvedAt: dateOrNull(current.approvedAt),
           approvedByUserId: current.approvedByUserId,
           publishedAt: dateOrNull(current.publishedAt),
-          publishedByUserId: current.publishedByUserId
+          publishedByUserId: current.publishedByUserId,
         },
         afterData: {
           status: updated.status,
           approvedAt: dateOrNull(updated.approvedAt),
           approvedByUserId: updated.approvedByUserId,
           publishedAt: dateOrNull(updated.publishedAt),
-          publishedByUserId: updated.publishedByUserId
+          publishedByUserId: updated.publishedByUserId,
         },
         metadata: {
           recipeId: current.recipeId,
@@ -1839,9 +2736,10 @@ export async function transitionRecipeVersion(formData: FormData) {
           reason: values.reason,
           evidenceReference: values.evidenceReference,
           idempotencyKey: values.idempotencyKey,
-          boundary: "recipe_version_transition_only_no_inventory_or_finance_mutation"
-        }
-      }
+          boundary:
+            "recipe_version_transition_only_no_inventory_or_finance_mutation",
+        },
+      },
     });
 
     return updated;
@@ -1852,26 +2750,28 @@ export async function transitionRecipeVersion(formData: FormData) {
 
 export function getRecipeVersionActionsForStatus(
   status: string,
-  permissionCodes: string[]
+  permissionCodes: string[],
 ) {
   return getPhase2WorkflowActionsForStatus(
     "RECIPE_VERSION",
     status,
-    permissionCodes
+    permissionCodes,
   );
 }
 
 export function summarizeFoodCostAnalysisRows(
-  rows: FoodCostAnalysisSummary[]
+  rows: FoodCostAnalysisSummary[],
 ): FoodCostAnalysisFilteredSummary {
   const quantitySold = Number(
-    rows.reduce((total, row) => total + row.quantitySold, 0).toFixed(2)
+    rows.reduce((total, row) => total + row.quantitySold, 0).toFixed(2),
   );
   const netSalesAmount = Number(
-    rows.reduce((total, row) => total + row.netSalesAmount, 0).toFixed(2)
+    rows.reduce((total, row) => total + row.netSalesAmount, 0).toFixed(2),
   );
   const theoreticalCost = Number(
-    rows.reduce((total, row) => total + (row.theoreticalCost ?? 0), 0).toFixed(2)
+    rows
+      .reduce((total, row) => total + (row.theoreticalCost ?? 0), 0)
+      .toFixed(2),
   );
 
   return {
@@ -1882,36 +2782,65 @@ export function summarizeFoodCostAnalysisRows(
     theoreticalFoodCostPercent:
       netSalesAmount > 0
         ? Number(((theoreticalCost / netSalesAmount) * 100).toFixed(2))
-        : null
+        : null,
   };
 }
 
 export function summarizeActualConsumptionRows(
-  rows: ActualConsumptionSummary[]
+  rows: ActualConsumptionSummary[],
 ): ActualConsumptionFilteredSummary {
   return {
     rowCount: rows.length,
     quantityBaseUom: Number(
-      rows.reduce((total, row) => total + row.quantityBaseUom, 0).toFixed(6)
+      rows.reduce((total, row) => total + row.quantityBaseUom, 0).toFixed(6),
     ),
-    totalCost: Number(rows.reduce((total, row) => total + row.totalCost, 0).toFixed(2))
+    totalCost: Number(
+      rows.reduce((total, row) => total + row.totalCost, 0).toFixed(2),
+    ),
   };
 }
 
 export async function listRecipeCostingSummaries(
-  session: SessionContext
+  session: SessionContext,
+  options: RecipeCostingScopeOptions = {},
 ): Promise<RecipeCostingSummary[]> {
   assertRecipeAccess(session);
+
+  const selectedBrandId =
+    options.brandId === undefined
+      ? session.context.brandId || null
+      : options.brandId;
+  await assertRecipeBrandScope(session, selectedBrandId, "VIEW");
 
   const where: Prisma.RecipeWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    ...(session.context.brandId
-      ? { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-      : {})
+    ...(selectedBrandId
+      ? {
+          OR: [
+            { brandId: selectedBrandId },
+            {
+              brandId: null,
+              brandAdoptions: {
+                some: {
+                  tenantId: session.context.tenantId,
+                  companyId: session.context.companyId,
+                  brandId: selectedBrandId,
+                  status: "ACTIVE",
+                  effectiveFrom: { lte: new Date() },
+                  OR: [
+                    { effectiveTo: null },
+                    { effectiveTo: { gt: new Date() } },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : { brandId: null }),
   };
 
-  const recipes = await prisma.recipe.findMany({
+  const recipes = (await prisma.recipe.findMany({
     where,
     include: {
       brand: true,
@@ -1927,13 +2856,21 @@ export async function listRecipeCostingSummaries(
               subRecipeVersion: {
                 include: {
                   recipe: true,
-                  servingUom: true
-                }
+                  servingUom: true,
+                },
               },
-              uom: true
-            }
+              uom: true,
+            },
           },
           menuItems: {
+            where: selectedBrandId
+              ? {
+                  tenantId: session.context.tenantId,
+                  companyId: session.context.companyId,
+                  brandId: selectedBrandId,
+                  status: "ACTIVE",
+                }
+              : { id: { in: [] } },
             include: {
               prices: {
                 where: {
@@ -1941,36 +2878,80 @@ export async function listRecipeCostingSummaries(
                     {
                       OR: [
                         { locationId: null },
-                        { locationId: session.context.locationId }
-                      ]
+                        { locationId: session.context.locationId },
+                      ],
                     },
                     {
                       OR: [
                         { effectiveTo: null },
-                        { effectiveTo: { gt: new Date() } }
-                      ]
-                    }
+                        { effectiveTo: { gt: new Date() } },
+                      ],
+                    },
                   ],
                   effectiveFrom: { lte: new Date() },
                 },
-                orderBy: [{ locationId: "desc" }, { effectiveFrom: "desc" }]
-              }
-            }
-          }
-        }
-      }
+                orderBy: [{ locationId: "desc" }, { effectiveFrom: "desc" }],
+              },
+            },
+          },
+          menuRecipeAssignments: {
+            where: {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              ...(selectedBrandId
+                ? { brandId: selectedBrandId }
+                : { brandId: { in: [] } }),
+              scopeType: "BRAND_DEFAULT",
+              locationId: null,
+              status: "ACTIVE",
+              effectiveFrom: { lte: new Date() },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }],
+            },
+            include: {
+              menuItem: {
+                include: {
+                  prices: {
+                    where: {
+                      AND: [
+                        {
+                          OR: [
+                            { locationId: null },
+                            { locationId: session.context.locationId },
+                          ],
+                        },
+                        {
+                          OR: [
+                            { effectiveTo: null },
+                            { effectiveTo: { gt: new Date() } },
+                          ],
+                        },
+                      ],
+                      effectiveFrom: { lte: new Date() },
+                    },
+                    orderBy: [
+                      { locationId: "desc" },
+                      { effectiveFrom: "desc" },
+                    ],
+                  },
+                },
+              },
+            },
+            orderBy: { effectiveFrom: "desc" },
+          },
+        },
+      },
     },
-    orderBy: [{ recipeName: "asc" }]
-  }) as RecipeWithCostingDetails[];
+    orderBy: [{ recipeName: "asc" }],
+  })) as RecipeWithCostingDetails[];
 
   const itemIds = Array.from(
     new Set(
       recipes.flatMap((recipe) =>
         recipe.versions.flatMap((version) =>
-          version.lines.flatMap((line) => (line.itemId ? [line.itemId] : []))
-        )
-      )
-    )
+          version.lines.flatMap((line) => (line.itemId ? [line.itemId] : [])),
+        ),
+      ),
+    ),
   );
 
   const [priceRows, conversions] = itemIds.length
@@ -1979,15 +2960,15 @@ export async function listRecipeCostingSummaries(
           where: {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            itemId: { in: itemIds }
+            itemId: { in: itemIds },
           },
-          orderBy: [{ itemId: "asc" }, { effectiveFrom: "desc" }]
+          orderBy: [{ itemId: "asc" }, { effectiveFrom: "desc" }],
         }),
         prisma.itemUomConversion.findMany({
           where: {
-            itemId: { in: itemIds }
-          }
-        })
+            itemId: { in: itemIds },
+          },
+        }),
       ])
     : [[], []];
 
@@ -1996,7 +2977,10 @@ export async function listRecipeCostingSummaries(
       recipe.versions.find((candidate) => candidate.status === "PUBLISHED") ??
       recipe.versions[0] ??
       null;
-    const menuItem = version?.menuItems[0] ?? null;
+    const menuItem =
+      version?.menuRecipeAssignments[0]?.menuItem ??
+      version?.menuItems[0] ??
+      null;
     const menuPrice = menuItem?.prices[0] ?? null;
     const selectedVersionId = version?.id ?? null;
 
@@ -2004,7 +2988,11 @@ export async function listRecipeCostingSummaries(
       version?.lines.map((line): RecipeCostingLineSummary => {
         const quantity = Number(line.quantity);
         const effectivePrice = line.itemId
-          ? pickEffectiveSupplierPriceSnapshot(priceRows, line.itemId, version.effectiveFrom)
+          ? pickEffectiveSupplierPriceSnapshot(
+              priceRows,
+              line.itemId,
+              version.effectiveFrom,
+            )
           : null;
         const latestUnitPrice = numberOrNull(effectivePrice?.unitPrice);
         const quantityInPriceUom =
@@ -2014,7 +3002,7 @@ export async function listRecipeCostingSummaries(
                 line.itemId,
                 line.uomId,
                 effectivePrice.uomId,
-                conversions
+                conversions,
               )
             : null;
         const estimatedCost =
@@ -2048,13 +3036,15 @@ export async function listRecipeCostingSummaries(
           latestUnitPrice,
           estimatedCost,
           costingNote,
-          preparationNote: line.preparationNote
+          preparationNote: line.preparationNote,
         };
       }) ?? [];
 
-    const hasPendingLineCost = lines.some((line) => line.estimatedCost === null);
+    const hasPendingLineCost = lines.some(
+      (line) => line.estimatedCost === null,
+    );
     const pendingCostLineCount = lines.filter(
-      (line) => line.estimatedCost === null
+      (line) => line.estimatedCost === null,
     ).length;
     const costedLineCount = lines.length - pendingCostLineCount;
     const estimatedRecipeCost = hasPendingLineCost
@@ -2062,13 +3052,17 @@ export async function listRecipeCostingSummaries(
       : Number(
           lines
             .reduce((total, line) => total + (line.estimatedCost ?? 0), 0)
-            .toFixed(2)
+            .toFixed(2),
         );
     const yieldQuantity = numberOrNull(version?.yieldQuantity);
     const servingQuantity = numberOrNull(version?.servingQuantity);
     const estimatedServingCost =
       estimatedRecipeCost !== null && yieldQuantity && servingQuantity
-        ? Number(((estimatedRecipeCost / yieldQuantity) * servingQuantity).toFixed(2))
+        ? Number(
+            ((estimatedRecipeCost / yieldQuantity) * servingQuantity).toFixed(
+              2,
+            ),
+          )
         : null;
     const currentMenuPrice = numberOrNull(menuPrice?.price);
     const estimatedFoodCostPercent =
@@ -2086,6 +3080,7 @@ export async function listRecipeCostingSummaries(
       recipeCode: recipe.recipeCode,
       recipeName: recipe.recipeName,
       recipeType: recipe.recipeType,
+      brandId: recipe.brandId,
       brandName: recipe.brand?.name ?? "Company-wide",
       versionId: version?.id ?? null,
       versionNo: version?.versionNo ?? null,
@@ -2121,16 +3116,46 @@ export async function listRecipeCostingSummaries(
         servingQuantity: numberOrNull(candidate.servingQuantity),
         servingUomCode: candidate.servingUom.uomCode,
         targetFoodCostPercent: numberOrNull(candidate.targetFoodCostPercent),
-        isSelectedCostingVersion: candidate.id === selectedVersionId
+        isSelectedCostingVersion: candidate.id === selectedVersionId,
       })),
-      openMenuPriceDecision: null
+      openMenuPriceDecision: null,
     };
   });
 }
 
-export async function getRecipeCostingSummary(session: SessionContext, recipeId: string) {
-  const recipes = await listRecipeCostingSummaries(session);
-  const recipe = recipes.find((candidate) => candidate.id === recipeId) ?? null;
+export async function getRecipeCostingSummary(
+  session: SessionContext,
+  recipeId: string,
+  options: RecipeCostingScopeOptions = {},
+) {
+  assertRecipeAccess(session);
+  const record = await prisma.recipe.findFirst({
+    where: {
+      id: recipeId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+    },
+    select: { brandId: true },
+  });
+  if (!record) {
+    return null;
+  }
+  const selectedBrandId =
+    record.brandId ??
+    (options.brandId === undefined
+      ? session.context.brandId || null
+      : options.brandId);
+  let recipes = await listRecipeCostingSummaries(session, {
+    brandId: selectedBrandId,
+  });
+  let recipe = recipes.find((candidate) => candidate.id === recipeId) ?? null;
+  if (!recipe && record.brandId === null && selectedBrandId !== null) {
+    const scope = await loadRecipeBrandScopeOptions(session);
+    if (scope.canManageCompanyShared) {
+      recipes = await listRecipeCostingSummaries(session, { brandId: null });
+      recipe = recipes.find((candidate) => candidate.id === recipeId) ?? null;
+    }
+  }
   if (!recipe?.menuItemId) {
     return recipe;
   }
@@ -2142,14 +3167,24 @@ export async function getRecipeCostingSummary(session: SessionContext, recipeId:
       companyId: session.context.companyId,
       menuItemId: recipe.menuItemId,
       AND: [
-        ...(session.context.brandId
-          ? [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }]
-          : []),
-        { OR: [{ locationId: null }, { locationId: session.context.locationId }] }
+        {
+          OR: [
+            { brandId: null },
+            ...(recipe.brandId ? [{ brandId: recipe.brandId }] : []),
+          ],
+        },
+        {
+          OR: [
+            { locationId: null },
+            ...(recipe.brandId === session.context.brandId
+              ? [{ locationId: session.context.locationId }]
+              : []),
+          ],
+        },
       ],
-      status: { in: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"] }
+      status: { in: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"] },
     },
-    orderBy: [{ updatedAt: "desc" }]
+    orderBy: [{ updatedAt: "desc" }],
   });
 
   return {
@@ -2168,19 +3203,21 @@ export async function getRecipeCostingSummary(session: SessionContext, recipeId:
           approvedByUserId: decision.approvedByUserId,
           approvedAt: timestampOrNull(decision.approvedAt),
           appliedByUserId: decision.appliedByUserId,
-          appliedAt: timestampOrNull(decision.appliedAt)
+          appliedAt: timestampOrNull(decision.appliedAt),
         }
-      : null
+      : null,
   };
 }
 
 export async function buildRecipeCostingExportRows(
   session: SessionContext,
-  filters: RecipeCostingExportFilters = {}
+  filters: RecipeCostingExportFilters = {},
 ) {
+  const scopeOptions: RecipeCostingScopeOptions =
+    filters.brandId === undefined ? {} : { brandId: filters.brandId };
   const recipes = filterRecipeCostingSummaries(
-    await listRecipeCostingSummaries(session),
-    filters
+    await listRecipeCostingSummaries(session, scopeOptions),
+    filters,
   );
   return [
     [
@@ -2210,7 +3247,7 @@ export async function buildRecipeCostingExportRows(
       "Latest Unit Price",
       "Estimated Line Cost",
       "Costing Note",
-      "Preparation Note"
+      "Preparation Note",
     ],
     ...recipes.flatMap((recipe) =>
       recipe.lines.map((line) => [
@@ -2240,15 +3277,15 @@ export async function buildRecipeCostingExportRows(
         line.latestUnitPrice ?? "",
         line.estimatedCost ?? "",
         line.costingNote ?? "",
-        line.preparationNote ?? ""
-      ])
-    )
+        line.preparationNote ?? "",
+      ]),
+    ),
   ];
 }
 
 export async function buildRecipeRevisionWorkbookRows(
   session: SessionContext,
-  recipeId: string
+  recipeId: string,
 ) {
   const recipe = await getRecipeCostingSummary(session, recipeId);
   if (!recipe) {
@@ -2278,7 +3315,7 @@ export async function buildRecipeRevisionWorkbookRows(
       "New Sub-Recipe Code",
       "New Sub-Recipe Version",
       "New Sub-Recipe Quantity",
-      "Change Note"
+      "Change Note",
     ],
     ...recipe.lines.map((line) => [
       recipe.recipeCode,
@@ -2300,9 +3337,9 @@ export async function buildRecipeRevisionWorkbookRows(
       "",
       "",
       line.lineType === "SUB_RECIPE" ? line.itemCode : "",
-      line.lineType === "SUB_RECIPE" ? recipe.versionNo ?? "" : "",
+      line.lineType === "SUB_RECIPE" ? (recipe.versionNo ?? "") : "",
       line.lineType === "SUB_RECIPE" ? line.quantity : "",
-      "Plan changes here; apply them through Create Revision Draft."
+      "Plan changes here; apply them through Create Revision Draft.",
     ]),
     [
       recipe.recipeCode,
@@ -2326,7 +3363,7 @@ export async function buildRecipeRevisionWorkbookRows(
       "",
       "",
       "",
-      "Template row only. New ingredient lines are applied through a draft revision."
+      "Template row only. New ingredient lines are applied through a draft revision.",
     ],
     [
       recipe.recipeCode,
@@ -2350,14 +3387,14 @@ export async function buildRecipeRevisionWorkbookRows(
       "SUB-RECIPE-CODE",
       "PUBLISHED_VERSION",
       "0",
-      "Template row only. Linked sub-recipes remain link-only; recursive cost flattening is not applied."
-    ]
+      "Template row only. Linked sub-recipes remain link-only; recursive cost flattening is not applied.",
+    ],
   ];
 }
 
 export async function getFoodCostAnalysisDashboard(
   session: SessionContext,
-  options: FoodCostAnalysisDashboardOptions = {}
+  options: FoodCostAnalysisDashboardOptions = {},
 ): Promise<FoodCostAnalysisDashboard> {
   assertRecipeAccess(session);
 
@@ -2368,7 +3405,7 @@ export async function getFoodCostAnalysisDashboard(
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId,
     batch: { status: "POSTED" },
-    ...(selectedBusinessDate ? { businessDate: selectedBusinessDate } : {})
+    ...(selectedBusinessDate ? { businessDate: selectedBusinessDate } : {}),
   };
   const importBatchWhere: Prisma.RestaurantSalesImportBatchWhereInput = {
     tenantId: session.context.tenantId,
@@ -2376,29 +3413,34 @@ export async function getFoodCostAnalysisDashboard(
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId,
     status: "POSTED",
-    ...(selectedBusinessDate ? { businessDate: selectedBusinessDate } : {})
+    ...(selectedBusinessDate ? { businessDate: selectedBusinessDate } : {}),
   };
   const [recipes, salesLines, importBatches, location] = await Promise.all([
     listRecipeCostingSummaries(session),
     prisma.restaurantSalesImportLine.findMany({
       where: salesLineWhere,
       include: {
-        menuItem: true
+        menuItem: true,
       },
-      orderBy: [{ businessDate: "desc" }, { menuItem: { menuItemName: "asc" } }]
+      orderBy: [
+        { businessDate: "desc" },
+        { menuItem: { menuItemName: "asc" } },
+      ],
     }) as Promise<RestaurantSalesImportLineWithMenuItem[]>,
     prisma.restaurantSalesImportBatch.findMany({
       where: importBatchWhere,
-      orderBy: [{ businessDate: "desc" }]
+      orderBy: [{ businessDate: "desc" }],
     }),
     prisma.location.findUnique({
       where: { id: session.context.locationId },
-      select: { name: true }
-    })
+      select: { name: true },
+    }),
   ]);
 
   const recipeByMenuItemId = new Map(
-    recipes.flatMap((recipe) => (recipe.menuItemId ? [[recipe.menuItemId, recipe]] : []))
+    recipes.flatMap((recipe) =>
+      recipe.menuItemId ? [[recipe.menuItemId, recipe]] : [],
+    ),
   );
   const salesByMenuItemId = new Map<
     string,
@@ -2413,7 +3455,7 @@ export async function getFoodCostAnalysisDashboard(
     const current = salesByMenuItemId.get(line.menuItemId) ?? {
       menuItemName: line.menuItem.menuItemName,
       quantitySold: 0,
-      netSalesAmount: 0
+      netSalesAmount: 0,
     };
     current.quantitySold += Number(line.quantitySold);
     current.netSalesAmount += Number(line.netSalesAmount);
@@ -2424,9 +3466,12 @@ export async function getFoodCostAnalysisDashboard(
     .map(([menuItemId, sales]) => {
       const recipe = recipeByMenuItemId.get(menuItemId);
       const theoreticalCost =
-        recipe?.estimatedServingCost === null || recipe?.estimatedServingCost === undefined
+        recipe?.estimatedServingCost === null ||
+        recipe?.estimatedServingCost === undefined
           ? null
-          : Number((recipe.estimatedServingCost * sales.quantitySold).toFixed(2));
+          : Number(
+              (recipe.estimatedServingCost * sales.quantitySold).toFixed(2),
+            );
       const theoreticalFoodCostPercent =
         theoreticalCost === null || sales.netSalesAmount <= 0
           ? null
@@ -2459,7 +3504,7 @@ export async function getFoodCostAnalysisDashboard(
               ? "ABOVE_TARGET"
               : hasTarget
                 ? "WITHIN_TARGET"
-                : "AWAITING_ACTUALS"
+                : "AWAITING_ACTUALS",
       } satisfies FoodCostAnalysisSummary;
     })
     .sort((left, right) => right.netSalesAmount - left.netSalesAmount);
@@ -2472,20 +3517,23 @@ export async function getFoodCostAnalysisDashboard(
       WITHIN_TARGET: 0,
       ABOVE_TARGET: 0,
       MISSING_COST: 0,
-      AWAITING_ACTUALS: 0
-    }
+      AWAITING_ACTUALS: 0,
+    },
   );
 
   const theoreticalCost = Number(
-    rows.reduce((total, row) => total + (row.theoreticalCost ?? 0), 0).toFixed(2)
+    rows
+      .reduce((total, row) => total + (row.theoreticalCost ?? 0), 0)
+      .toFixed(2),
   );
   const netSalesAmount = Number(
-    rows.reduce((total, row) => total + row.netSalesAmount, 0).toFixed(2)
+    rows.reduce((total, row) => total + row.netSalesAmount, 0).toFixed(2),
   );
   const quantitySold = Number(
-    rows.reduce((total, row) => total + row.quantitySold, 0).toFixed(2)
+    rows.reduce((total, row) => total + row.quantitySold, 0).toFixed(2),
   );
-  const latestBusinessDate = selectedBusinessDate ?? importBatches[0]?.businessDate ?? null;
+  const latestBusinessDate =
+    selectedBusinessDate ?? importBatches[0]?.businessDate ?? null;
   const [inventoryLocation, actualMovements] = await (async () => {
     if (!latestBusinessDate) {
       return [null, [] as InventoryMovementWithItem[]] as const;
@@ -2501,9 +3549,9 @@ export async function getFoodCostAnalysisDashboard(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         locationId: session.context.locationId,
-        status: "ACTIVE"
+        status: "ACTIVE",
       },
-      select: { id: true }
+      select: { id: true },
     });
     if (!scopedInventoryLocation) {
       return [null, [] as InventoryMovementWithItem[]] as const;
@@ -2517,14 +3565,15 @@ export async function getFoodCostAnalysisDashboard(
         movementType: { in: [...actualConsumptionMovementTypes] },
         occurredAt: {
           gte: periodStart,
-          lt: periodEnd
+          lt: periodEnd,
         },
-        reversalOfMovementId: null
+        reversalOfMovementId: null,
+        reversalMovements: { none: {} },
       },
       include: {
-        item: true
+        item: true,
       },
-      orderBy: [{ occurredAt: "asc" }, { movementType: "asc" }]
+      orderBy: [{ occurredAt: "asc" }, { movementType: "asc" }],
     })) as InventoryMovementWithItem[];
 
     return [scopedInventoryLocation, movements] as const;
@@ -2536,24 +3585,30 @@ export async function getFoodCostAnalysisDashboard(
       : Number(
           actualConsumptionRows
             .reduce((total, row) => total + row.totalCost, 0)
-            .toFixed(2)
+            .toFixed(2),
         );
   const varianceAmount =
-    actualCost === null ? null : Number((actualCost - theoreticalCost).toFixed(2));
+    actualCost === null
+      ? null
+      : Number((actualCost - theoreticalCost).toFixed(2));
   const variancePercent =
     varianceAmount === null || theoreticalCost === 0
       ? null
       : Number(((varianceAmount / theoreticalCost) * 100).toFixed(2));
 
   return {
-    businessDate: latestBusinessDate ? latestBusinessDate.toISOString().slice(0, 10) : null,
+    businessDate: latestBusinessDate
+      ? latestBusinessDate.toISOString().slice(0, 10)
+      : null,
     locationName: location?.name ?? session.context.locationName,
     salesImportBatches: importBatches.length,
     quantitySold,
     netSalesAmount,
     theoreticalCost,
     theoreticalFoodCostPercent:
-      netSalesAmount > 0 ? Number(((theoreticalCost / netSalesAmount) * 100).toFixed(2)) : null,
+      netSalesAmount > 0
+        ? Number(((theoreticalCost / netSalesAmount) * 100).toFixed(2))
+        : null,
     actualCost,
     varianceAmount,
     variancePercent,
@@ -2563,21 +3618,21 @@ export async function getFoodCostAnalysisDashboard(
       : "No scoped inventory location found for actual-consumption comparison.",
     statusCounts,
     actualConsumptionRows,
-    rows
+    rows,
   };
 }
 
 export async function buildFoodCostAnalysisExportRows(
   session: SessionContext,
-  filters: FoodCostAnalysisExportFilters = {}
+  filters: FoodCostAnalysisExportFilters = {},
 ) {
   const dashboard = await getFoodCostAnalysisDashboard(session, {
-    businessDate: filters.businessDate
+    businessDate: filters.businessDate,
   });
   const rows = filterFoodCostAnalysisRows(dashboard.rows, filters);
   const actualRows = filterActualConsumptionRows(
     dashboard.actualConsumptionRows,
-    filters
+    filters,
   );
   const filteredSalesSummary = summarizeFoodCostAnalysisRows(rows);
   const filteredActualSummary = summarizeActualConsumptionRows(actualRows);
@@ -2612,7 +3667,7 @@ export async function buildFoodCostAnalysisExportRows(
       "Filtered Actual Evidence Rows",
       "Filtered Actual Quantity",
       "Filtered Actual Cost",
-      "Status"
+      "Status",
     ],
     ...rows.map((row) => [
       dashboard.locationName,
@@ -2635,7 +3690,9 @@ export async function buildFoodCostAnalysisExportRows(
       dashboard.statusCounts.MISSING_COST,
       dashboard.statusCounts.AWAITING_ACTUALS,
       filters.actualQ ?? "",
-      filters.movementType && filters.movementType !== "ALL" ? filters.movementType : "",
+      filters.movementType && filters.movementType !== "ALL"
+        ? filters.movementType
+        : "",
       filteredSalesSummary.rowCount,
       filteredSalesSummary.quantitySold,
       filteredSalesSummary.netSalesAmount,
@@ -2643,8 +3700,10 @@ export async function buildFoodCostAnalysisExportRows(
       filteredSalesSummary.theoreticalFoodCostPercent ?? "",
       filteredActualSummary.rowCount,
       filteredActualSummary.quantityBaseUom,
-      filteredActualSummary.rowCount === 0 ? "" : filteredActualSummary.totalCost,
-      row.status
-    ])
+      filteredActualSummary.rowCount === 0
+        ? ""
+        : filteredActualSummary.totalCost,
+      row.status,
+    ]),
   ];
 }

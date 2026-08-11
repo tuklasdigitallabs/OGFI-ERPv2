@@ -834,12 +834,82 @@ enum InventoryMovementType {
   TRANSFER_OUT
   TRANSFER_IN
   WASTAGE_OUT
+  CONSUMPTION_OUT
   ADJUSTMENT_IN
   ADJUSTMENT_OUT
   OPENING_BALANCE_IN
   COUNT_VARIANCE_IN
   COUNT_VARIANCE_OUT
   REVERSAL
+}
+
+enum RestaurantServicePeriodMode {
+  DAILY
+  SHIFT
+}
+
+enum RestaurantConsumptionConfigurationStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum MenuRecipeAssignmentScope {
+  BRAND_DEFAULT
+  LOCATION_OVERRIDE
+}
+
+enum MenuItemLocationAvailabilityState {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum RestaurantMenuPolicyCommandType {
+  ADOPT_SHARED_RECIPE
+  SET_BRAND_DEFAULT
+  SET_LOCATION_OVERRIDE
+  SET_LOCATION_AVAILABILITY
+  END_OVERRIDE
+  REVERT
+  CANCEL_FUTURE
+  ROLLOUT_SUCCESSOR
+}
+
+enum RestaurantMenuPolicyTargetType {
+  RECIPE_BRAND_ADOPTION
+  MENU_RECIPE_ASSIGNMENT
+  MENU_ITEM_LOCATION_AVAILABILITY
+}
+
+enum ServingDeclarationSourceType {
+  MANUAL
+  POS
+  IMPORT
+}
+
+enum ServingDisposition {
+  PAID
+  COMPLIMENTARY
+}
+
+enum ServingDeclarationStatus {
+  DRAFT
+  SUBMITTED
+  RETURNED
+  DERIVATION_BLOCKED
+  READY_TO_POST
+  POSTING
+  POSTED
+  REVERSED
+  CANCELLED
+}
+
+enum ConsumptionPostingStatus {
+  READY
+  POSTING
+  POSTED
+  REVERSING
+  REVERSED
 }
 
 enum InventoryPilotConfigurationStatus {
@@ -1169,6 +1239,16 @@ model Tenant {
   menuPrices                              MenuPrice[]
   restaurantSalesImportBatches            RestaurantSalesImportBatch[]
   restaurantSalesImportLines              RestaurantSalesImportLine[]
+  restaurantConsumptionConfigurations     RestaurantConsumptionConfiguration[]
+  menuRecipeAssignments                   MenuRecipeAssignment[]
+  menuItemLocationAvailabilities          MenuItemLocationAvailability[]
+  recipeBrandAdoptions                    RecipeBrandAdoption[]
+  restaurantMenuPolicyCommands            RestaurantMenuPolicyCommand[]
+  servingDeclarations                     ServingDeclaration[]
+  servingDeclarationLines                 ServingDeclarationLine[]
+  servingIngredientSnapshots              ServingIngredientSnapshot[]
+  consumptionPostings                     ConsumptionPosting[]
+  consumptionPostingAllocations           ConsumptionPostingAllocation[]
   branchOperationalChecklists             BranchOperationalChecklist[]
   branchOperationalChecklistLines         BranchOperationalChecklistLine[]
   foodSafetyLogs                          FoodSafetyLog[]
@@ -1366,6 +1446,16 @@ model Company {
   menuPrices                              MenuPrice[]
   restaurantSalesImportBatches            RestaurantSalesImportBatch[]
   restaurantSalesImportLines              RestaurantSalesImportLine[]
+  restaurantConsumptionConfigurations     RestaurantConsumptionConfiguration[]
+  menuRecipeAssignments                   MenuRecipeAssignment[]
+  menuItemLocationAvailabilities          MenuItemLocationAvailability[]
+  recipeBrandAdoptions                    RecipeBrandAdoption[]
+  restaurantMenuPolicyCommands            RestaurantMenuPolicyCommand[]
+  servingDeclarations                     ServingDeclaration[]
+  servingDeclarationLines                 ServingDeclarationLine[]
+  servingIngredientSnapshots              ServingIngredientSnapshot[]
+  consumptionPostings                     ConsumptionPosting[]
+  consumptionPostingAllocations           ConsumptionPostingAllocation[]
   branchOperationalChecklists             BranchOperationalChecklist[]
   branchOperationalChecklistLines         BranchOperationalChecklistLine[]
   foodSafetyLogs                          FoodSafetyLog[]
@@ -1463,6 +1553,11 @@ model Brand {
   foodSafetyReadings        FoodSafetyReading[]
   operationalIncidents      OperationalIncident[]
   maintenanceTickets        MaintenanceTicket[]
+  menuRecipeAssignments     MenuRecipeAssignment[]
+  menuItemLocationAvailabilities MenuItemLocationAvailability[]
+  recipeBrandAdoptions      RecipeBrandAdoption[]
+  restaurantMenuPolicyCommands RestaurantMenuPolicyCommand[]
+  servingDeclarations       ServingDeclaration[]
   employeeAssignments       EmployeeAssignment[]
   budgets                   Budget[]
   budgetLines               BudgetLine[]
@@ -1517,6 +1612,12 @@ model Location {
   foodSafetyReadings            FoodSafetyReading[]
   operationalIncidents          OperationalIncident[]
   maintenanceTickets            MaintenanceTicket[]
+  consumptionConfigurations    RestaurantConsumptionConfiguration[]
+  menuRecipeAssignments         MenuRecipeAssignment[]
+  menuItemLocationAvailabilities MenuItemLocationAvailability[]
+  restaurantMenuPolicyCommands  RestaurantMenuPolicyCommand[]
+  servingDeclarations           ServingDeclaration[]
+  consumptionPostings           ConsumptionPosting[]
   highRiskScopeRequests         HighRiskScopeRequest[]
   breakGlassAccessGrants        BreakGlassAccessGrant[]
   paymentRequests               PaymentRequest[]
@@ -1550,6 +1651,7 @@ model Location {
 
   @@unique([companyId, code])
   @@unique([id, tenantId, companyId])
+  @@unique([id, tenantId, companyId, brandId], map: "Location_exact_brand_scope_key")
   @@index([tenantId, companyId, status])
 }
 
@@ -2995,6 +3097,8 @@ model Uom {
   recipeVersionYields           RecipeVersion[]                @relation("RecipeVersionYieldUom")
   recipeVersionServings         RecipeVersion[]                @relation("RecipeVersionServingUom")
   recipeLines                   RecipeLine[]
+  servingIngredientSnapshots    ServingIngredientSnapshot[]
+  consumptionPostingAllocations ConsumptionPostingAllocation[]
 
   @@unique([companyId, uomCode])
   @@unique([id, tenantId, companyId], map: "Uom_exact_scope_key")
@@ -3044,6 +3148,8 @@ model Item {
   inventoryPilotMemberships     InventoryPilotItemMembership[]
   inventoryPilotDraftMemberships InventoryPilotDraftItemMembership[]
   openingInventoryCutoverLines  OpeningInventoryCutoverLine[]
+  servingIngredientSnapshots    ServingIngredientSnapshot[]
+  consumptionPostingAllocations ConsumptionPostingAllocation[]
 
   @@unique([companyId, itemCode])
   @@unique([id, tenantId, companyId], map: "Item_exact_scope_key")
@@ -3137,8 +3243,10 @@ model Recipe {
   company            Company         @relation(fields: [companyId], references: [id])
   brand              Brand?          @relation(fields: [brandId], references: [id])
   versions           RecipeVersion[]
+  brandAdoptions     RecipeBrandAdoption[]
 
   @@unique([companyId, recipeCode])
+  @@unique([id, tenantId, companyId], map: "Recipe_exact_scope_key")
   @@index([tenantId, companyId, brandId, status])
   @@index([currentVersionId])
   @@index([publishedVersionId])
@@ -3176,8 +3284,12 @@ model RecipeVersion {
   lines                 RecipeLine[] @relation("RecipeVersionLines")
   usedAsSubRecipeLines  RecipeLine[] @relation("RecipeLineSubRecipeVersion")
   menuItems             MenuItem[]
+  menuRecipeAssignments MenuRecipeAssignment[]
+  servingLines          ServingDeclarationLine[]
+  ingredientSnapshots   ServingIngredientSnapshot[]
 
   @@unique([recipeId, versionNo])
+  @@unique([id, tenantId, companyId], map: "RecipeVersion_exact_scope_key")
   @@index([tenantId, companyId, status])
   @@index([supersedesVersionId])
   @@index([publishedByUserId])
@@ -3228,8 +3340,13 @@ model MenuItem {
   currentRecipeVersion   RecipeVersion?              @relation(fields: [currentRecipeVersionId], references: [id])
   prices                 MenuPrice[]
   salesImportLines       RestaurantSalesImportLine[]
+  recipeAssignments      MenuRecipeAssignment[]
+  locationAvailabilities MenuItemLocationAvailability[]
+  servingLines           ServingDeclarationLine[]
 
   @@unique([companyId, menuItemCode])
+  @@unique([id, tenantId, companyId], map: "MenuItem_exact_scope_key")
+  @@unique([id, tenantId, companyId, brandId], map: "MenuItem_exact_brand_scope_key")
   @@index([tenantId, companyId, brandId, status])
 }
 
@@ -3255,6 +3372,305 @@ model MenuPrice {
   @@index([locationId])
   @@index([decisionId])
   @@index([status])
+}
+
+model RestaurantConsumptionConfiguration {
+  id                              String                                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                        String                                   @db.Uuid
+  companyId                       String                                   @db.Uuid
+  locationId                      String                                   @db.Uuid
+  defaultIssueInventoryLocationId String                                   @db.Uuid
+  version                         Int
+  status                          RestaurantConsumptionConfigurationStatus @default(DRAFT)
+  enabled                         Boolean                                  @default(false)
+  servicePeriodMode               RestaurantServicePeriodMode
+  timezone                        String                                   @default("Asia/Manila")
+  servicePeriods                  Json
+  sentinelRules                   Json?
+  effectiveFrom                   DateTime
+  effectiveTo                     DateTime?
+  reason                          String
+  createdByUserId                 String                                   @db.Uuid
+  activatedByUserId               String?                                  @db.Uuid
+  createdAt                       DateTime                                 @default(now())
+  updatedAt                       DateTime                                 @updatedAt
+  tenant                          Tenant                                   @relation(fields: [tenantId], references: [id])
+  company                         Company                                  @relation(fields: [companyId], references: [id])
+  location                        Location                                 @relation(fields: [locationId], references: [id])
+  defaultIssueInventoryLocation   InventoryLocation                        @relation("RestaurantConsumptionDefaultIssueLocation", fields: [defaultIssueInventoryLocationId], references: [id])
+  declarations                    ServingDeclaration[]
+
+  @@unique([companyId, locationId, version])
+  @@unique([id, tenantId, companyId, locationId], map: "RestaurantConsumptionConfiguration_exact_scope_key")
+  @@index([tenantId, companyId, locationId, status, effectiveFrom])
+}
+
+model MenuRecipeAssignment {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                    @db.Uuid
+  companyId       String                    @db.Uuid
+  brandId         String                    @db.Uuid
+  scopeType       MenuRecipeAssignmentScope
+  locationId      String?                   @db.Uuid
+  menuItemId      String                    @db.Uuid
+  recipeVersionId String                    @db.Uuid
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  status          RecordStatus              @default(ACTIVE)
+  reason          String
+  createdByUserId String                    @db.Uuid
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id])
+  company         Company                   @relation(fields: [companyId], references: [id])
+  brand           Brand                     @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+  location        Location?                 @relation(fields: [locationId, tenantId, companyId, brandId], references: [id, tenantId, companyId, brandId], onDelete: Restrict, onUpdate: Restrict)
+  menuItem        MenuItem                  @relation(fields: [menuItemId, tenantId, companyId, brandId], references: [id, tenantId, companyId, brandId], onDelete: Restrict, onUpdate: Restrict)
+  recipeVersion   RecipeVersion             @relation(fields: [recipeVersionId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+  servingLines    ServingDeclarationLine[]
+
+  @@unique([id, tenantId, companyId], map: "MenuRecipeAssignment_exact_company_scope_key")
+  @@unique([id, tenantId, companyId, locationId], map: "MenuRecipeAssignment_exact_scope_key")
+  @@index([tenantId, companyId, brandId, menuItemId, scopeType, status, effectiveFrom], map: "MenuRecipeAssignment_brand_default_lookup_idx")
+  @@index([tenantId, companyId, locationId, menuItemId, scopeType, status, effectiveFrom], map: "MenuRecipeAssignment_location_override_lookup_idx")
+}
+
+model MenuItemLocationAvailability {
+  id              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                            @db.Uuid
+  companyId       String                            @db.Uuid
+  brandId         String                            @db.Uuid
+  locationId      String                            @db.Uuid
+  menuItemId      String                            @db.Uuid
+  state           MenuItemLocationAvailabilityState
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  status          RecordStatus                      @default(ACTIVE)
+  reason          String
+  createdByUserId String                            @db.Uuid
+  createdAt       DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
+  tenant          Tenant                            @relation(fields: [tenantId], references: [id])
+  company         Company                           @relation(fields: [companyId], references: [id])
+  brand           Brand                             @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+  location        Location                          @relation(fields: [locationId, tenantId, companyId, brandId], references: [id, tenantId, companyId, brandId], onDelete: Restrict, onUpdate: Restrict)
+  menuItem        MenuItem                          @relation(fields: [menuItemId, tenantId, companyId, brandId], references: [id, tenantId, companyId, brandId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, tenantId, companyId], map: "MenuItemLocationAvailability_exact_scope_key")
+  @@index([tenantId, companyId, locationId, menuItemId, status, effectiveFrom], map: "MenuItemLocationAvailability_resolution_idx")
+}
+
+model RecipeBrandAdoption {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String       @db.Uuid
+  companyId       String       @db.Uuid
+  brandId         String       @db.Uuid
+  recipeId        String       @db.Uuid
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  status          RecordStatus @default(ACTIVE)
+  reason          String
+  createdByUserId String       @db.Uuid
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  company         Company      @relation(fields: [companyId], references: [id])
+  brand           Brand        @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+  recipe          Recipe       @relation(fields: [recipeId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, tenantId, companyId], map: "RecipeBrandAdoption_exact_scope_key")
+  @@index([tenantId, companyId, brandId, recipeId, status, effectiveFrom], map: "RecipeBrandAdoption_resolution_idx")
+}
+
+model RestaurantMenuPolicyCommand {
+  id                  String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                          @db.Uuid
+  companyId           String                          @db.Uuid
+  brandId             String                          @db.Uuid
+  locationId          String?                         @db.Uuid
+  commandType         RestaurantMenuPolicyCommandType
+  idempotencyKey      String
+  requestHash         String
+  targetType          RestaurantMenuPolicyTargetType?
+  targetId            String?                         @db.Uuid
+  previewSnapshotHash String?
+  outcome             Json
+  actorUserId         String                          @db.Uuid
+  createdAt           DateTime                        @default(now())
+  tenant              Tenant                          @relation(fields: [tenantId], references: [id])
+  company             Company                         @relation(fields: [companyId], references: [id])
+  brand               Brand                           @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, onUpdate: Restrict)
+  location            Location?                       @relation(fields: [locationId, tenantId, companyId, brandId], references: [id, tenantId, companyId, brandId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, brandId, idempotencyKey], map: "RestaurantMenuPolicyCommand_scoped_idempotency_key")
+  @@index([tenantId, companyId, brandId, commandType, createdAt], map: "RestaurantMenuPolicyCommand_audit_idx")
+  @@index([tenantId, companyId, targetType, targetId], map: "RestaurantMenuPolicyCommand_target_idx")
+}
+
+model ServingDeclaration {
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                       @db.Uuid
+  companyId            String                       @db.Uuid
+  brandId              String?                      @db.Uuid
+  locationId           String                       @db.Uuid
+  configurationId      String                       @db.Uuid
+  businessDate         DateTime                     @db.Date
+  servicePeriodCode    String
+  coverageStartAt      DateTime
+  coverageEndAt        DateTime
+  sourceType           ServingDeclarationSourceType @default(MANUAL)
+  sourceReference      String?
+  revisionNo           Int                          @default(1)
+  supersedesDeclarationId String?                    @db.Uuid
+  status               ServingDeclarationStatus     @default(DRAFT)
+  version              Int                          @default(1)
+  submittedByUserId    String?                      @db.Uuid
+  submittedAt          DateTime?
+  verifiedByUserId     String?                      @db.Uuid
+  verifiedAt           DateTime?
+  returnedByUserId     String?                      @db.Uuid
+  returnedAt           DateTime?
+  returnReason         String?
+  derivationSnapshot   Json?
+  derivationSnapshotHash String?
+  readinessBlockers    Json?
+  idempotencyKey       String
+  requestHash          String
+  createdByUserId      String                       @db.Uuid
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  tenant               Tenant                       @relation(fields: [tenantId], references: [id])
+  company              Company                      @relation(fields: [companyId], references: [id])
+  brand                Brand?                       @relation(fields: [brandId], references: [id])
+  location             Location                     @relation(fields: [locationId], references: [id])
+  configuration        RestaurantConsumptionConfiguration @relation(fields: [configurationId], references: [id])
+  supersedesDeclaration ServingDeclaration?          @relation("ServingDeclarationRevision", fields: [supersedesDeclarationId], references: [id])
+  successorDeclarations ServingDeclaration[]         @relation("ServingDeclarationRevision")
+  lines                ServingDeclarationLine[]
+  ingredientSnapshots  ServingIngredientSnapshot[]
+  posting              ConsumptionPosting?
+
+  @@unique([tenantId, companyId, idempotencyKey])
+  @@unique([tenantId, companyId, locationId, businessDate, servicePeriodCode, sourceType, revisionNo], map: "ServingDeclaration_coverage_revision_key")
+  @@unique([id, tenantId, companyId], map: "ServingDeclaration_exact_company_scope_key")
+  @@unique([id, tenantId, companyId, locationId], map: "ServingDeclaration_exact_scope_key")
+  @@index([tenantId, companyId, locationId, status, businessDate])
+}
+
+model ServingDeclarationLine {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String             @db.Uuid
+  companyId             String             @db.Uuid
+  declarationId         String             @db.Uuid
+  lineNo                Int
+  menuItemId            String             @db.Uuid
+  disposition           ServingDisposition
+  quantityServed        Decimal            @db.Decimal(18, 6)
+  complimentaryReason   String?
+  complimentaryReference String?
+  recipeAssignmentId    String?            @db.Uuid
+  recipeVersionId       String?            @db.Uuid
+  menuItemCodeSnapshot  String
+  menuItemNameSnapshot  String
+  createdAt             DateTime           @default(now())
+  declaration           ServingDeclaration @relation(fields: [declarationId], references: [id])
+  tenant                Tenant             @relation(fields: [tenantId], references: [id])
+  company               Company            @relation(fields: [companyId], references: [id])
+  menuItem              MenuItem           @relation(fields: [menuItemId], references: [id])
+  recipeAssignment      MenuRecipeAssignment? @relation(fields: [recipeAssignmentId, tenantId, companyId], references: [id, tenantId, companyId])
+  recipeVersion         RecipeVersion?      @relation(fields: [recipeVersionId], references: [id])
+  ingredientSnapshots   ServingIngredientSnapshot[]
+
+  @@unique([declarationId, lineNo])
+  @@unique([id, tenantId, companyId], map: "ServingDeclarationLine_exact_scope_key")
+  @@index([tenantId, companyId, menuItemId])
+}
+
+model ServingIngredientSnapshot {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                 @db.Uuid
+  companyId             String                 @db.Uuid
+  declarationId         String                 @db.Uuid
+  declarationLineId     String                 @db.Uuid
+  recipeVersionId       String                 @db.Uuid
+  recipeLinePath        String
+  itemId                String                 @db.Uuid
+  baseUomId             String                 @db.Uuid
+  rawQuantityBaseUom    Decimal                @db.Decimal(24, 12)
+  roundedQuantityBaseUom Decimal               @db.Decimal(18, 6)
+  conversionEvidence    Json
+  createdAt             DateTime               @default(now())
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  company               Company                @relation(fields: [companyId], references: [id])
+  declaration           ServingDeclaration     @relation(fields: [declarationId], references: [id])
+  declarationLine       ServingDeclarationLine @relation(fields: [declarationLineId], references: [id])
+  recipeVersion         RecipeVersion          @relation(fields: [recipeVersionId], references: [id])
+  item                  Item                   @relation(fields: [itemId], references: [id])
+  baseUom               Uom                    @relation(fields: [baseUomId], references: [id])
+
+  @@unique([declarationLineId, recipeLinePath, itemId])
+  @@index([tenantId, companyId, declarationId, itemId])
+}
+
+model ConsumptionPosting {
+  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                   @db.Uuid
+  companyId           String                   @db.Uuid
+  locationId          String                   @db.Uuid
+  declarationId       String                   @unique @db.Uuid
+  inventoryLocationId String                   @db.Uuid
+  status              ConsumptionPostingStatus @default(READY)
+  snapshotHash        String
+  idempotencyKey      String
+  requestHash         String
+  postedByUserId      String?                  @db.Uuid
+  postedAt            DateTime?
+  reversedByUserId    String?                  @db.Uuid
+  reversedAt          DateTime?
+  reversalReason      String?
+  reversalIdempotencyKey String?
+  reversalRequestHash String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id])
+  company             Company                  @relation(fields: [companyId], references: [id])
+  location            Location                 @relation(fields: [locationId, tenantId, companyId], references: [id, tenantId, companyId])
+  declaration         ServingDeclaration       @relation(fields: [declarationId, tenantId, companyId, locationId], references: [id, tenantId, companyId, locationId])
+  inventoryLocation   InventoryLocation        @relation("ConsumptionPostingIssueLocation", fields: [inventoryLocationId, tenantId, companyId, locationId], references: [id, tenantId, companyId, locationId])
+  allocations         ConsumptionPostingAllocation[]
+
+  @@unique([tenantId, companyId, idempotencyKey])
+  @@unique([tenantId, companyId, reversalIdempotencyKey])
+  @@unique([declarationId, tenantId, companyId, locationId], map: "ConsumptionPosting_declaration_exact_scope_key")
+  @@unique([id, tenantId, companyId], map: "ConsumptionPosting_exact_scope_key")
+  @@index([tenantId, companyId, locationId, inventoryLocationId, status, createdAt])
+}
+
+model ConsumptionPostingAllocation {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String              @db.Uuid
+  companyId          String              @db.Uuid
+  postingId          String              @db.Uuid
+  itemId             String              @db.Uuid
+  baseUomId          String              @db.Uuid
+  allocationNo       Int
+  quantityBaseUom    Decimal             @db.Decimal(18, 6)
+  lotKey             String
+  lotNumber          String?
+  expiryDate         DateTime?
+  postedMovementId   String?             @unique @db.Uuid
+  reversalMovementId String?             @unique @db.Uuid
+  createdAt          DateTime            @default(now())
+  posting            ConsumptionPosting  @relation(fields: [postingId], references: [id])
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  company            Company             @relation(fields: [companyId], references: [id])
+  item               Item                @relation(fields: [itemId], references: [id])
+  baseUom            Uom                 @relation(fields: [baseUomId], references: [id])
+  postedMovement     InventoryMovement?  @relation("ConsumptionAllocationPostedMovement", fields: [postedMovementId], references: [id])
+  reversalMovement   InventoryMovement?  @relation("ConsumptionAllocationReversalMovement", fields: [reversalMovementId], references: [id])
+
+  @@unique([postingId, allocationNo])
+  @@index([tenantId, companyId, postingId, itemId])
 }
 
 model RecipeVersionTransition {
@@ -3949,6 +4365,8 @@ model InventoryLocation {
   inventoryPilotEndpointMemberships InventoryPilotEndpointMembership[]
   inventoryPilotDraftEndpointMemberships InventoryPilotDraftEndpointMembership[]
   openingInventoryCutovers          OpeningInventoryCutover[]
+  restaurantConsumptionDefaultConfigurations RestaurantConsumptionConfiguration[] @relation("RestaurantConsumptionDefaultIssueLocation")
+  consumptionPostings              ConsumptionPosting[] @relation("ConsumptionPostingIssueLocation")
 
   @@unique([companyId, code])
   @@unique([id, tenantId, companyId, locationId], map: "InventoryLocation_exact_parent_scope_key")
@@ -5100,6 +5518,8 @@ model InventoryMovement {
   postedGoodsReceiptLine             GoodsReceiptLine?             @relation("GoodsReceiptLinePostedMovement")
   postedInventoryTransferReceiptLine InventoryTransferReceiptLine? @relation("InventoryTransferReceiptLinePostedMovement")
   postedOpeningInventoryCutoverLine  OpeningInventoryCutoverLine?  @relation("OpeningInventoryCutoverLinePostedMovement")
+  postedConsumptionAllocation       ConsumptionPostingAllocation? @relation("ConsumptionAllocationPostedMovement")
+  reversedConsumptionAllocation     ConsumptionPostingAllocation? @relation("ConsumptionAllocationReversalMovement")
 
   @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey], map: "InventoryMovement_tenantId_companyId_sourceDocumentType_sourceD")
   @@index([tenantId, companyId, inventoryLocationId, itemId, occurredAt], map: "InventoryMovement_tenantId_companyId_inventoryLocationId_itemId")

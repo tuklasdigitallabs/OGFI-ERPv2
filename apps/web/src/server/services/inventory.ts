@@ -11,6 +11,7 @@ export type InventoryMovementType =
   | "TRANSFER_OUT"
   | "TRANSFER_IN"
   | "WASTAGE_OUT"
+  | "CONSUMPTION_OUT"
   | "ADJUSTMENT_IN"
   | "ADJUSTMENT_OUT"
   | "OPENING_BALANCE_IN"
@@ -158,6 +159,7 @@ const inventoryMovementTypes = [
   "TRANSFER_OUT",
   "TRANSFER_IN",
   "WASTAGE_OUT",
+  "CONSUMPTION_OUT",
   "ADJUSTMENT_IN",
   "ADJUSTMENT_OUT",
   "OPENING_BALANCE_IN",

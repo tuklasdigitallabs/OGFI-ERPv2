@@ -1,7 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { ScanSearch } from "lucide-react";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
+import { SingleOpenSummaryList } from "@/components/SingleOpenSummaryList";
 import {
   runApprovalReminderScan
 } from "@/server/services/approvals";
@@ -252,6 +254,16 @@ export default async function NotificationsPage({
     canUseFoodSafety(session.permissionCodes) ||
     canUseIncidents(session.permissionCodes) ||
     canUseMaintenance(session.permissionCodes);
+  const availableReminderScanCount = [
+    canRunProjectReminderScan,
+    canRunApprovalReminderScan,
+    canRunRestaurantOpsReminderScan
+  ].filter(Boolean).length;
+  const availableReminderScanResultCount = [
+    canRunProjectReminderScan && Boolean(scanSummary),
+    canRunApprovalReminderScan && Boolean(approvalScanSummary),
+    canRunRestaurantOpsReminderScan && Boolean(restaurantOpsScanSummary)
+  ].filter(Boolean).length;
 
   return (
     <AppShell
@@ -276,80 +288,6 @@ export default async function NotificationsPage({
           <p className="mt-2 text-3xl font-bold text-amber-700">{actionCount}</p>
         </Panel>
       </div>
-      {canRunProjectReminderScan ? (
-        <Panel className="mb-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-slate-900">Project deadline reminders</p>
-              <p className="text-sm text-slate-500">
-                Manual in-app reminder scan for configured project due dates
-              </p>
-            </div>
-            <form action={scanDeadlineRemindersAction}>
-              <input name="status" type="hidden" value={status} />
-              <input name="group" type="hidden" value={group} />
-              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                Scan Reminders
-              </button>
-            </form>
-          </div>
-          {scanSummary ? (
-            <p className="mt-3 text-sm font-semibold text-blue-700">{scanSummary}</p>
-          ) : null}
-        </Panel>
-      ) : null}
-      {canRunApprovalReminderScan ? (
-        <Panel className="mb-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-slate-900">Approval reminders</p>
-              <p className="text-sm text-slate-500">
-                Manual in-app scan for your due and overdue approval queue
-              </p>
-            </div>
-            <form action={scanApprovalRemindersAction}>
-              <input name="status" type="hidden" value={status} />
-              <input name="group" type="hidden" value={group} />
-              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                Scan Approvals
-              </button>
-            </form>
-          </div>
-          {approvalScanSummary ? (
-            <p className="mt-3 text-sm font-semibold text-blue-700">
-              {approvalScanSummary}
-            </p>
-          ) : null}
-        </Panel>
-      ) : null}
-      {canRunRestaurantOpsReminderScan ? (
-        <Panel className="mb-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-slate-900">
-                Restaurant operations exceptions
-              </p>
-              <p className="text-sm text-slate-500">
-                Manual scan for checklist review, food-safety review, incident,
-                and maintenance follow-ups in your authorized scope
-              </p>
-            </div>
-            <form action={scanRestaurantOpsRemindersAction}>
-              <input name="status" type="hidden" value={status} />
-              <input name="group" type="hidden" value={group} />
-              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                Scan Restaurant Ops
-              </button>
-            </form>
-          </div>
-          {restaurantOpsScanSummary ? (
-            <p className="mt-3 text-sm font-semibold text-blue-700">
-              {restaurantOpsScanSummary}
-            </p>
-          ) : null}
-        </Panel>
-      ) : null}
-
       <section className="rounded-lg border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -494,6 +432,130 @@ export default async function NotificationsPage({
           </div>
         )}
       </section>
+
+      {availableReminderScanCount > 0 ? (
+        <div className="mt-5">
+          <SingleOpenSummaryList
+            ariaLabel="Notification maintenance utilities"
+            idPrefix="notification-maintenance"
+            sections={[
+              {
+                id: "manual-reminder-scans",
+                title: "Manual reminder scans",
+                supportingText:
+                  "Permission-gated utilities for generating due and exception reminders in your authorized scope.",
+                accent: "violet",
+                icon: <ScanSearch aria-hidden="true" className="h-5 w-5" />,
+                snapshots: [
+                  {
+                    label: "Available families",
+                    value: String(availableReminderScanCount),
+                    tone: "info"
+                  },
+                  {
+                    label: "Latest results",
+                    value:
+                      availableReminderScanResultCount > 0
+                        ? `${availableReminderScanResultCount} available`
+                        : "Not run",
+                    tone:
+                      availableReminderScanResultCount > 0 ? "success" : "neutral"
+                  }
+                ],
+                body: (
+                  <div className="grid gap-3 p-4 lg:grid-cols-3 lg:p-5">
+                    {canRunProjectReminderScan ? (
+                      <div className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+                        <div>
+                          <p className="text-sm font-bold text-slate-950">
+                            Project deadline reminders
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                            Scan configured project due dates for in-app reminders.
+                          </p>
+                          {scanSummary ? (
+                            <p className="mt-3 text-sm font-semibold text-blue-700">
+                              {scanSummary}
+                            </p>
+                          ) : (
+                            <p className="mt-3 text-xs font-semibold text-slate-500">
+                              No result is available in this view yet.
+                            </p>
+                          )}
+                        </div>
+                        <form action={scanDeadlineRemindersAction}>
+                          <input name="status" type="hidden" value={status} />
+                          <input name="group" type="hidden" value={group} />
+                          <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                            Scan Reminders
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
+                    {canRunApprovalReminderScan ? (
+                      <div className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+                        <div>
+                          <p className="text-sm font-bold text-slate-950">
+                            Approval reminders
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                            Scan your due and overdue approval queue.
+                          </p>
+                          {approvalScanSummary ? (
+                            <p className="mt-3 text-sm font-semibold text-blue-700">
+                              {approvalScanSummary}
+                            </p>
+                          ) : (
+                            <p className="mt-3 text-xs font-semibold text-slate-500">
+                              No result is available in this view yet.
+                            </p>
+                          )}
+                        </div>
+                        <form action={scanApprovalRemindersAction}>
+                          <input name="status" type="hidden" value={status} />
+                          <input name="group" type="hidden" value={group} />
+                          <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                            Scan Approvals
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
+                    {canRunRestaurantOpsReminderScan ? (
+                      <div className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+                        <div>
+                          <p className="text-sm font-bold text-slate-950">
+                            Restaurant operations exceptions
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                            Scan checklist, food-safety, incident, and maintenance
+                            follow-ups in your authorized scope.
+                          </p>
+                          {restaurantOpsScanSummary ? (
+                            <p className="mt-3 text-sm font-semibold text-blue-700">
+                              {restaurantOpsScanSummary}
+                            </p>
+                          ) : (
+                            <p className="mt-3 text-xs font-semibold text-slate-500">
+                              No result is available in this view yet.
+                            </p>
+                          )}
+                        </div>
+                        <form action={scanRestaurantOpsRemindersAction}>
+                          <input name="status" type="hidden" value={status} />
+                          <input name="group" type="hidden" value={group} />
+                          <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                            Scan Restaurant Ops
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              }
+            ]}
+          />
+        </div>
+      ) : null}
     </AppShell>
   );
 }

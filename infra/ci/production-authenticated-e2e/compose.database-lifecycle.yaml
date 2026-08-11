@@ -81,6 +81,7 @@ services:
       NODE_ENV: production
       APP_ENV: ${APP_ENV:?Set the lane application environment}
       AUTH_MODE: local
+      AUTH_LOGIN_TENANT_CODE: ${AUTH_LOGIN_TENANT_CODE:-ogfi}
       AUTH_HARDENED_UAT_RUNTIME_ENABLED: ${AUTH_HARDENED_UAT_RUNTIME_ENABLED:-false}
       AUTHORIZATION_TEST_RUN_ID: ${AUTHORIZATION_TEST_RUN_ID:?Set the run ID}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set the per-run encryption key}

@@ -241,8 +241,50 @@ ADJUSTMENT_IN
 ADJUSTMENT_OUT
 COUNT_VARIANCE_IN
 COUNT_VARIANCE_OUT
+CONSUMPTION_OUT
 REVERSAL
 ```
+
+`CONSUMPTION_OUT` is reserved for the `DEC-0279` Restaurant Ops consumption
+posting aggregate. A source-specific PostgreSQL guard requires an exact
+`ConsumptionPosting` allocation, negative quantity, matching company/item/UOM/
+inventory-location scope, and a posting state of `POSTING`. Reversals require the
+same allocation and exact original movement while the aggregate is `REVERSING`.
+It must not be used for Wastage, generic adjustments, staff meals, or observed
+physical count variance.
+
+### 7.3.1 Restaurant serving declarations and book consumption
+
+| Table | Key fields and control purpose |
+|---|---|
+| `RestaurantConsumptionConfiguration` | Versioned branch issue location, timezone, mutually exclusive daily/shift schedule, sentinel-count policy, effective range, explicit draft/active state, reason and actors. |
+| `MenuRecipeAssignment` | Current local exact-branch/menu-item/published-recipe assignment history. Under `DEC-0280`, this shape is not authoritative for activation and must migrate additively without rewriting prior serving snapshots. |
+| `ServingDeclaration` | Source-neutral branch/business-date/service-period revision with immutable source coverage, lifecycle actors, canonical request hash, recipe snapshot hash and readiness blockers. |
+| `ServingDeclarationLine` | Positive paid or complimentary servings, menu identity snapshot, required complimentary reason/reference, and pinned assignment/recipe IDs after verification. |
+| `ServingIngredientSnapshot` | Append-only recipe-line derivation in item base UOM with raw precision, rounded display quantity, conversion evidence and recipe path. |
+| `ConsumptionPosting` | One posting per declaration with immutable snapshot/request hashes, explicit `READY → POSTING → POSTED → REVERSING → REVERSED` lifecycle and post/reversal actors. |
+| `ConsumptionPostingAllocation` | Deterministic FEFO allocation by item/UOM/lot/expiry with one posted movement and at most one linked reversal movement. |
+
+Final declarations, derivation snapshots, postings and allocations are protected
+against destructive update/delete/truncate. Inventory remains ledger-derived;
+fact verification creates zero movements, and the separate post command creates
+the complete movement set atomically or none.
+
+Confirmed pending `DEC-0280` schema contract (physical names remain migration-
+design work):
+
+| Logical record | Required keys and constraints |
+|---|---|
+| Brand-default recipe adoption | tenant, company, brand, active menu item, published recipe version, explicit shared-recipe brand adoption where applicable, effective range, predecessor/successor, actor/reason, status, version/idempotency; no overlapping effective default |
+| Exact-location recipe exception | adoption, exact active same-brand `BRANCH` location, `UNAVAILABLE` or `LOCATION_OVERRIDE`, override published recipe where applicable, effective range, actor/reason, predecessor/successor; no overlapping exception for the same location/menu item |
+| Recipe successor rollout | existing adoption/current version, candidate published successor, future/effective time, actor/reason, readiness snapshot, idempotency/concurrency identity, outcome; prohibited for an unadopted menu item |
+| Serving recipe-resolution snapshot | declaration line/revision, resolution time, `UNAVAILABLE | LOCATION_OVERRIDE | BRAND_DEFAULT | BLOCKED`, adoption/exception identity, resolved recipe/version and exact scope; immutable after verification |
+
+Database constraints and the server resolver must enforce
+`UNAVAILABLE > LOCATION_OVERRIDE > BRAND_DEFAULT > BLOCKED`, reject cross-brand,
+unpublished, implicit shared-recipe, latest-version, and arbitrary-first fallbacks,
+and separate cost readiness from quantity readiness. Publication, adoption,
+exception, and rollout transactions create no inventory movement.
 
 ### 7.4 Transfers
 

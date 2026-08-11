@@ -54,7 +54,7 @@ Local application sessions are server-controlled. Privilege changes revoke affec
 
 ## What Happens Next
 
-The affected user signs in again with organization code, email, password, and runtime MFA when required. Their current role, scope, and unexpired break-glass access are resolved again by the server.
+The affected user signs in again with email, password, and runtime MFA when required. The deployment selects the organization automatically, and the server resolves the user's current role, scope, and unexpired break-glass access again.
 
 If an external provider is configured and a follow-up record exists, use `Admin` → `Session Invalidation`. Select `Mark Provider Complete` only after the external action is finished and its provider name and reference are available. A separate administrator must confirm it.
 

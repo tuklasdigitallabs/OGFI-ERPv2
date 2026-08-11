@@ -420,6 +420,7 @@ export const approvalGraphToolingDdlInventory = Object.freeze([
 export const approvalGraphToolingProbeInventory = Object.freeze([
   "infra/hostinger/postgres/verify-role-contract.sql",
   "scripts/db-append-only-contract.mjs",
+  "scripts/local-uat-baseline.mjs",
   "scripts/release-data-invariants.mjs",
   "scripts/release-data-snapshot.mjs",
   "scripts/release-predecessor-baseline.mjs",

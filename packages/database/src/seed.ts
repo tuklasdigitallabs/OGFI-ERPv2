@@ -132,6 +132,16 @@ const ids = {
     "00000000-0000-4000-8000-000000000184",
   openingInventoryRequestReversePermissionId:
     "00000000-0000-4000-8000-000000000185",
+  consumptionViewPermissionId: "00000000-0000-4000-8000-000000000186",
+  consumptionCreatePermissionId: "00000000-0000-4000-8000-000000000187",
+  consumptionVerifyPermissionId: "00000000-0000-4000-8000-000000000188",
+  consumptionPostPermissionId: "00000000-0000-4000-8000-000000000189",
+  consumptionReversePermissionId: "00000000-0000-4000-8000-000000000190",
+  consumptionConfigurePermissionId: "00000000-0000-4000-8000-000000000191",
+  menuRecipeAdoptPermissionId: "00000000-0000-4000-8000-000000000192",
+  menuRecipeBranchExceptionPermissionId:
+    "00000000-0000-4000-8000-000000000193",
+  menuRecipeRolloutPermissionId: "00000000-0000-4000-8000-000000000194",
   receivingReversePermissionId: "00000000-0000-4000-8000-000000000083",
   stockCountVarianceApprovalRuleId: "00000000-0000-4000-8000-000000000084",
   stockCountVarianceApprovalRuleStepId: "00000000-0000-4000-8000-000000000085",
@@ -4250,6 +4260,18 @@ async function seedOperationalReasonCodes() {
       notes: "Inventory decrease tied to approved supplier return evidence.",
     },
     {
+      workflow: "RESTAURANT_CONSUMPTION",
+      code: "MENU_SERVING",
+      label: "Verified menu serving consumption",
+      appliesTo: "PAID,COMPLIMENTARY",
+      wastageTypes: [],
+      inventoryClasses: ["FOOD", "PACKAGING"],
+      requiresEvidence: false,
+      sortOrder: 10,
+      notes:
+        "Expected/book ingredient consumption derived from an independently verified serving declaration and pinned recipe snapshot.",
+    },
+    {
       workflow: "WASTAGE",
       code: "SPOILAGE_EXPIRY",
       label: "Spoilage or expired item",
@@ -4302,7 +4324,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
       requiresEvidence: true,
       sortOrder: 50,
-      notes: "Rejected at receiving because of quality, temperature, damage, or specification failure.",
+      notes:
+        "Rejected at receiving because of quality, temperature, damage, or specification failure.",
     },
     {
       workflow: "WASTAGE",
@@ -4313,7 +4336,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD"],
       requiresEvidence: true,
       sortOrder: 60,
-      notes: "Temperature-control failure requiring retained evidence and management review.",
+      notes:
+        "Temperature-control failure requiring retained evidence and management review.",
     },
     {
       workflow: "WASTAGE",
@@ -4324,7 +4348,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD"],
       requiresEvidence: true,
       sortOrder: 70,
-      notes: "Food disposed because it may be unsafe for service or consumption.",
+      notes:
+        "Food disposed because it may be unsafe for service or consumption.",
     },
     {
       workflow: "WASTAGE",
@@ -4346,7 +4371,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD", "PACKAGING"],
       requiresEvidence: true,
       sortOrder: 90,
-      notes: "Documented service-recovery disposal; does not replace manager approval where policy requires it.",
+      notes:
+        "Documented service-recovery disposal; does not replace manager approval where policy requires it.",
     },
     {
       workflow: "WASTAGE",
@@ -4357,7 +4383,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD"],
       requiresEvidence: false,
       sortOrder: 100,
-      notes: "Controlled tasting, quality verification, or authorized consumption.",
+      notes:
+        "Controlled tasting, quality verification, or authorized consumption.",
     },
     {
       workflow: "WASTAGE",
@@ -4368,7 +4395,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
       requiresEvidence: true,
       sortOrder: 110,
-      notes: "Accidental operational loss requiring a documented incident reference.",
+      notes:
+        "Accidental operational loss requiring a documented incident reference.",
     },
     {
       workflow: "WASTAGE",
@@ -4379,7 +4407,8 @@ async function seedOperationalReasonCodes() {
       inventoryClasses: ["FOOD", "PACKAGING", "SUPPLIES"],
       requiresEvidence: true,
       sortOrder: 120,
-      notes: "Exception category requiring evidence and the applicable approval route.",
+      notes:
+        "Exception category requiring evidence and the applicable approval route.",
     },
   ];
 
@@ -5466,6 +5495,30 @@ async function seedRestaurantDemoCatalog() {
       });
     }
 
+    if (item.baseUom === "SACK" && item.issueUom === "KG") {
+      const sackWeightKg = item.code === "SUSHI-RICE-20KG" ? 20 : 25;
+      await prisma.itemUomConversion.upsert({
+        where: {
+          itemId_fromUomId_toUomId: {
+            itemId: record.id,
+            fromUomId: uomByCode.get("KG")!,
+            toUomId: uomByCode.get("SACK")!,
+          },
+        },
+        create: {
+          itemId: record.id,
+          fromUomId: uomByCode.get("KG")!,
+          toUomId: uomByCode.get("SACK")!,
+          conversionFactor: 1 / sackWeightKg,
+          roundingRule: "none",
+        },
+        update: {
+          conversionFactor: 1 / sackWeightKg,
+          roundingRule: "none",
+        },
+      });
+    }
+
     const link = await prisma.supplierItemLink.upsert({
       where: {
         supplierId_itemId_purchaseUomId: {
@@ -5811,6 +5864,14 @@ async function seedPhase2RecipeDemoData() {
       },
     });
 
+    await prisma.recipe.update({
+      where: { id: recipeRecord.id },
+      data: {
+        currentVersionId: versionRecord.id,
+        publishedVersionId: versionRecord.id,
+      },
+    });
+
     await prisma.recipeLine.deleteMany({
       where: { recipeVersionId: versionRecord.id },
     });
@@ -5854,6 +5915,34 @@ async function seedPhase2RecipeDemoData() {
         status: "ACTIVE",
       },
     });
+
+    const existingBrandDefault = await prisma.menuRecipeAssignment.findFirst({
+      where: {
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        brandId: ids.brandId,
+        scopeType: "BRAND_DEFAULT",
+        menuItemId: menuItem.id,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
+    if (!existingBrandDefault) {
+      await prisma.menuRecipeAssignment.create({
+        data: {
+          id: `20000000-0000-4000-8005-${String(recipeIndex + 1).padStart(12, "0")}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          brandId: ids.brandId,
+          scopeType: "BRAND_DEFAULT",
+          menuItemId: menuItem.id,
+          recipeVersionId: versionRecord.id,
+          effectiveFrom: new Date("2026-07-01T00:00:00.000Z"),
+          reason: "Seeded Yakiniku Like published-recipe brand default",
+          createdByUserId: ids.adminUserId,
+        },
+      });
+    }
 
     await prisma.menuPrice.upsert({
       where: {
@@ -6626,9 +6715,7 @@ function seedMovementLotKey(movement: SeedInventoryMovement) {
   const expiryDate = movement.expiryDate
     ? new Date(movement.expiryDate).toISOString().slice(0, 10)
     : null;
-  return lotNumber && expiryDate
-    ? `${lotNumber}|${expiryDate}`
-    : "NOLOT|NOEXP";
+  return lotNumber && expiryDate ? `${lotNumber}|${expiryDate}` : "NOLOT|NOEXP";
 }
 
 async function assertSeedInventoryBalanceMatchesLedger(
@@ -6683,9 +6770,7 @@ function isPrismaUniqueConflict(error: unknown) {
   );
 }
 
-async function ensureSeedInventoryMovement(
-  movement: SeedInventoryMovement,
-) {
+async function ensureSeedInventoryMovement(movement: SeedInventoryMovement) {
   const verifyExisting = async (tx: Prisma.TransactionClient) => {
     const existingMovements = await tx.inventoryMovement.findMany({
       where: {
@@ -6872,7 +6957,6 @@ async function seedOpeningInventoryBalances() {
       } satisfies SeedInventoryMovement;
 
       await ensureSeedInventoryMovement(movement);
-
     }
   }
 }
@@ -7641,13 +7725,48 @@ async function main() {
   });
 
   for (const permission of [
-    [ids.supplierMasterViewPermissionId, "master_data.supplier.view", "supplier.view", "View company-scoped suppliers and non-confidential catalog links."],
-    [ids.supplierMasterCreatePermissionId, "master_data.supplier.create", "supplier.create", "Create company-scoped supplier master records with an audit reason."],
-    [ids.supplierMasterEditPermissionId, "master_data.supplier.edit", "supplier.edit", "Maintain non-confidential supplier-item catalog links with an audit reason."],
-    [ids.supplierMasterManagePermissionId, "master_data.supplier.manage", "supplier.manage", "Manage supplier accreditation and lifecycle with an audit reason."],
-    [ids.itemMasterViewPermissionId, "master_data.item.view", "item.view", "View company-scoped items, categories, UOMs, and conversions."],
-    [ids.itemMasterCreatePermissionId, "master_data.item.create", "item.create", "Create company-scoped item master records with an audit reason."],
-    [ids.itemMasterEditPermissionId, "master_data.item.edit", "item.edit", "Edit permitted company-scoped item master records with an audit reason."],
+    [
+      ids.supplierMasterViewPermissionId,
+      "master_data.supplier.view",
+      "supplier.view",
+      "View company-scoped suppliers and non-confidential catalog links.",
+    ],
+    [
+      ids.supplierMasterCreatePermissionId,
+      "master_data.supplier.create",
+      "supplier.create",
+      "Create company-scoped supplier master records with an audit reason.",
+    ],
+    [
+      ids.supplierMasterEditPermissionId,
+      "master_data.supplier.edit",
+      "supplier.edit",
+      "Maintain non-confidential supplier-item catalog links with an audit reason.",
+    ],
+    [
+      ids.supplierMasterManagePermissionId,
+      "master_data.supplier.manage",
+      "supplier.manage",
+      "Manage supplier accreditation and lifecycle with an audit reason.",
+    ],
+    [
+      ids.itemMasterViewPermissionId,
+      "master_data.item.view",
+      "item.view",
+      "View company-scoped items, categories, UOMs, and conversions.",
+    ],
+    [
+      ids.itemMasterCreatePermissionId,
+      "master_data.item.create",
+      "item.create",
+      "Create company-scoped item master records with an audit reason.",
+    ],
+    [
+      ids.itemMasterEditPermissionId,
+      "master_data.item.edit",
+      "item.edit",
+      "Edit permitted company-scoped item master records with an audit reason.",
+    ],
   ] as const) {
     const [id, code, action, description] = permission;
     await prisma.permission.upsert({
@@ -8166,19 +8285,22 @@ async function main() {
       id: ids.inventoryPilotConfigurationViewPermissionId,
       code: "inventory.pilot_configuration.view",
       action: "pilot_configuration.view",
-      description: "View company-scoped inventory pilot configuration and readiness evidence.",
+      description:
+        "View company-scoped inventory pilot configuration and readiness evidence.",
     },
     {
       id: ids.inventoryPilotConfigurationDraftPermissionId,
       code: "inventory.pilot_configuration.draft",
       action: "pilot_configuration.draft",
-      description: "Create and maintain company-scoped inventory pilot configuration drafts.",
+      description:
+        "Create and maintain company-scoped inventory pilot configuration drafts.",
     },
     {
       id: ids.inventoryPilotConfigurationSealPermissionId,
       code: "inventory.pilot_configuration.seal",
       action: "pilot_configuration.seal",
-      description: "Seal a ready inventory pilot configuration revision under segregation and MFA controls.",
+      description:
+        "Seal a ready inventory pilot configuration revision under segregation and MFA controls.",
     },
   ];
   for (const permission of inventoryPilotConfigurationPermissions) {
@@ -8200,14 +8322,46 @@ async function main() {
   }
 
   const openingInventoryPermissions = [
-    { id: ids.openingInventoryViewPermissionId, code: "inventory.opening_inventory.view", action: "opening_inventory.view" },
-    { id: ids.openingInventoryPreparePermissionId, code: "inventory.opening_inventory.prepare", action: "opening_inventory.prepare" },
-    { id: ids.openingInventorySubmitPermissionId, code: "inventory.opening_inventory.submit", action: "opening_inventory.submit" },
-    { id: ids.openingInventoryOperationsReviewPermissionId, code: "inventory.opening_inventory.review.operations", action: "opening_inventory.review.operations" },
-    { id: ids.openingInventoryAccountingReviewPermissionId, code: "inventory.opening_inventory.review.accounting", action: "opening_inventory.review.accounting" },
-    { id: ids.openingInventoryRequestExecutePermissionId, code: "inventory.opening_inventory.request_execute", action: "opening_inventory.request_execute" },
-    { id: ids.openingInventoryRequestActivatePermissionId, code: "inventory.opening_inventory.request_activate", action: "opening_inventory.request_activate" },
-    { id: ids.openingInventoryRequestReversePermissionId, code: "inventory.opening_inventory.request_reverse", action: "opening_inventory.request_reverse" },
+    {
+      id: ids.openingInventoryViewPermissionId,
+      code: "inventory.opening_inventory.view",
+      action: "opening_inventory.view",
+    },
+    {
+      id: ids.openingInventoryPreparePermissionId,
+      code: "inventory.opening_inventory.prepare",
+      action: "opening_inventory.prepare",
+    },
+    {
+      id: ids.openingInventorySubmitPermissionId,
+      code: "inventory.opening_inventory.submit",
+      action: "opening_inventory.submit",
+    },
+    {
+      id: ids.openingInventoryOperationsReviewPermissionId,
+      code: "inventory.opening_inventory.review.operations",
+      action: "opening_inventory.review.operations",
+    },
+    {
+      id: ids.openingInventoryAccountingReviewPermissionId,
+      code: "inventory.opening_inventory.review.accounting",
+      action: "opening_inventory.review.accounting",
+    },
+    {
+      id: ids.openingInventoryRequestExecutePermissionId,
+      code: "inventory.opening_inventory.request_execute",
+      action: "opening_inventory.request_execute",
+    },
+    {
+      id: ids.openingInventoryRequestActivatePermissionId,
+      code: "inventory.opening_inventory.request_activate",
+      action: "opening_inventory.request_activate",
+    },
+    {
+      id: ids.openingInventoryRequestReversePermissionId,
+      code: "inventory.opening_inventory.request_reverse",
+      action: "opening_inventory.request_reverse",
+    },
   ];
   for (const permission of openingInventoryPermissions) {
     await prisma.permission.upsert({
@@ -8357,6 +8511,21 @@ async function main() {
       action: "recipe.archive",
     },
     {
+      id: ids.menuRecipeAdoptPermissionId,
+      code: "restaurant.menu_recipe.adopt",
+      action: "menu_recipe.adopt",
+    },
+    {
+      id: ids.menuRecipeBranchExceptionPermissionId,
+      code: "restaurant.menu_recipe.branch_exception",
+      action: "menu_recipe.branch_exception",
+    },
+    {
+      id: ids.menuRecipeRolloutPermissionId,
+      code: "restaurant.menu_recipe.rollout",
+      action: "menu_recipe.rollout",
+    },
+    {
       id: ids.menuCostViewPermissionId,
       code: "restaurant.menu_cost.view",
       action: "menu_cost.view",
@@ -8385,6 +8554,36 @@ async function main() {
       id: ids.branchOperationsCorrectPermissionId,
       code: "restaurant.branch_operations.correct",
       action: "branch_operations.correct",
+    },
+    {
+      id: ids.consumptionViewPermissionId,
+      code: "restaurant.consumption.view",
+      action: "consumption.view",
+    },
+    {
+      id: ids.consumptionCreatePermissionId,
+      code: "restaurant.consumption.create",
+      action: "consumption.create",
+    },
+    {
+      id: ids.consumptionVerifyPermissionId,
+      code: "restaurant.consumption.verify",
+      action: "consumption.verify",
+    },
+    {
+      id: ids.consumptionPostPermissionId,
+      code: "restaurant.consumption.post",
+      action: "consumption.post",
+    },
+    {
+      id: ids.consumptionReversePermissionId,
+      code: "restaurant.consumption.reverse",
+      action: "consumption.reverse",
+    },
+    {
+      id: ids.consumptionConfigurePermissionId,
+      code: "restaurant.consumption.configure",
+      action: "consumption.configure",
     },
     {
       id: ids.foodSafetyViewPermissionId,
@@ -8822,6 +9021,14 @@ async function main() {
       },
       {
         roleId: ids.requesterRoleId,
+        permissionId: ids.consumptionViewPermissionId,
+      },
+      {
+        roleId: ids.requesterRoleId,
+        permissionId: ids.consumptionCreatePermissionId,
+      },
+      {
+        roleId: ids.requesterRoleId,
         permissionId: ids.foodSafetyViewPermissionId,
       },
       {
@@ -8973,6 +9180,22 @@ async function main() {
       {
         roleId: ids.approverRoleId,
         permissionId: ids.branchOperationsCorrectPermissionId,
+      },
+      {
+        roleId: ids.approverRoleId,
+        permissionId: ids.consumptionViewPermissionId,
+      },
+      {
+        roleId: ids.approverRoleId,
+        permissionId: ids.consumptionVerifyPermissionId,
+      },
+      {
+        roleId: ids.approverRoleId,
+        permissionId: ids.consumptionPostPermissionId,
+      },
+      {
+        roleId: ids.approverRoleId,
+        permissionId: ids.consumptionReversePermissionId,
       },
       {
         roleId: ids.approverRoleId,
@@ -9339,6 +9562,30 @@ async function main() {
       {
         roleId: ids.adminRoleId,
         permissionId: ids.branchOperationsCorrectPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionViewPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionCreatePermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionVerifyPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionPostPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionReversePermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.consumptionConfigurePermissionId,
       },
       {
         roleId: ids.adminRoleId,
@@ -9866,624 +10113,627 @@ async function main() {
     ],
   });
 
-  await prisma.$transaction(async (approvalSeedTx) => {
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.approvalRuleId },
-    create: {
-      id: ids.approvalRuleId,
-      lineageId: ids.approvalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PURCHASE_REQUEST",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-      },
-    },
-    update: {},
-  });
+  await prisma.$transaction(
+    async (approvalSeedTx) => {
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.approvalRuleId },
+        create: {
+          id: ids.approvalRuleId,
+          lineageId: ids.approvalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PURCHASE_REQUEST",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.approvalRuleStepId },
-    create: {
-      id: ids.approvalRuleStepId,
-      approvalRuleId: ids.approvalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.approvalRuleStepId },
+        create: {
+          id: ids.approvalRuleStepId,
+          approvalRuleId: ids.approvalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.emergencyPurchaseRequestApprovalRuleId },
-    create: {
-      id: ids.emergencyPurchaseRequestApprovalRuleId,
-      lineageId: ids.emergencyPurchaseRequestApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PURCHASE_REQUEST",
-      routeKey: "PR_EMERGENCY",
-      priority: 50,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        route: "emergency_purchase",
-        emergency: true,
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.emergencyPurchaseRequestApprovalRuleId },
+        create: {
+          id: ids.emergencyPurchaseRequestApprovalRuleId,
+          lineageId: ids.emergencyPurchaseRequestApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PURCHASE_REQUEST",
+          routeKey: "PR_EMERGENCY",
+          priority: 50,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            route: "emergency_purchase",
+            emergency: true,
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.emergencyPurchaseRequestApprovalRuleStepId },
-    create: {
-      id: ids.emergencyPurchaseRequestApprovalRuleStepId,
-      approvalRuleId: ids.emergencyPurchaseRequestApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.emergencyPurchaseRequestApprovalRuleStepId },
+        create: {
+          id: ids.emergencyPurchaseRequestApprovalRuleStepId,
+          approvalRuleId: ids.emergencyPurchaseRequestApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.quotationRecommendationApprovalRuleId },
-    create: {
-      id: ids.quotationRecommendationApprovalRuleId,
-      lineageId: ids.quotationRecommendationApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "QuotationRecommendation",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        od04Pending: true,
-        appliesTo: "supplier_selection",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.quotationRecommendationApprovalRuleId },
+        create: {
+          id: ids.quotationRecommendationApprovalRuleId,
+          lineageId: ids.quotationRecommendationApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "QuotationRecommendation",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            od04Pending: true,
+            appliesTo: "supplier_selection",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.quotationRecommendationApprovalRuleStepId },
-    create: {
-      id: ids.quotationRecommendationApprovalRuleStepId,
-      approvalRuleId: ids.quotationRecommendationApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.quotationRecommendationApprovalRuleStepId },
+        create: {
+          id: ids.quotationRecommendationApprovalRuleStepId,
+          approvalRuleId: ids.quotationRecommendationApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.purchaseOrderApprovalRuleId },
-    create: {
-      id: ids.purchaseOrderApprovalRuleId,
-      lineageId: ids.purchaseOrderApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PurchaseOrder",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "po_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.purchaseOrderApprovalRuleId },
+        create: {
+          id: ids.purchaseOrderApprovalRuleId,
+          lineageId: ids.purchaseOrderApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PurchaseOrder",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "po_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.purchaseOrderApprovalRuleStepId },
-    create: {
-      id: ids.purchaseOrderApprovalRuleStepId,
-      approvalRuleId: ids.purchaseOrderApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.purchaseOrderApprovalRuleStepId },
+        create: {
+          id: ids.purchaseOrderApprovalRuleStepId,
+          approvalRuleId: ids.purchaseOrderApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.purchaseOrderBalanceClosureApprovalRuleId },
-    create: {
-      id: ids.purchaseOrderBalanceClosureApprovalRuleId,
-      lineageId: ids.purchaseOrderBalanceClosureApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PurchaseOrderBalanceClosure",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "po_remaining_balance_closure",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.purchaseOrderBalanceClosureApprovalRuleId },
+        create: {
+          id: ids.purchaseOrderBalanceClosureApprovalRuleId,
+          lineageId: ids.purchaseOrderBalanceClosureApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PurchaseOrderBalanceClosure",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "po_remaining_balance_closure",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.purchaseOrderBalanceClosureApprovalRuleStepId },
-    create: {
-      id: ids.purchaseOrderBalanceClosureApprovalRuleStepId,
-      approvalRuleId: ids.purchaseOrderBalanceClosureApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.purchaseOrderBalanceClosureApprovalRuleStepId },
+        create: {
+          id: ids.purchaseOrderBalanceClosureApprovalRuleStepId,
+          approvalRuleId: ids.purchaseOrderBalanceClosureApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.purchaseOrderAmendmentApprovalRuleId },
-    create: {
-      id: ids.purchaseOrderAmendmentApprovalRuleId,
-      lineageId: ids.purchaseOrderAmendmentApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PurchaseOrderAmendment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "issued_unreceived_po_amendment",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.purchaseOrderAmendmentApprovalRuleId },
+        create: {
+          id: ids.purchaseOrderAmendmentApprovalRuleId,
+          lineageId: ids.purchaseOrderAmendmentApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PurchaseOrderAmendment",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "issued_unreceived_po_amendment",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.purchaseOrderAmendmentApprovalRuleStepId },
-    create: {
-      id: ids.purchaseOrderAmendmentApprovalRuleStepId,
-      approvalRuleId: ids.purchaseOrderAmendmentApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.purchaseOrderAmendmentApprovalRuleStepId },
+        create: {
+          id: ids.purchaseOrderAmendmentApprovalRuleStepId,
+          approvalRuleId: ids.purchaseOrderAmendmentApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.wastageApprovalRuleId },
-    create: {
-      id: ids.wastageApprovalRuleId,
-      lineageId: ids.wastageApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "WastageReport",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_wastage_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.wastageApprovalRuleId },
+        create: {
+          id: ids.wastageApprovalRuleId,
+          lineageId: ids.wastageApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "WastageReport",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_wastage_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.wastageApprovalRuleStepId },
-    create: {
-      id: ids.wastageApprovalRuleStepId,
-      approvalRuleId: ids.wastageApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.wastageApprovalRuleStepId },
+        create: {
+          id: ids.wastageApprovalRuleStepId,
+          approvalRuleId: ids.wastageApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.stockAdjustmentApprovalRuleId },
-    create: {
-      id: ids.stockAdjustmentApprovalRuleId,
-      lineageId: ids.stockAdjustmentApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "StockAdjustment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_stock_adjustment_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.stockAdjustmentApprovalRuleId },
+        create: {
+          id: ids.stockAdjustmentApprovalRuleId,
+          lineageId: ids.stockAdjustmentApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "StockAdjustment",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_stock_adjustment_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.stockAdjustmentApprovalRuleStepId },
-    create: {
-      id: ids.stockAdjustmentApprovalRuleStepId,
-      approvalRuleId: ids.stockAdjustmentApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.stockAdjustmentApprovalRuleStepId },
+        create: {
+          id: ids.stockAdjustmentApprovalRuleStepId,
+          approvalRuleId: ids.stockAdjustmentApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.stockCountVarianceApprovalRuleId },
-    create: {
-      id: ids.stockCountVarianceApprovalRuleId,
-      lineageId: ids.stockCountVarianceApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "StockCountVarianceAdjustment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "count_variance_stock_adjustment_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.stockCountVarianceApprovalRuleId },
+        create: {
+          id: ids.stockCountVarianceApprovalRuleId,
+          lineageId: ids.stockCountVarianceApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "StockCountVarianceAdjustment",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "count_variance_stock_adjustment_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.stockCountVarianceApprovalRuleStepId },
-    create: {
-      id: ids.stockCountVarianceApprovalRuleStepId,
-      approvalRuleId: ids.stockCountVarianceApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.stockCountVarianceApprovalRuleStepId },
+        create: {
+          id: ids.stockCountVarianceApprovalRuleStepId,
+          approvalRuleId: ids.stockCountVarianceApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.paymentRequestApprovalRuleId },
-    create: {
-      id: ids.paymentRequestApprovalRuleId,
-      lineageId: ids.paymentRequestApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PaymentRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_payment_request_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.paymentRequestApprovalRuleId },
+        create: {
+          id: ids.paymentRequestApprovalRuleId,
+          lineageId: ids.paymentRequestApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PaymentRequest",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_payment_request_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.paymentRequestApprovalRuleStepId },
-    create: {
-      id: ids.paymentRequestApprovalRuleStepId,
-      approvalRuleId: ids.paymentRequestApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.paymentRequestApprovalRuleStepId },
+        create: {
+          id: ids.paymentRequestApprovalRuleStepId,
+          approvalRuleId: ids.paymentRequestApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.paymentReleaseApprovalRuleId },
-    create: {
-      id: ids.paymentReleaseApprovalRuleId,
-      lineageId: ids.paymentReleaseApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PaymentRelease",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_payment_release_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.paymentReleaseApprovalRuleId },
+        create: {
+          id: ids.paymentReleaseApprovalRuleId,
+          lineageId: ids.paymentReleaseApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PaymentRelease",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_payment_release_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.paymentReleaseApprovalRuleStepId },
-    create: {
-      id: ids.paymentReleaseApprovalRuleStepId,
-      approvalRuleId: ids.paymentReleaseApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.paymentReleaseApprovalRuleStepId },
+        create: {
+          id: ids.paymentReleaseApprovalRuleStepId,
+          approvalRuleId: ids.paymentReleaseApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.budgetRevisionApprovalRuleId },
-    create: {
-      id: ids.budgetRevisionApprovalRuleId,
-      lineageId: ids.budgetRevisionApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "BudgetRevision",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_budget_revision_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.budgetRevisionApprovalRuleId },
+        create: {
+          id: ids.budgetRevisionApprovalRuleId,
+          lineageId: ids.budgetRevisionApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "BudgetRevision",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_budget_revision_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.budgetRevisionApprovalRuleStepId },
-    create: {
-      id: ids.budgetRevisionApprovalRuleStepId,
-      approvalRuleId: ids.budgetRevisionApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.budgetRevisionApprovalRuleStepId },
+        create: {
+          id: ids.budgetRevisionApprovalRuleStepId,
+          approvalRuleId: ids.budgetRevisionApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.expenseRequestApprovalRuleId },
-    create: {
-      id: ids.expenseRequestApprovalRuleId,
-      lineageId: ids.expenseRequestApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "ExpenseRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_expense_request_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.expenseRequestApprovalRuleId },
+        create: {
+          id: ids.expenseRequestApprovalRuleId,
+          lineageId: ids.expenseRequestApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "ExpenseRequest",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_expense_request_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.expenseRequestApprovalRuleStepId },
-    create: {
-      id: ids.expenseRequestApprovalRuleStepId,
-      approvalRuleId: ids.expenseRequestApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.expenseRequestApprovalRuleStepId },
+        create: {
+          id: ids.expenseRequestApprovalRuleStepId,
+          approvalRuleId: ids.expenseRequestApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.cashAdvanceApprovalRuleId },
-    create: {
-      id: ids.cashAdvanceApprovalRuleId,
-      lineageId: ids.cashAdvanceApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "CashAdvanceRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_cash_advance_request_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.cashAdvanceApprovalRuleId },
+        create: {
+          id: ids.cashAdvanceApprovalRuleId,
+          lineageId: ids.cashAdvanceApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "CashAdvanceRequest",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_cash_advance_request_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.cashAdvanceApprovalRuleStepId },
-    create: {
-      id: ids.cashAdvanceApprovalRuleStepId,
-      approvalRuleId: ids.cashAdvanceApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.cashAdvanceApprovalRuleStepId },
+        create: {
+          id: ids.cashAdvanceApprovalRuleStepId,
+          approvalRuleId: ids.cashAdvanceApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.pettyCashApprovalRuleId },
-    create: {
-      id: ids.pettyCashApprovalRuleId,
-      lineageId: ids.pettyCashApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "PettyCashRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_petty_cash_request_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.pettyCashApprovalRuleId },
+        create: {
+          id: ids.pettyCashApprovalRuleId,
+          lineageId: ids.pettyCashApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "PettyCashRequest",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_posting_petty_cash_request_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.pettyCashApprovalRuleStepId },
-    create: {
-      id: ids.pettyCashApprovalRuleStepId,
-      approvalRuleId: ids.pettyCashApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.pettyCashApprovalRuleStepId },
+        create: {
+          id: ids.pettyCashApprovalRuleStepId,
+          approvalRuleId: ids.pettyCashApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.workforceLeaveApprovalRuleId },
-    create: {
-      id: ids.workforceLeaveApprovalRuleId,
-      lineageId: ids.workforceLeaveApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "EmployeeLeaveRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_leave_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.workforceLeaveApprovalRuleId },
+        create: {
+          id: ids.workforceLeaveApprovalRuleId,
+          lineageId: ids.workforceLeaveApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "EmployeeLeaveRequest",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_payroll_leave_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.workforceLeaveApprovalRuleStepId },
-    create: {
-      id: ids.workforceLeaveApprovalRuleStepId,
-      approvalRuleId: ids.workforceLeaveApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.workforceLeaveApprovalRuleStepId },
+        create: {
+          id: ids.workforceLeaveApprovalRuleStepId,
+          approvalRuleId: ids.workforceLeaveApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.workforceOvertimeApprovalRuleId },
-    create: {
-      id: ids.workforceOvertimeApprovalRuleId,
-      lineageId: ids.workforceOvertimeApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "EmployeeOvertimeRecord",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_overtime_approval",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.workforceOvertimeApprovalRuleId },
+        create: {
+          id: ids.workforceOvertimeApprovalRuleId,
+          lineageId: ids.workforceOvertimeApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "EmployeeOvertimeRecord",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_payroll_overtime_approval",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.workforceOvertimeApprovalRuleStepId },
-    create: {
-      id: ids.workforceOvertimeApprovalRuleStepId,
-      approvalRuleId: ids.workforceOvertimeApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.workforceOvertimeApprovalRuleStepId },
+        create: {
+          id: ids.workforceOvertimeApprovalRuleStepId,
+          approvalRuleId: ids.workforceOvertimeApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.workforceScheduleApprovalRuleId },
-    create: {
-      id: ids.workforceScheduleApprovalRuleId,
-      lineageId: ids.workforceScheduleApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "WorkforceSchedule",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_schedule_approval_before_publication",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.workforceScheduleApprovalRuleId },
+        create: {
+          id: ids.workforceScheduleApprovalRuleId,
+          lineageId: ids.workforceScheduleApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "WorkforceSchedule",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "non_payroll_schedule_approval_before_publication",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.workforceScheduleApprovalRuleStepId },
-    create: {
-      id: ids.workforceScheduleApprovalRuleStepId,
-      approvalRuleId: ids.workforceScheduleApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.workforceScheduleApprovalRuleStepId },
+        create: {
+          id: ids.workforceScheduleApprovalRuleStepId,
+          approvalRuleId: ids.workforceScheduleApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRule.upsert({
-    where: { id: ids.attendanceImportApprovalRuleId },
-    create: {
-      id: ids.attendanceImportApprovalRuleId,
-      lineageId: ids.attendanceImportApprovalRuleId,
-      tenantId: ids.tenantId,
-      companyId: ids.companyId,
-      transactionType: "AttendanceImportBatch",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "exception_or_rejection_attendance_import_review",
-      },
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRule.upsert({
+        where: { id: ids.attendanceImportApprovalRuleId },
+        create: {
+          id: ids.attendanceImportApprovalRuleId,
+          lineageId: ids.attendanceImportApprovalRuleId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          transactionType: "AttendanceImportBatch",
+          priority: 100,
+          isActive: true,
+          scopeFilters: {
+            source: "local-demo-sample-data",
+            appliesTo: "exception_or_rejection_attendance_import_review",
+          },
+        },
+        update: {},
+      });
 
-  await approvalSeedTx.approvalRuleStep.upsert({
-    where: { id: ids.attendanceImportApprovalRuleStepId },
-    create: {
-      id: ids.attendanceImportApprovalRuleStepId,
-      approvalRuleId: ids.attendanceImportApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
-    update: {},
-  });
+      await approvalSeedTx.approvalRuleStep.upsert({
+        where: { id: ids.attendanceImportApprovalRuleStepId },
+        create: {
+          id: ids.attendanceImportApprovalRuleStepId,
+          approvalRuleId: ids.attendanceImportApprovalRuleId,
+          stepOrder: 1,
+          approverType: "ROLE",
+          roleId: ids.approverRoleId,
+          required: true,
+        },
+        update: {},
+      });
 
-  const seededRuleIds = [
-    ids.approvalRuleId,
-    ids.emergencyPurchaseRequestApprovalRuleId,
-    ids.quotationRecommendationApprovalRuleId,
-    ids.purchaseOrderApprovalRuleId,
-    ids.purchaseOrderBalanceClosureApprovalRuleId,
-    ids.purchaseOrderAmendmentApprovalRuleId,
-    ids.wastageApprovalRuleId,
-    ids.stockAdjustmentApprovalRuleId,
-    ids.stockCountVarianceApprovalRuleId,
-    ids.paymentRequestApprovalRuleId,
-    ids.paymentReleaseApprovalRuleId,
-    ids.budgetRevisionApprovalRuleId,
-    ids.expenseRequestApprovalRuleId,
-    ids.cashAdvanceApprovalRuleId,
-    ids.pettyCashApprovalRuleId,
-    ids.workforceLeaveApprovalRuleId,
-    ids.workforceOvertimeApprovalRuleId,
-    ids.workforceScheduleApprovalRuleId,
-    ids.attendanceImportApprovalRuleId,
-  ];
-  await approvalSeedTx.approvalRule.updateMany({
-    where: { id: { in: seededRuleIds }, definitionSealed: false },
-    data: { definitionSealed: true },
-  });
-  }, { timeout: 30_000 });
+      const seededRuleIds = [
+        ids.approvalRuleId,
+        ids.emergencyPurchaseRequestApprovalRuleId,
+        ids.quotationRecommendationApprovalRuleId,
+        ids.purchaseOrderApprovalRuleId,
+        ids.purchaseOrderBalanceClosureApprovalRuleId,
+        ids.purchaseOrderAmendmentApprovalRuleId,
+        ids.wastageApprovalRuleId,
+        ids.stockAdjustmentApprovalRuleId,
+        ids.stockCountVarianceApprovalRuleId,
+        ids.paymentRequestApprovalRuleId,
+        ids.paymentReleaseApprovalRuleId,
+        ids.budgetRevisionApprovalRuleId,
+        ids.expenseRequestApprovalRuleId,
+        ids.cashAdvanceApprovalRuleId,
+        ids.pettyCashApprovalRuleId,
+        ids.workforceLeaveApprovalRuleId,
+        ids.workforceOvertimeApprovalRuleId,
+        ids.workforceScheduleApprovalRuleId,
+        ids.attendanceImportApprovalRuleId,
+      ];
+      await approvalSeedTx.approvalRule.updateMany({
+        where: { id: { in: seededRuleIds }, definitionSealed: false },
+        data: { definitionSealed: true },
+      });
+    },
+    { timeout: 30_000 },
+  );
 
   await prisma.wastagePolicy.upsert({
     where: { id: ids.wastagePolicyId },

@@ -550,6 +550,24 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Restaurant Operations",
     sensitive: true
   },
+  [permissions.menuRecipeAdopt]: {
+    label: "Adopt brand menu recipes",
+    description: "Adopt one published recipe version as an effective-dated brand default for an exact same-brand menu item; this does not publish recipes, configure branch exceptions, or post inventory.",
+    group: "Restaurant Operations",
+    sensitive: true
+  },
+  [permissions.menuRecipeBranchException]: {
+    label: "Manage branch menu recipe exceptions",
+    description: "Create or supersede effective-dated availability exceptions for an authorized active branch; an exact-location recipe override additionally requires brand recipe adoption authority and does not change the brand default or post inventory.",
+    group: "Restaurant Operations",
+    sensitive: true
+  },
+  [permissions.menuRecipeRollout]: {
+    label: "Roll out successor menu recipes",
+    description: "With recipe publication authority, advance an already adopted brand menu item to an explicit published successor at a controlled future effective time after impact preview; this does not create a new adoption or post inventory.",
+    group: "Restaurant Operations",
+    sensitive: true
+  },
   [permissions.menuCostView]: {
     label: "View menu cost analysis",
     description: "View menu item cost, margin, and food-cost percentage analysis.",
@@ -984,6 +1002,13 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
   }
 };
 
+const configuredAdminPermissionExclusions = new Set<string>([
+  permissions.supplierConfidentialView,
+  permissions.menuRecipeAdopt,
+  permissions.menuRecipeBranchException,
+  permissions.menuRecipeRollout
+]);
+
 const recommendedRolePermissionCodes: Record<string, string[]> = {
   CONFIGURED_REQUESTER: [
     permissions.purchaseRequestCreate,
@@ -1051,7 +1076,7 @@ const recommendedRolePermissionCodes: Record<string, string[]> = {
     permissions.workforceAttendanceImportView
   ],
   CONFIGURED_ADMIN: Object.values(permissions).filter(
-    (permissionCode) => permissionCode !== permissions.supplierConfidentialView
+    (permissionCode) => !configuredAdminPermissionExclusions.has(permissionCode)
   )
 };
 

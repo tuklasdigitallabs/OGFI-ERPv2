@@ -40,4 +40,17 @@ describe("session freshness controls", () => {
     expect(contextSource).toContain("SESSION_REVALIDATION_REQUIRED");
     expect(coreAdminSource).toContain("touchUserPrivilegeEpoch");
   });
+
+  test("local sign-in uses server-owned organization routing", () => {
+    const signInSource = readFileSync(
+      path.resolve(__dirname, "../../app/(auth)/sign-in/page.tsx"),
+      "utf8"
+    );
+
+    expect(signInSource).toContain("getConfiguredLoginTenantCode()");
+    expect(signInSource).toContain("getConfiguredLoginOrganization()");
+    expect(signInSource).not.toContain('formData.get("tenantCode")');
+    expect(signInSource).not.toContain('name="tenantCode"');
+    expect(signInSource).not.toContain("Organization code");
+  });
 });

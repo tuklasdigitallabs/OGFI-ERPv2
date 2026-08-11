@@ -1320,7 +1320,7 @@ describe("operational dashboard model", () => {
     );
     expect(dashboardPageSource).toContain('source.id === "approvals"');
     expect(dashboardPageSource).toContain("Queue unavailable");
-    expect(dashboardPageSource).toContain('href="/approvals"');
+    expect(dashboardPageSource).toContain('sourceHref="/approvals"');
   });
 
   it("uses the bounded Branch Operations read instead of the full checklist workspace read", () => {

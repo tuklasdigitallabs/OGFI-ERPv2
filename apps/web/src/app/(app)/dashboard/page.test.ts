@@ -14,6 +14,18 @@ const loadingSource = readFileSync(
   fileURLToPath(new URL("./loading.tsx", import.meta.url)),
   "utf8"
 );
+const accordionSource = readFileSync(
+  fileURLToPath(
+    new URL("../../../components/DashboardOverviewAccordion.tsx", import.meta.url)
+  ),
+  "utf8"
+);
+const summaryListSource = readFileSync(
+  fileURLToPath(
+    new URL("../../../components/SingleOpenSummaryList.tsx", import.meta.url)
+  ),
+  "utf8"
+);
 const globalStyleSource = readFileSync(
   fileURLToPath(new URL("../../globals.css", import.meta.url)),
   "utf8"
@@ -123,8 +135,9 @@ describe("DEC-0072 dashboard source observation presentation", () => {
     expect(formatDashboardCheckedAt("2026-07-23T00:00:00.000Z")).toMatch(
       /Jul 23,? 2026.*8:00:00.*Asia\/Manila/i
     );
+    expect(source).toContain("Dashboard assembled");
     expect(source).toContain(
-      "Dashboard assembled {formatDashboardCheckedAt(dashboard.assembledAt)}"
+      "formatDashboardCheckedAt(dashboard.assembledAt)"
     );
     expect(source).not.toContain("Live source records");
     expect(source).not.toContain("Updated {new Date(dashboard.generatedAt)");
@@ -182,13 +195,18 @@ describe("DEC-0072 dashboard source observation presentation", () => {
     expect(loadingSource).toContain('aria-busy="true"');
     expect(loadingSource).toContain("dashboard source status");
     expect(loadingSource).toContain("today&apos;s work");
-    expect(loadingSource).toContain("xl:grid-cols-2");
+    expect(loadingSource).toContain("[0, 1, 2, 3].map");
+    expect(loadingSource).toContain(
+      'aria-label="Loading dashboard overview summaries"'
+    );
   });
 });
 
 describe("DEC-0234 stock balance signal suppression", () => {
-  it("uses a balanced responsive three-profile strip without the cache-recency card", () => {
-    expect(source).toContain('className="grid gap-3 p-4 md:grid-cols-3"');
+  it("uses separate balance-row signals without the cache-recency card", () => {
+    expect(source).toContain('title: "Stock Balance Signals"');
+    expect(source).toContain("dashboard.stockHealth.map");
+    expect(source).toContain("Balance-row signal");
     expect(source).not.toContain('"recent-stock-updates"');
     expect(source).not.toContain("Updated this week");
   });
@@ -202,5 +220,139 @@ describe("DEC-0235 PO monetary signal suppression", () => {
     expect(source).not.toContain("PO commitment");
     expect(source).not.toContain("Open PO exposure");
     expect(source).not.toContain("Received value");
+  });
+});
+
+describe("dashboard command-center presentation", () => {
+  it("keeps a compact accessible scope and view header", () => {
+    expect(source).toContain('aria-label="Dashboard views"');
+    expect(source).toContain(
+      'aria-current={activeView === view ? "page" : undefined}',
+    );
+    expect(source).toContain("permissionCodes={session.permissionCodes}");
+    expect(source).toContain("role={session.user.role}");
+    expect(source).not.toContain("ogfi-dashboard-hero");
+    expect(source).not.toContain("ogfi-scope-card");
+  });
+
+  it("bounds role-focused indicators without labeling every match as an action", () => {
+    expect(source).toContain("function roleAwareIndicators");
+    expect(source).toContain("dashboardIndicatorOrder(role, permissionCodes)");
+    expect(source).toContain("profiles.flat()");
+    expect(source).toContain(".slice(0, 6)");
+    expect(source).toContain("Priority Indicators");
+    expect(source).toContain("Matching records");
+    expect(source).not.toContain("Data Source Coverage");
+    expect(source).not.toContain("dashboard.sourceHealth.map");
+    const indicatorSorter = source.slice(
+      source.indexOf("function roleAwareIndicators"),
+      source.indexOf("function MetricCard"),
+    );
+    expect(indicatorSorter.indexOf("left.value > 0")).toBeLessThan(
+      indicatorSorter.indexOf("leftRank"),
+    );
+  });
+
+  it("does not add unlike approval and exception preview grains", () => {
+    expect(source).toContain("function AnalyticsQueueSummaryPanel");
+    expect(source).toContain(
+      "different record grains and are not added together",
+    );
+    expect(source).toContain("dashboard.approvalQueueContract.displayedCount");
+    expect(source).toContain("dashboard.exceptionQueueContract.displayedCount");
+    expect(source).not.toContain("function AnalyticsDonutPanel");
+    expect(source).not.toContain("conic-gradient");
+    expect(source).not.toContain("Attention Split");
+  });
+
+  it("uses compact responsive queue rows with visible operational context", () => {
+    expect(source).toContain("sm:grid-cols-[minmax(0,1fr)_auto]");
+    expect(source).toContain(
+      '<dt className="inline font-semibold">Location: </dt>',
+    );
+    expect(source).toContain(
+      '<dt className="inline font-semibold">Owner: </dt>',
+    );
+    expect(source).toContain(
+      '<dt className="inline font-semibold">Next: </dt>',
+    );
+    expect(source).not.toContain("md:grid-cols-[1fr_11rem_auto]");
+  });
+});
+
+describe("dashboard overview accordion", () => {
+  it("uses a local-state, single-open accessible disclosure contract", () => {
+    expect(accordionSource).toContain("<SingleOpenSummaryList");
+    expect(summaryListSource).toContain('"use client"');
+    expect(summaryListSource).toContain("<Heading>");
+    expect(summaryListSource).toContain("<button");
+    expect(summaryListSource).toContain("aria-controls={panelId}");
+    expect(summaryListSource).toContain("aria-expanded={expanded}");
+    expect(summaryListSource).toContain('role="region"');
+    expect(summaryListSource).toContain("aria-labelledby={buttonId}");
+    expect(summaryListSource).toContain("min-h-24");
+    expect(summaryListSource).toContain("focus-visible:ring-2");
+    expect(summaryListSource).toContain("setOpenId");
+    expect(summaryListSource).toContain("{expanded ? (");
+    expect(summaryListSource).toContain("{section.body}");
+    expect(summaryListSource).toContain("motion-reduce:transition-none");
+    expect(summaryListSource).not.toContain("useSearchParams");
+    expect(summaryListSource).not.toContain("max-height");
+  });
+
+  it("starts closed, supports re-click closure, and reconciles scope changes", () => {
+    expect(summaryListSource).toContain(
+      "useState<string | null>(null)",
+    );
+    expect(summaryListSource).toContain(
+      "currentOpenId === sectionId ? null : sectionId",
+    );
+    expect(summaryListSource).toContain("setOpenId(null)");
+    expect(summaryListSource).toContain("[sectionKey]");
+    expect(summaryListSource).not.toContain("defaultOpenId");
+    expect(summaryListSource).not.toContain("hasActionableQueue");
+  });
+
+  it("builds authorized sections in the approved order with truthful grains", () => {
+    const approvals = source.indexOf('title: "Assigned Approvals"');
+    const exceptions = source.indexOf('title: "Operational Exceptions"');
+    const indicators = source.indexOf('title: "Priority Indicators"');
+    const stock = source.indexOf('title: "Stock Balance Signals"');
+
+    expect(approvals).toBeGreaterThan(-1);
+    expect(approvals).toBeLessThan(exceptions);
+    expect(exceptions).toBeLessThan(indicators);
+    expect(indicators).toBeLessThan(stock);
+    expect(source).toContain("if (approvalSource)");
+    expect(source).toContain(
+      "if (dashboard.exceptionQueueContract.contributors.length > 0)"
+    );
+    expect(source).toContain("if (hasIndicatorSource)");
+    expect(source).toContain("if (inventorySource)");
+    expect(source).toContain('{ label: "Queue", value: "Unavailable"');
+    expect(source).toContain('{ label: "Pending", value: "May still exist"');
+    expect(source).toContain("values use separate grains and are not additive");
+    expect(source).toContain("Balance-row signal");
+    expect(source).toContain('label: "Preview shown"');
+    expect(source).toContain('label: "Urgent in preview"');
+    expect(source).toContain('label: "Positive signals"');
+  });
+
+  it("keeps overview state local while remounting for scope changes", () => {
+    expect(source).toContain("contextKey={session.context.locationId}");
+    expect(source).not.toContain("const defaultOpenId =");
+    expect(source).not.toContain("defaultOpenId={defaultOpenId}");
+  });
+
+  it("uses visual snapshots and a bounded exception triage list", () => {
+    expect(summaryListSource).toContain("section.snapshots.slice(0, 3)");
+    expect(summaryListSource).toContain("View details");
+    expect(summaryListSource).toContain("Close details");
+    expect(source).toContain("function OverviewQueuePreview");
+    expect(source).toContain("Ordered by operational priority");
+    expect(source).toContain(
+      "lg:grid-cols-[minmax(14rem,0.8fr)_minmax(0,1.2fr)_auto]",
+    );
+    expect(source).toContain("line-clamp-1");
   });
 });

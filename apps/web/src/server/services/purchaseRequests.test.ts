@@ -116,7 +116,7 @@ describe("purchase request workflow controls", () => {
     expect(editorSource).toContain('name="lineRequestedQty"');
     expect(editorSource).toContain('name="lineEstimatedUnitCost"');
     expect(editorSource).toContain('name="lineBudgetLineId"');
-    expect(editorSource).toContain("Finance to classify");
+    expect(editorSource).toContain("Optional — Finance can classify later");
     expect(editorSource).toContain('name="lineItemId"');
     expect(editorSource).toContain('name="lineUomId"');
     expect(editorSource).toContain('name="lineUomCode"');
@@ -275,21 +275,48 @@ describe("purchase request workflow controls", () => {
     expect(serviceSource).toContain('pageSize: z.number().int().min(10).max(50)');
     expect(serviceSource).toContain("itemUomConversion.findMany");
     expect(pageSource).not.toContain("listPurchaseRequestDraftOptions");
-    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=item");
-    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=uom");
-    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=budget");
-    expect(editorSource).toContain("Next items");
-    expect(editorSource).toContain("Next UOMs");
-    expect(editorSource).toContain("Next budgets");
-    expect(serviceSource).toContain("const pageOptions = selected && !options.some");
-    expect(serviceSource).toContain("{ OR: [{ locationId: null }, { locationId: session.context.locationId }] }");
-    expect(serviceSource).toContain("where: { ...where, id: values.selectedId }");
-    expect(serviceSource).toContain("{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }");
-    expect(editorSource).toContain("aria-busy={lookupLoading}");
-    expect(editorSource).toContain("Retry lookups");
+    expect(editorSource).toContain(
+      "/api/purchase-requests/draft-lookup?kind=item",
+    );
+    expect(editorSource).toContain(
+      "/api/purchase-requests/draft-lookup?kind=uom",
+    );
+    expect(editorSource).toContain(
+      "/api/purchase-requests/draft-lookup?kind=budget",
+    );
+    expect(editorSource).toContain('role="combobox"');
+    expect(editorSource).toContain('role="listbox"');
+    expect(editorSource).toContain("aria-activedescendant");
+    expect(editorSource).toContain('event.key === "ArrowDown"');
+    expect(editorSource).toContain('event.key === "Enter"');
+    expect(editorSource).toContain("Select or type to search the item catalog");
+    expect(editorSource).toContain("Select or type to filter valid UOMs");
+    expect(editorSource).not.toContain("Search catalog item<input");
+    expect(editorSource).not.toContain("Search valid UOM<input");
+    expect(serviceSource).not.toContain(
+      'values.kind === "item" && values.query.length < 2',
+    );
+    expect(serviceSource).toContain(
+      "const pageOptions = selected && !options.some",
+    );
+    expect(serviceSource).toContain(
+      "{ OR: [{ locationId: null }, { locationId: session.context.locationId }] }",
+    );
+    expect(serviceSource).toContain(
+      "where: { ...where, id: values.selectedId }",
+    );
+    expect(serviceSource).toContain(
+      "{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }",
+    );
+    expect(editorSource).toContain("Updating matches…");
+    expect(editorSource).toContain("Retry");
     expect(editorSource).toContain("itemCache");
     expect(editorSource).toContain("budgetCache");
     expect(editorSource).toContain("uomCache");
+    expect(editorSource).toContain("setUomOptions([])");
+    expect(editorSource).toContain("itemMessage");
+    expect(editorSource).toContain("uomMessage");
+    expect(editorSource).toContain("budgetMessage");
     expect(editorSource).toContain("Object.values(itemCache)");
     expect(editorSource).toContain("min-h-11");
     expect(pageSource).toContain("session.context.companyName");

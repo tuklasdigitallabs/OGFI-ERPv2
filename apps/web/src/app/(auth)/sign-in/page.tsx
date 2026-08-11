@@ -14,6 +14,8 @@ import {
   assertTrustedServerActionOrigin,
   authenticatePassword,
   getAuthMode,
+  getConfiguredLoginOrganization,
+  getConfiguredLoginTenantCode,
   getTrustedRequestFingerprint
 } from "@/server/services/authentication";
 
@@ -35,7 +37,7 @@ async function signIn(formData: FormData) {
     let nextPath: string;
     try {
       nextPath = await authenticatePassword({
-        tenantCode: String(formData.get("tenantCode") ?? ""),
+        tenantCode: getConfiguredLoginTenantCode(),
         identifier: email,
         password: String(formData.get("password") ?? ""),
         fingerprint: getTrustedRequestFingerprint(requestHeaders)
@@ -93,6 +95,16 @@ export default async function SignInPage({
     process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
   const configured =
     authMode === "demo" ? await getConfiguredContext(requesterEmail) : null;
+  let loginOrganization: Awaited<
+    ReturnType<typeof getConfiguredLoginOrganization>
+  > | null = null;
+  if (authMode === "local") {
+    try {
+      loginOrganization = await getConfiguredLoginOrganization();
+    } catch {
+      loginOrganization = null;
+    }
+  }
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const sampleAccounts = [
@@ -129,21 +141,22 @@ export default async function SignInPage({
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Sign in</h1>
           <p className="text-sm text-slate-600">
             {authMode === "local"
-              ? "Enter your organization code, email, and password. Privileged accounts will also verify an authenticator code."
+              ? loginOrganization
+                ? `Sign in to ${loginOrganization.name} with your email and password. Privileged accounts will also verify an authenticator code.`
+                : "Organization sign-in is temporarily unavailable. Contact your administrator."
               : "Enter the demo account email. Role access is loaded from the seeded user account."}
           </p>
         </div>
         <form action={signIn} className="mt-6 grid gap-3">
-          {authMode === "local" ? (
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
-              Organization code
-              <input
-                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                name="tenantCode"
-                autoComplete="organization"
-                required
-              />
-            </label>
+          {authMode === "local" && loginOrganization ? (
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                Organization
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                {loginOrganization.name}
+              </p>
+            </div>
           ) : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Email
@@ -172,7 +185,8 @@ export default async function SignInPage({
             </label>
           ) : null}
           <button
-            className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+            className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={authMode === "local" && !loginOrganization}
             type="submit"
           >
             <LogIn aria-hidden="true" className="h-4 w-4" />

@@ -25,9 +25,9 @@ Every dashboard must answer four questions immediately:
 Every dashboard uses this order:
 
 1. **Context bar** — Company, Brand, Branch/Location, date range, and truthful source-observation context.
-2. **Action queue** — approvals, overdue tasks, discrepancies, blocked records.
-3. **Critical KPI strip** — 3–6 core values appropriate to the role.
-4. **Operational detail** — trend, list, variance, or status visualization.
+2. **Action summaries** — full-width approvals and operational-exception rows with bounded snapshot values and expandable details.
+3. **Priority indicator summary** — up to six authorized values appropriate to the role.
+4. **Operational detail** — stock signals, trend, list, variance, or status visualization.
 5. **Drill-down lists** — records that explain a metric.
 
 Do not lead with charts when the user has unresolved actions.
@@ -82,6 +82,16 @@ Each action item must show:
 - age / overdue duration;
 - owner;
 - direct action or open-record link.
+
+### 4.1 Overview disclosure behavior
+
+- The Phase I Overview uses ordered full-width summary rows for Assigned Approvals, Operational Exceptions, Priority Indicators, and Stock Balance Signals when those sources are authorized and enrolled.
+- Selecting a row expands its details immediately below the summary. Opening another row closes the previous row so the page does not become a long stack.
+- Every row starts closed. Selecting a row opens it, selecting the same row again closes it, and selecting another row closes the previous row.
+- Row headings are semantic buttons with keyboard access, visible focus, `aria-expanded`, and an associated labelled region. Actions belong inside the expanded panel, not inside the heading button.
+- Summary counts preserve their source grain. Do not add approvals, exceptions, indicators, or stock balance-row signals together.
+- Critical and high operational states remain visible in the collapsed snapshot; no row opens automatically.
+- Omit unauthorized source rows. Show unavailable or partial authorized sources explicitly and never translate them to zero.
 
 ---
 

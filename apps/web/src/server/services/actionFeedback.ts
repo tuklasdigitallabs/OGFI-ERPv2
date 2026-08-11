@@ -32,6 +32,10 @@ const actionSuccessMessages: Record<string, string> = {
     "Department was created and is available in the selected organization register.",
   CORE_ADMIN_LOCATION_CREATED:
     "Location was created and is available in the selected organization register.",
+  CORE_ADMIN_ROLE_CREATED:
+    "Role was created without permissions. Select it from the register to configure its permission set.",
+  CORE_ADMIN_ROLE_RECOMMENDED_PERMISSIONS_APPLIED:
+    "The recommended permission set was applied and the role permission register was refreshed.",
   CORE_ADMIN_COMPANY_UPDATED:
     "Company details were saved. The change and its reason are available in the audit trail.",
   CORE_ADMIN_BRAND_UPDATED:
@@ -71,10 +75,152 @@ const actionSuccessMessages: Record<string, string> = {
   SUPPLIER_ITEM_LINK_CREATED:
     "The supplier-item link was created and is now available in the selected supplier catalog.",
   SUPPLIER_ITEM_LINK_DEACTIVATED:
-    "The supplier-item link was deactivated. Its history is retained and it is unavailable for new sourcing."
+    "The supplier-item link was deactivated. Its history is retained and it is unavailable for new sourcing.",
+  SERVING_DECLARATION_CREATED:
+    "The serving declaration draft was created. It has not changed inventory.",
+  SERVING_DECLARATION_DRAFT_UPDATED:
+    "The serving declaration draft was saved without changing inventory.",
+  SERVING_DECLARATION_SUBMITTED:
+    "The serving facts were submitted for independent manager verification.",
+  SERVING_DECLARATION_VERIFIED:
+    "The serving facts and immutable recipe derivation were verified. Inventory has not changed yet.",
+  SERVING_DECLARATION_RETURNED:
+    "The declaration was returned to the encoder for correction.",
+  SERVING_DECLARATION_CANCELLED:
+    "The draft declaration was cancelled. Its audit history remains available.",
+  SERVING_DECLARATION_VERIFIED_CANCELLED:
+    "The verified declaration was cancelled before inventory posting. Its immutable verification evidence remains available.",
+  SERVING_CONSUMPTION_POSTED:
+    "Expected recipe consumption was posted to the immutable inventory ledger.",
+  SERVING_CONSUMPTION_REVERSED:
+    "The complete consumption posting was reversed and inventory was restored through linked ledger movements.",
+  SERVING_DECLARATION_CORRECTION_CREATED:
+    "A corrected draft revision was created from the cancelled or reversed declaration.",
+  RESTAURANT_CONSUMPTION_CONFIGURATION_CREATED:
+    "The branch consumption configuration version was created.",
+  RESTAURANT_CONSUMPTION_CONFIGURATION_ACTIVATED:
+    "The branch consumption configuration was activated with its effective-time and audit history preserved.",
+  MENU_RECIPE_ASSIGNMENT_CREATED:
+    "The approved recipe was assigned to the menu item for this branch and effective period.",
+  BRAND_MENU_RECIPE_DEFAULT_CREATED:
+    "The approved recipe is now the effective brand default. Eligible branches inherit it unless a controlled exception applies.",
+  LOCATION_MENU_RECIPE_OVERRIDE_CREATED:
+    "The branch recipe override was scheduled with its effective period and audit history preserved.",
+  MENU_ITEM_LOCATION_AVAILABILITY_UPDATED:
+    "The branch menu availability decision was scheduled without changing recipe history or inventory.",
+  SHARED_RECIPE_ADOPTED_FOR_BRAND:
+    "The company-shared recipe was explicitly adopted by this brand. It is not exposed to other brands.",
+  LOCATION_MENU_RECIPE_OVERRIDE_ENDED:
+    "The branch recipe override was ended. The branch will use the effective brand default after the selected boundary.",
+  RESTAURANT_MENU_POLICY_FUTURE_CANCELLED:
+    "The scheduled future menu policy was cancelled without changing historical recipe resolution or inventory.",
+  RECIPE_BRAND_DEFAULTS_ROLLED_OUT:
+    "The published successor recipe was scheduled for the reviewed brand defaults. Branch exceptions and inventory were not changed.",
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  CONSUMPTION_CONFIGURATION_NOT_ACTIVE:
+    "This branch does not have an active Servings & Consumption configuration.",
+  CONSUMPTION_ISSUE_LOCATION_SCOPE_DENIED:
+    "Select an active inventory issue location belonging to the current branch.",
+  CONSUMPTION_CONFIGURATION_EFFECTIVE_FROM_NOT_LATER:
+    "The new configuration must become effective after the latest configuration version.",
+  CONSUMPTION_CONFIGURATION_NOT_ACTIVATABLE:
+    "Only a current draft configuration in this branch scope can be activated.",
+  CONSUMPTION_CONFIGURATION_READINESS_BLOCKED:
+    "Resolve every issue-location, active-menu, published-recipe, and recipe/UOM readiness blocker before activating this branch configuration.",
+  CONSUMPTION_SENTINEL_ITEM_SCOPE_INVALID:
+    "Every sentinel ingredient must be an active inventory item in the selected company.",
+  SERVICE_PERIOD_OVERLAP:
+    "Service periods cannot overlap. Adjust the shift start and end times.",
+  SERVICE_PERIOD_NOT_CONFIGURED:
+    "Select a service period configured for this branch.",
+  SERVING_DECLARATION_PERIOD_NOT_CLOSED:
+    "This service period is still open. Submit the consolidated serving facts after its configured close time.",
+  SERVING_DECLARATION_SELF_VERIFICATION_DENIED:
+    "The encoder cannot verify their own serving declaration. Use a different authorized manager.",
+  SERVING_DECLARATION_SELF_POST_DENIED:
+    "The encoder cannot post inventory consumption for their own declaration.",
+  SERVING_DECLARATION_NOT_EDITABLE:
+    "Only draft or returned serving declarations can be edited.",
+  SERVING_DECLARATION_STALE_VERSION:
+    "This declaration changed while you were editing. Refresh and review the latest version.",
+  SERVING_DECLARATION_IDEMPOTENCY_CONFLICT:
+    "This request key was already used with different serving details. Refresh and review the existing declaration.",
+  SERVING_DECLARATION_NOT_SUBMITTABLE:
+    "Only a draft or returned declaration can be submitted.",
+  SERVING_DECLARATION_NOT_VERIFIABLE:
+    "This declaration is no longer waiting for fact verification.",
+  SERVING_DECLARATION_NOT_RETURNABLE:
+    "This declaration is no longer eligible to be returned.",
+  SERVING_DECLARATION_VERIFIED_CANCELLATION_DENIED:
+    "This verified declaration can no longer be cancelled. Refresh and review its current state.",
+  SERVING_DECLARATION_NOT_READY_TO_POST:
+    "Complete independent verification and resolve all recipe-readiness blockers before posting consumption.",
+  SERVING_CONSUMPTION_NOT_REVERSIBLE:
+    "Only a fully posted consumption document can be reversed.",
+  MENU_RECIPE_ASSIGNMENT_MISSING:
+    "This offered menu item has no effective brand recipe default or branch override for the complete service period.",
+  MENU_ITEM_LOCATION_UNAVAILABLE:
+    "This menu item is unavailable at the selected branch for the complete service period.",
+  MENU_RECIPE_BRAND_SCOPE_DENIED:
+    "The selected menu item, recipe, brand, or branch does not belong to the current authorized scope.",
+  SHARED_RECIPE_BRAND_ADOPTION_REQUIRED:
+    "This company-shared recipe must be explicitly adopted by the selected brand before it can be assigned.",
+  MENU_RECIPE_ASSIGNMENT_EFFECTIVE_RANGE_CONFLICT:
+    "The requested effective period overlaps an existing brand default, branch override, or scheduled successor.",
+  MENU_RECIPE_ROLLOUT_INTENT_REQUIRED:
+    "Choose whether publication is formula-only or will advance existing brand menu defaults, and provide the rollout effective time.",
+  MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE:
+    "The brand-wide recipe rollout is not safe for the requested effective time. Review the affected menu items and readiness blockers.",
+  MENU_RECIPE_ROLLOUT_PREVIEW_STALE:
+    "The rollout impact changed after preview. Refresh the preview and review every affected branch before retrying.",
+  RESTAURANT_MENU_POLICY_IDEMPOTENCY_CONFLICT:
+    "This menu policy request key was already used with different details. Refresh and review the recorded outcome.",
+  MENU_RECIPE_NOT_QUANTITY_READY:
+    "The published recipe cannot yet derive inventory quantities. Resolve its yield, serving UOM, ingredient, sub-recipe, or conversion blockers.",
+  MENU_RECIPE_FUTURE_POLICY_NOT_CANCELLABLE:
+    "Only a future menu recipe or availability policy that has not taken effect can be cancelled.",
+  MENU_RECIPE_AUTHORITY_STALE:
+    "Your menu recipe authority or assigned scope changed. Refresh or sign in again before retrying.",
+  MENU_RECIPE_MANAGE_SCOPE_REQUIRED:
+    "You need current manage scope for this brand or branch to change its menu recipe policy.",
+  MENU_RECIPE_EFFECTIVE_INTERVAL_INVALID:
+    "The effective interval is invalid or does not align with the selected branch service boundary.",
+  EFFECTIVE_DATE_INVALID:
+    "Enter a valid effective date in the selected company's timezone.",
+  EFFECTIVE_LOCAL_TIME_INVALID:
+    "Enter a valid local effective date and time for the selected company's timezone.",
+  EFFECTIVE_RANGE_INVALID:
+    "The effective end must be later than the effective start.",
+  MENU_RECIPE_ASSIGNMENT_SCOPE_OR_STATE_INVALID:
+    "Select an active menu item and a published recipe belonging to the current company and branch brand.",
+  MENU_ITEM_BRAND_SCOPE_DENIED:
+    "The selected menu item does not belong to this branch brand.",
+  RECIPE_BRAND_SCOPE_DENIED:
+    "The selected recipe does not belong to this branch brand.",
+  MENU_RECIPE_ASSIGNMENT_EFFECTIVE_FROM_NOT_LATER:
+    "The replacement recipe assignment must start after the current assignment.",
+  CONSUMPTION_CONFIGURATION_STALE:
+    "The branch configuration changed or is no longer active. Refresh before continuing.",
+  CONSUMPTION_VERIFICATION_AUTHORITY_STALE:
+    "Your verification permission or branch scope changed. Refresh or sign in again.",
+  CONSUMPTION_POST_AUTHORITY_STALE:
+    "Your posting permission or branch inventory scope changed. Refresh or sign in again.",
+  CONSUMPTION_REVERSE_AUTHORITY_STALE:
+    "Your reversal permission or branch inventory scope changed. Refresh or sign in again.",
+  CONSUMPTION_STOCK_INSUFFICIENT:
+    "Eligible branch stock is insufficient for the complete recipe consumption posting. No inventory was changed.",
+  CONSUMPTION_SNAPSHOT_HASH_INVALID:
+    "The verified recipe snapshot failed its integrity check. No inventory was changed.",
+  CONSUMPTION_POST_AFTER_COUNT_CUTOFF_DENIED:
+    "A stock-count cutoff already covers this service period. Use the controlled reconciliation and correction process; the system will not backdate consumption across that count.",
+  CONSUMPTION_POST_CLOSED_PERIOD_DENIED:
+    "The declaration belongs to a closed accounting period. Use an authorized current-period correction process rather than posting across the closed period.",
+  CONSUMPTION_REVERSAL_IDEMPOTENCY_CONFLICT:
+    "This reversal key was already used with different details. Refresh and review the recorded reversal.",
+  STOCK_COUNT_PENDING_SERVING_CONSUMPTION:
+    "A closed service period still has unposted serving consumption for this inventory location. Complete, return, cancel, or otherwise resolve it before starting the stock count.",
   INVENTORY_PILOT_CONFIGURATION_NOT_FOUND:
     "This inventory pilot configuration record is unavailable in the selected company.",
   INVENTORY_PILOT_CONFIGURATION_PERMISSION_DENIED:
@@ -362,16 +508,14 @@ const actionFeedbackMessages: Record<string, string> = {
     "You cannot approve or publish your own recipe version.",
   RECIPE_VERSION_TRANSITION_CONFLICT:
     "This recipe version changed while the action was being processed. Refresh and try again.",
-  RECIPE_NOT_FOUND:
-    "This recipe is no longer available or outside your scope.",
+  RECIPE_NOT_FOUND: "This recipe is no longer available or outside your scope.",
   RECIPE_ARCHIVED_NOT_EDITABLE:
     "Archived recipes cannot be changed. Create a new active recipe instead.",
   RECIPE_OPEN_VERSION_EXISTS:
     "Finish or cancel the open recipe version before creating another draft revision.",
   RECIPE_OPEN_VERSION_BLOCKS_ARCHIVE:
     "Archive is blocked while a recipe version is still in draft, review, returned, or approved status.",
-  RECIPE_ALREADY_ARCHIVED:
-    "This recipe is already archived.",
+  RECIPE_ALREADY_ARCHIVED: "This recipe is already archived.",
   RECIPE_ARCHIVE_CONFLICT:
     "This recipe changed while archive was being processed. Refresh and try again.",
   RECIPE_REVISION_LINE_QUANTITY_INVALID:
@@ -427,9 +571,9 @@ const actionFeedbackMessages: Record<string, string> = {
   VALIDATION_FAILED:
     "Review the required fields and field lengths, then try again.",
   LOGIN_ACCOUNT_NOT_FOUND:
-    "The organization code, email, or password is incorrect.",
+    "The email or password is incorrect.",
   LOGIN_CREDENTIALS_INVALID:
-    "The organization code, email, or password is incorrect.",
+    "The email or password is incorrect.",
   LOGIN_TEMPORARILY_THROTTLED:
     "Too many sign-in attempts were detected. Wait 15 minutes, then try again or contact support.",
   AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE:
@@ -462,10 +606,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "Select either enabled or disabled for this policy setting.",
   POLICY_SETTING_NUMBER_INVALID:
     "Enter a valid zero-or-greater number for this policy setting.",
-  POLICY_SETTING_JSON_INVALID:
-    "Enter valid JSON for this policy setting.",
-  POLICY_SETTING_SELECT_INVALID:
-    "Select one of the available policy options.",
+  POLICY_SETTING_JSON_INVALID: "Enter valid JSON for this policy setting.",
+  POLICY_SETTING_SELECT_INVALID: "Select one of the available policy options.",
   RELEASE_READINESS_GATE_NOT_FOUND:
     "That release-readiness gate is not available for this company.",
   RELEASE_READINESS_EVIDENCE_REQUIRED:
@@ -572,16 +714,13 @@ const actionFeedbackMessages: Record<string, string> = {
     "A location with that code already exists for the selected company.",
   CORE_ADMIN_LOCATION_CODE_INVALID:
     "Enter a valid location code using letters, numbers, dashes, underscores, or periods.",
-  BRANCH_BRAND_REQUIRED:
-    "Select a brand before creating a branch location.",
+  BRANCH_BRAND_REQUIRED: "Select a brand before creating a branch location.",
   BRAND_NOT_FOUND:
     "The selected brand is inactive, missing, or outside the selected company.",
   OPERATIONAL_REASON_CODE_INVALID:
     "Select an active reason code configured for this workflow and type.",
-  OPERATIONAL_REASON_CODE_NOT_ACTIVE:
-    "This reason code is already inactive.",
-  OPERATIONAL_REASON_CODE_NOT_FOUND:
-    "This reason code is no longer available.",
+  OPERATIONAL_REASON_CODE_NOT_ACTIVE: "This reason code is already inactive.",
+  OPERATIONAL_REASON_CODE_NOT_FOUND: "This reason code is no longer available.",
   OPERATIONAL_REASON_CODE_DUPLICATE:
     "A reason code with this workflow and code already exists for this company.",
   PURCHASE_ORDER_NOT_ISSUED_FOR_RECEIVING:
@@ -667,11 +806,16 @@ const actionFeedbackMessages: Record<string, string> = {
   INVALID_STATUS_TRANSITION:
     "That status change is no longer valid. Refresh and review the latest state.",
   ITEM_NOT_FOUND: "The selected item is no longer available.",
-  ITEM_NOT_ACTIVE: "Only an active item can be edited. Refresh the register and review its current status.",
-  ITEM_UPDATE_CONFLICT: "This item changed while you were editing. Refresh the register and review the latest values before retrying.",
-  ITEM_MATERIAL_CHANGE_REQUIRES_REVIEW: "Category, type, UOM, and operational-control changes require the governed master-data review process.",
-  ITEM_DEACTIVATION_GOVERNANCE_REQUIRED: "Item deactivation requires governed review, stock and open-transaction checks, and a replacement plan. No deactivation was recorded.",
-  ITEM_CORRECTION_NO_CHANGE: "Enter a different item name before saving a correction.",
+  ITEM_NOT_ACTIVE:
+    "Only an active item can be edited. Refresh the register and review its current status.",
+  ITEM_UPDATE_CONFLICT:
+    "This item changed while you were editing. Refresh the register and review the latest values before retrying.",
+  ITEM_MATERIAL_CHANGE_REQUIRES_REVIEW:
+    "Category, type, UOM, and operational-control changes require the governed master-data review process.",
+  ITEM_DEACTIVATION_GOVERNANCE_REQUIRED:
+    "Item deactivation requires governed review, stock and open-transaction checks, and a replacement plan. No deactivation was recorded.",
+  ITEM_CORRECTION_NO_CHANGE:
+    "Enter a different item name before saving a correction.",
   ITEM_CATEGORY_NOT_FOUND: "The selected item category is no longer available.",
   ITEM_CATEGORY_HAS_ACTIVE_ITEMS:
     "This category is still used by active items. Move or deactivate those items before deactivating the category.",
@@ -791,12 +935,10 @@ const actionFeedbackMessages: Record<string, string> = {
     "Add at least one checklist line before saving the branch checklist.",
   BRANCH_CHECKLIST_LINE_INDEX_INVALID:
     "Checklist lines must be entered in order from line 1 with no skipped or out-of-range rows.",
-  BRANCH_BUSINESS_DATE_INVALID:
-    "Enter a valid branch checklist business date.",
+  BRANCH_BUSINESS_DATE_INVALID: "Enter a valid branch checklist business date.",
   BRANCH_CHECKLIST_NOT_FOUND:
     "This branch checklist is no longer available or is outside your scope.",
-  BRANCH_REVIEWED_AT_INVALID:
-    "Enter a valid branch checklist review date.",
+  BRANCH_REVIEWED_AT_INVALID: "Enter a valid branch checklist review date.",
   BRANCH_CHECKLIST_REVIEW_CONFLICT:
     "This branch checklist changed while review was being saved. Refresh and try again.",
   BRANCH_CHECKLIST_SELF_REVIEW_BLOCKED:
@@ -817,16 +959,14 @@ const actionFeedbackMessages: Record<string, string> = {
     "Add at least one reading before saving the food-safety log.",
   FOOD_SAFETY_READING_INDEX_INVALID:
     "Food-safety readings must be entered in order from reading 1 with no skipped or out-of-range rows.",
-  FOOD_SAFETY_BUSINESS_DATE_INVALID:
-    "Enter a valid food-safety business date.",
+  FOOD_SAFETY_BUSINESS_DATE_INVALID: "Enter a valid food-safety business date.",
   FOOD_SAFETY_READING_VALUE_INVALID:
     "Food-safety reading values and expected limits must be valid numbers.",
   FOOD_SAFETY_LOG_NOT_FOUND:
     "This food-safety log is no longer available or is outside your scope.",
   FOOD_SAFETY_LOG_STATUS_NOT_REVIEWABLE:
     "Only submitted or exception-review food-safety logs can be reviewed.",
-  FOOD_SAFETY_REVIEWED_AT_INVALID:
-    "Enter a valid food-safety review date.",
+  FOOD_SAFETY_REVIEWED_AT_INVALID: "Enter a valid food-safety review date.",
   FOOD_SAFETY_REVIEW_CONFLICT:
     "This food-safety log changed while review was being saved. Refresh and try again.",
   FOOD_SAFETY_REVIEWED_AT_BEFORE_BUSINESS_DATE:
@@ -839,14 +979,12 @@ const actionFeedbackMessages: Record<string, string> = {
     "This food-safety log changed while close was being saved. Refresh and try again.",
   INCIDENT_NOT_FOUND:
     "This incident is no longer available or is outside your scope.",
-  INCIDENT_DATE_INVALID:
-    "Enter a valid incident date.",
+  INCIDENT_DATE_INVALID: "Enter a valid incident date.",
   INCIDENT_DUE_DATE_INVALID:
     "Enter a valid incident due date, or leave it blank.",
   INCIDENT_DUE_AT_BEFORE_INCIDENT_DATE:
     "The incident due date cannot be before the incident date.",
-  INCIDENT_RESOLVED_AT_INVALID:
-    "Enter a valid incident resolution date.",
+  INCIDENT_RESOLVED_AT_INVALID: "Enter a valid incident resolution date.",
   INCIDENT_RESOLVED_AT_BEFORE_INCIDENT_DATE:
     "The resolution date cannot be before the incident date.",
   INCIDENT_RESOLUTION_CONFLICT:
@@ -865,8 +1003,7 @@ const actionFeedbackMessages: Record<string, string> = {
     "Enter a valid maintenance completion date.",
   MAINTENANCE_COMPLETED_AT_BEFORE_REQUESTED_AT:
     "The completion date cannot be before the maintenance request date.",
-  MAINTENANCE_REQUESTED_AT_INVALID:
-    "Enter a valid maintenance request date.",
+  MAINTENANCE_REQUESTED_AT_INVALID: "Enter a valid maintenance request date.",
   MAINTENANCE_TARGET_DUE_AT_INVALID:
     "Enter a valid maintenance target due date, or leave it blank.",
   MAINTENANCE_TARGET_DUE_AT_BEFORE_REQUESTED_AT:
@@ -978,8 +1115,7 @@ const actionFeedbackMessages: Record<string, string> = {
     "This project changed while you were working. Refresh and review the latest details.",
   PROJECT_DETAILS_PERMISSION_DENIED:
     "You do not have permission to update this project's details.",
-  PROJECT_TARGET_DATE_INVALID:
-    "Enter a valid target opening date.",
+  PROJECT_TARGET_DATE_INVALID: "Enter a valid target opening date.",
   PROJECT_LEADERSHIP_INCOMPLETE:
     "Assign distinct active project manager and sponsor roles before continuing.",
   PROJECT_LEADERSHIP_SEGREGATION_REQUIRED:
@@ -1071,8 +1207,7 @@ const actionFeedbackMessages: Record<string, string> = {
     "Each signoff requirement needs a unique code.",
   PROJECT_TEMPLATE_STALE_VERSION:
     "This playbook changed while you were editing it. Refresh and review the latest version.",
-  PROJECT_TEMPLATE_TASK_NOT_FOUND:
-    "This playbook task is no longer available.",
+  PROJECT_TEMPLATE_TASK_NOT_FOUND: "This playbook task is no longer available.",
   PROJECT_TEMPLATE_NOT_PUBLISHED:
     "Only published project templates can be used to create projects.",
   QUOTATION_RECOMMENDATION_ALREADY_SUBMITTED:
@@ -1112,8 +1247,7 @@ const actionFeedbackMessages: Record<string, string> = {
     "That Receiving dashboard view is no longer available.",
   RECEIVING_FOLLOW_UP_REASON_UNAVAILABLE:
     "The Receiving follow-up reason is no longer available. Refresh and try again.",
-  RECEIVING_SEARCH_QUERY_TOO_LONG:
-    "Use a shorter Receiving search.",
+  RECEIVING_SEARCH_QUERY_TOO_LONG: "Use a shorter Receiving search.",
   REQUESTER_ONLY_ACTION: "Only the original requester can perform this action.",
   ROLE_ASSIGNMENT_NOT_FOUND: "This role assignment is no longer available.",
   SELECTED_SUPPLIER_QUOTE_NOT_FOUND:
@@ -1124,8 +1258,7 @@ const actionFeedbackMessages: Record<string, string> = {
     "Supplier quotes must include every approved Purchase Request line.",
   SUPPLIER_QUOTE_LINES_LIMIT_EXCEEDED:
     "A supplier quote can include up to 100 Purchase Request lines.",
-  SUPPLIER_QUOTE_LINES_REQUIRED:
-    "Record at least one supplier quote line.",
+  SUPPLIER_QUOTE_LINES_REQUIRED: "Record at least one supplier quote line.",
   SUPPLIER_QUOTE_LINE_NOT_FOUND:
     "One of the selected supplier quote lines is no longer available.",
   SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT:
@@ -1399,7 +1532,7 @@ export function getActionSuccessFeedback(code: string): ActionFeedback {
     code,
     message: actionSuccessMessages[code],
     title: "Action completed",
-    tone: "success"
+    tone: "success",
   };
 }
 
@@ -1410,7 +1543,7 @@ export function getActionErrorFeedback(error: unknown): ActionFeedback {
     message:
       actionFeedbackMessages[code] ??
       "The action could not be completed. Review the form and try again.",
-    title: "Action not completed"
+    title: "Action not completed",
   };
 }
 
@@ -1418,13 +1551,22 @@ export function getActionFeedback(
   searchParams: Record<string, string | string[] | undefined>,
 ): ActionFeedback | null {
   const rawErrorCode = searchParams.error;
-  const errorCode = Array.isArray(rawErrorCode) ? rawErrorCode[0] : rawErrorCode;
+  const errorCode = Array.isArray(rawErrorCode)
+    ? rawErrorCode[0]
+    : rawErrorCode;
   if (errorCode && safeActionCodePattern.test(errorCode)) {
     return getActionErrorFeedback(new Error(errorCode));
   }
 
   const rawSuccessCode = searchParams.success;
-  const successCode = Array.isArray(rawSuccessCode) ? rawSuccessCode[0] : rawSuccessCode;
-  if (!successCode || !safeActionCodePattern.test(successCode) || !actionSuccessMessages[successCode]) return null;
+  const successCode = Array.isArray(rawSuccessCode)
+    ? rawSuccessCode[0]
+    : rawSuccessCode;
+  if (
+    !successCode ||
+    !safeActionCodePattern.test(successCode) ||
+    !actionSuccessMessages[successCode]
+  )
+    return null;
   return getActionSuccessFeedback(successCode);
 }

@@ -19,7 +19,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 - If the urgency is emergency, prepare the emergency reason, evidence reference such as an incident number/photo/approval note, and estimated amount. Emergency requests must have a positive estimate and must stay within the configured emergency cap.
 - Use an active catalog item when one exists. Free-text lines require a UOM code.
 - When using a catalog item, select a UOM that is configured for that item. The server checks the item/UOM relationship again when creating the draft; an invalid or stale pair is rejected without creating the request.
-- Catalog-item, valid-UOM, and budget-line choices use bounded server lookups with independent Previous/Next controls. The editor shows the current page and total pages, retains the selected context while you search, and does not silently accept an incomplete result set.
+- Catalog-item, valid-UOM, and budget-line choices are searchable dropdowns inside the active request line. Opening a dropdown shows the first bounded page; typing filters the matching server-owned catalog automatically; Previous/Next loads another bounded page. Arrow keys and Enter select a highlighted option, and Escape closes the list.
 - A retained budget-line selection is shown only when it is active for the selected location and brand (or explicitly company-wide). Budget classification remains optional through `Finance to classify`; a stale or foreign selected ID is not displayed.
 - The composer starts with the first scoped page of active catalog items, UOMs, and budget lines; bounded server lookup and pagination remain available for the rest of the catalog. When a draft has multiple lines, selected item, UOM, and budget options remain available when you switch between lines.
 - An approval rule must be configured before a draft can be submitted.
@@ -39,10 +39,10 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 4. For emergency urgency, enter the emergency reason and evidence reference.
 5. Enter the business justification.
 6. Enter the line description.
-7. Search for and select a catalog item when available, or leave it as a free-text line. Narrow the search if the workspace reports too many matches.
+7. Open `Catalog item` to browse the first page, or type a code/name to filter and select a match. The valid-UOM dropdown loads only units configured for the selected item. Emergency requests may clear the catalog item and use the controlled free-text item/UOM fields instead.
 8. Enter the requested quantity.
 9. Enter the estimated unit cost when available. This is required for emergency requests because the system checks the configured emergency cap.
-10. Select a valid catalog unit for the selected item, or enter a free-text UOM for a free-text line.
+10. Select a valid catalog unit for the selected item. Optionally select a budget line or leave it as `Finance to classify`; a selected optional budget line can be cleared before saving.
 11. Enter the line purpose.
 12. Select `Create Draft Purchase Request`.
 13. Open the draft detail page.

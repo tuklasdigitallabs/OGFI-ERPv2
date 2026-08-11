@@ -49,3 +49,38 @@ describe("database seed DEC-0036 policy defaults", () => {
     expect(seedSource).toContain('accreditationStatus: "APPROVED"');
   });
 });
+
+describe("database seed DEC-0280 recipe authority defaults", () => {
+  test("seeds distinct sensitive authorities without granting generic operational roles", () => {
+    for (const code of [
+      "restaurant.menu_recipe.adopt",
+      "restaurant.menu_recipe.branch_exception",
+      "restaurant.menu_recipe.rollout",
+    ]) {
+      expect(seedSource).toContain(code);
+    }
+
+    expect(seedSource).toContain("const allSeededPermissions = await prisma.permission.findMany");
+    expect(seedSource).toContain("roleId: ids.superRoleId");
+    expect(seedSource).toContain("permissionId: permission.id");
+
+    const genericRoleGrantSection = seedSource.slice(
+      seedSource.indexOf("roleId: ids.requesterRoleId"),
+      seedSource.indexOf("const allSeededPermissions = await prisma.permission.findMany"),
+    );
+    expect(genericRoleGrantSection).not.toContain("ids.menuRecipeAdoptPermissionId");
+    expect(genericRoleGrantSection).not.toContain("ids.menuRecipeBranchExceptionPermissionId");
+    expect(genericRoleGrantSection).not.toContain("ids.menuRecipeRolloutPermissionId");
+  });
+
+  test("seeds coherent published recipe pointers, quantity conversions, and inherited brand defaults", () => {
+    expect(seedSource).toContain('item.baseUom === "SACK" && item.issueUom === "KG"');
+    expect(seedSource).toContain("conversionFactor: 1 / sackWeightKg");
+    expect(seedSource).toContain("currentVersionId: versionRecord.id");
+    expect(seedSource).toContain("publishedVersionId: versionRecord.id");
+    expect(seedSource).toContain('scopeType: "BRAND_DEFAULT"');
+    expect(seedSource).toContain(
+      'reason: "Seeded Yakiniku Like published-recipe brand default"',
+    );
+  });
+});

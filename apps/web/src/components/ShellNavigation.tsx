@@ -62,6 +62,7 @@ export type ShellActiveNav =
   | "recipes"
   | "food-cost"
   | "branch-operations"
+  | "servings"
   | "food-safety"
   | "incidents"
   | "maintenance"
@@ -150,6 +151,7 @@ export function getNavigationSections(
   canViewEvidenceRetention = false,
   inventoryControlPilot = false,
   canUseOpeningInventory = false,
+  canUseRestaurantConsumption = false,
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -478,6 +480,7 @@ export function getNavigationSections(
     ...(canAdminister ||
     canUseRecipesAndCosting ||
     canUseBranchOperations ||
+    canUseRestaurantConsumption ||
     canUseFoodSafety ||
     canUseIncidents ||
     canUseMaintenance
@@ -513,6 +516,20 @@ export function getNavigationSections(
                     label: "Branch Operations",
                     badge: "Daily",
                     icon: ClipboardCheck,
+                    disabled: true,
+                  },
+              canUseRestaurantConsumption || canAdminister
+                ? {
+                    label: "Servings & Consumption",
+                    href: "/servings",
+                    activeKey: "servings" as const,
+                    badge: "Daily",
+                    icon: ReceiptText,
+                  }
+                : {
+                    label: "Servings & Consumption",
+                    badge: "Daily",
+                    icon: ReceiptText,
                     disabled: true,
                   },
               canUseFoodSafety || canAdminister
@@ -1094,6 +1111,7 @@ function getDefaultSection(activeNav: ShellActiveNav) {
     activeNav === "recipes" ||
     activeNav === "food-cost" ||
     activeNav === "branch-operations" ||
+    activeNav === "servings" ||
     activeNav === "food-safety" ||
     activeNav === "incidents" ||
     activeNav === "maintenance"
@@ -1236,6 +1254,7 @@ export function ShellNavigation({
   canUseProjectTemplates,
   canUseRecipesAndCosting,
   canUseBranchOperations,
+  canUseRestaurantConsumption,
   canUseFoodSafety,
   canUseIncidents,
   canUseMaintenance,
@@ -1264,6 +1283,7 @@ export function ShellNavigation({
   canUseProjectTemplates: boolean;
   canUseRecipesAndCosting: boolean;
   canUseBranchOperations: boolean;
+  canUseRestaurantConsumption: boolean;
   canUseFoodSafety: boolean;
   canUseIncidents: boolean;
   canUseMaintenance: boolean;
@@ -1307,6 +1327,7 @@ export function ShellNavigation({
         canViewEvidenceRetention,
         inventoryControlPilot,
         canUseOpeningInventory,
+        canUseRestaurantConsumption,
       ),
     [
       canAdminister,
@@ -1325,6 +1346,7 @@ export function ShellNavigation({
       canUseProjectTemplates,
       canUseRecipesAndCosting,
       canUseBranchOperations,
+      canUseRestaurantConsumption,
       canUseFoodSafety,
       canUseIncidents,
       canUseMaintenance,

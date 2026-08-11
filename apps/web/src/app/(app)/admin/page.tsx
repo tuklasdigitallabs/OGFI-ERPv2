@@ -5,7 +5,10 @@ import { Badge, ButtonLink, PaginationBar, Panel, WorkspaceTabs } from "@ogfi/ui
 import { ActionFeedbackToast } from "@/components/ActionFeedbackToast";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
-import { OrganizationEditForm } from "@/components/OrganizationEditForm";
+import {
+  OrganizationEditForm,
+  ShortMutationForm,
+} from "@/components/OrganizationEditForm";
 import { OrganizationScopeSelectionPanel } from "@/components/OrganizationScopeSelectionPanel";
 import {
   actionErrorRedirectPath,
@@ -16,7 +19,6 @@ import {
   permissions
 } from "@/server/services/authorization";
 import {
-  createCoreAdminRole,
   createCoreAdminUser,
   assertCanManageCompanyScope,
   getCoreAdminOverview,
@@ -61,18 +63,6 @@ async function createUserAction(formData: FormData) {
   }
   revalidatePath("/admin");
   redirect("/admin?tab=users");
-}
-
-async function createRoleAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createCoreAdminRole(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/admin?tab=roles", error));
-  }
-  revalidatePath("/admin");
-  redirect("/admin?tab=roles");
 }
 
 export default async function CoreAdministrationPage({
@@ -598,7 +588,12 @@ export default async function CoreAdministrationPage({
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warning">{highAccessRoleCount} high access</Badge>
               <EntryModal title="Create Role" triggerLabel="Create Role">
-                <form action={createRoleAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                <ShortMutationForm
+                  endpoint="/api/admin/roles/create"
+                  submitLabel="Create Role"
+                  pendingLabel="Creating role…"
+                  className="md:grid-cols-2"
+                >
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Role name
                     <input className="rounded-md border border-slate-300 px-3 py-2" name="name" required />
@@ -614,10 +609,7 @@ export default async function CoreAdministrationPage({
                   <p className="text-sm text-slate-500 md:col-span-2">
                     New roles start without permissions. Open the role after creation to apply recommended permissions or toggle overrides.
                   </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create Role
-                  </button>
-                </form>
+                </ShortMutationForm>
               </EntryModal>
             </div>
           </div>
@@ -983,8 +975,55 @@ export default async function CoreAdministrationPage({
 
             {organizationSection === "departments" ? <section className="space-y-3">
               <div>
-                <h3 className="font-bold text-slate-950">Departments</h3>
-                <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
+                <h2 className="text-lg font-bold text-slate-950">
+                  Roles & Permissions
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Use recommended sets or override permission toggles with
+                  audit.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="warning">{highAccessRoleCount} high access</Badge>
+                <EntryModal title="Create Role" triggerLabel="Create Role">
+                  <ShortMutationForm
+                    endpoint="/api/admin/roles/create"
+                    submitLabel="Create Role"
+                    pendingLabel="Creating role…"
+                    className="md:grid-cols-2"
+                  >
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Role name
+                      <input
+                        className="rounded-md border border-slate-300 px-3 py-2"
+                        name="name"
+                        required
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Business role code
+                      <input
+                        className="rounded-md border border-slate-300 px-3 py-2"
+                        name="code"
+                        placeholder="e.g. STOREKEEPER-BGC"
+                        required
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
+                      Setup reason
+                      <input
+                        className="rounded-md border border-slate-300 px-3 py-2"
+                        name="reason"
+                        required
+                      />
+                    </label>
+                    <p className="text-sm text-slate-500 md:col-span-2">
+                      New roles start without permissions. Open the role after
+                      creation to apply recommended permissions or toggle
+                      overrides.
+                    </p>
+                  </ShortMutationForm>
+                </EntryModal>
               </div>
               <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="departments" />

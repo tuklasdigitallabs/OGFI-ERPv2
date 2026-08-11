@@ -11,6 +11,7 @@ import {
   canReadPurchaseOrders,
   canConfigureProjectTemplates,
   canUseBranchOperations,
+  canUseRestaurantConsumption,
   canUseFoodSafety,
   canUseIncidents,
   canUseMaintenance,
@@ -84,6 +85,9 @@ export function AppShell({
   const canAccessBranchOperations = canUseBranchOperations(
     session.permissionCodes,
   );
+  const canAccessRestaurantConsumption = canUseRestaurantConsumption(
+    session.permissionCodes,
+  );
   const canAccessFoodSafety = canUseFoodSafety(session.permissionCodes);
   const canAccessIncidents = canUseIncidents(session.permissionCodes);
   const canAccessMaintenance = canUseMaintenance(session.permissionCodes);
@@ -113,6 +117,7 @@ export function AppShell({
       canUseProjectTemplates={canAccessProjectTemplates}
       canUseRecipesAndCosting={canAccessRecipesAndCosting}
       canUseBranchOperations={canAccessBranchOperations}
+      canUseRestaurantConsumption={canAccessRestaurantConsumption}
       canUseFoodSafety={canAccessFoodSafety}
       canUseIncidents={canAccessIncidents}
       canUseMaintenance={canAccessMaintenance}

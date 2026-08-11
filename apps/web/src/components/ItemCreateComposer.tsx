@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import { useRouter } from "next/navigation";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { TaskSheet } from "@/components/TaskSheet";
 import {
   catalogSelectionReady,
@@ -42,7 +43,6 @@ type CatalogSelectorProps = {
   name: "itemCategoryId" | "baseUomId" | "purchaseUomId" | "issueUomId";
   selectorName: SelectorName;
   label: string;
-  searchLabel: string;
   searchPlaceholder: string;
   selectedId: string;
   required: boolean;
@@ -71,7 +71,6 @@ function CatalogSelector({
   name,
   selectorName,
   label,
-  searchLabel,
   searchPlaceholder,
   selectedId,
   required,
@@ -80,6 +79,9 @@ function CatalogSelector({
   onResolutionChange
 }: CatalogSelectorProps) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listboxId = useId();
   const debouncedQuery = useDebouncedValue(query, 250);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -137,7 +139,17 @@ function CatalogSelector({
     return () => controller.abort();
   }, [debouncedQuery, kind, page, refreshKey, retryKey, selectedId]);
 
-  const selectedOption = options.find((option) => option.id === selectedId);
+  const selectableOptions = required
+    ? options
+    : [
+        {
+          id: "",
+          code: "None",
+          label: `No ${label.toLowerCase()} assigned`,
+          status: "ACTIVE",
+        },
+        ...options,
+      ];
   const lookupPending = loading || searchIsDebouncing;
   const ready = catalogSelectionReady({
     required,
@@ -152,6 +164,16 @@ function CatalogSelector({
     onResolutionChange(selectorName, ready);
   }, [onResolutionChange, ready, selectorName]);
 
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [options]);
+
+  const chooseOption = (option: ItemCatalogOption) => {
+    onSelectedIdChange(option.id);
+    setQuery(option.id ? `${option.code} / ${option.label}` : "");
+    setOpen(false);
+  };
+
   return (
     <section className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div>
@@ -160,65 +182,140 @@ function CatalogSelector({
           {required ? "Select one active company-scoped option." : "Choose None or one active company-scoped option."}
         </p>
       </div>
-      <label className="grid gap-1 text-sm font-medium text-slate-700">
-        {searchLabel}
+      <div className="relative text-sm font-medium text-slate-700">
+        <div className="relative">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400"
+          />
         <input
-          className={inputClass}
+          aria-activedescendant={
+            open && selectableOptions[activeIndex]
+              ? `${listboxId}-option-${activeIndex}`
+              : undefined
+          }
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          aria-expanded={open}
+          aria-label={label}
+          aria-required={required}
+          className={`${inputClass} w-full pl-9 pr-11`}
           value={query}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
           onChange={(event) => {
             setQuery(event.target.value);
             setPage(1);
+            if (selectedId) onSelectedIdChange("");
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setOpen(false);
+              return;
+            }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              setOpen(true);
+              setActiveIndex((current) => {
+                if (selectableOptions.length === 0) return 0;
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                return (
+                  (current + step + selectableOptions.length) %
+                  selectableOptions.length
+                );
+              });
+              return;
+            }
+            if (
+              event.key === "Enter" &&
+              open &&
+              selectableOptions[activeIndex]
+            ) {
+              event.preventDefault();
+              chooseOption(selectableOptions[activeIndex]);
+            }
           }}
           placeholder={searchPlaceholder}
-          type="search"
+          role="combobox"
+          type="text"
         />
-      </label>
-      {selectedOption ? (
-        <p className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
-          <span className="font-bold">Selected:</span> {selectedOption.code} / {selectedOption.label}
-        </p>
-      ) : !required && !selectedId ? (
-        <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-          <span className="font-bold">Selected:</span> None — no {label.toLowerCase()} will be assigned.
-        </p>
-      ) : null}
-      <label className="grid gap-1 text-sm font-medium text-slate-700">
-        {label}
-        <select
-          className={inputClass}
-          name={name}
-          value={selectedId}
-          onChange={(event) => onSelectedIdChange(event.target.value)}
-          required={required}
-        >
-          <option value="">{required ? `Select ${label.toLowerCase()}` : "None"}</option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.code} / {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>Page {page} of {pages}</span>
-        <div className="flex gap-2">
           <button
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 font-semibold disabled:text-slate-400"
-            disabled={lookupPending || page <= 1}
-            onClick={() => setPage((value) => value - 1)}
+            aria-label={`Show ${label.toLowerCase()} options`}
+            className="absolute right-0 top-0 inline-flex min-h-11 min-w-11 items-center justify-center text-slate-500"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setOpen((current) => !current)}
             type="button"
           >
-            Previous
-          </button>
-          <button
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 font-semibold disabled:text-slate-400"
-            disabled={lookupPending || page >= pages}
-            onClick={() => setPage((value) => value + 1)}
-            type="button"
-          >
-            Next
+            <ChevronDown aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
+        <input name={name} type="hidden" value={selectedId} />
+        {open ? (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div
+              className="max-h-64 overflow-y-auto p-1"
+              id={listboxId}
+              role="listbox"
+            >
+              {selectableOptions.map((option, index) => (
+                <button
+                  aria-selected={option.id === selectedId}
+                  className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm ${
+                    index === activeIndex
+                      ? "bg-blue-50 text-blue-950"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  id={`${listboxId}-option-${index}`}
+                  key={option.id || "none"}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => chooseOption(option)}
+                  role="option"
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-semibold">{option.code}</span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {option.label}
+                    </span>
+                  </span>
+                  {option.id === selectedId ? (
+                    <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-blue-600" />
+                  ) : null}
+                </button>
+              ))}
+              {!lookupPending && !error && options.length === 0 ? (
+                <p className="px-3 py-3 text-sm text-slate-500">
+                  No matching active options.
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-2 py-2 text-xs text-slate-500">
+              <span>Page {page} of {pages}</span>
+              <div className="flex gap-1">
+                <button
+                  className="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold disabled:text-slate-400"
+                  disabled={lookupPending || page <= 1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setPage((value) => value - 1)}
+                  type="button"
+                >
+                  Previous
+                </button>
+                <button
+                  className="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold disabled:text-slate-400"
+                  disabled={lookupPending || page >= pages}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setPage((value) => value + 1)}
+                  type="button"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
       {lookupPending ? (
         <p className="text-xs font-semibold text-slate-600" role="status">
@@ -232,14 +329,14 @@ function CatalogSelector({
       ) : null}
       {!lookupPending && !error && options.length === 0 && debouncedQuery.trim() ? (
         <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-600">
-          <p>No active options match this search. Your current selection has not been changed.</p>
+          <p>No active options match this search. Clear the search or try another code or name.</p>
           <button className="mt-2 min-h-11 rounded-md border border-slate-300 bg-white px-3 font-semibold text-blue-700" onClick={() => { setQuery(""); setPage(1); }} type="button">Clear search</button>
         </div>
       ) : null}
       {error ? (
         <div className="rounded-md border border-rose-200 bg-rose-50 p-3" role="alert">
           <p className="text-sm text-rose-800">{error}</p>
-          <p className="mt-1 text-xs font-semibold text-rose-800">Your current selection and item draft have not been changed.</p>
+          <p className="mt-1 text-xs font-semibold text-rose-800">Your item draft has been preserved. Retry the lookup before selecting an option.</p>
           {!required && !selectedId ? (
             <p className="mt-1 text-xs font-semibold text-rose-800">None remains a valid explicit choice; this lookup failure does not add an assignment.</p>
           ) : null}
@@ -444,7 +541,7 @@ export function ItemCreateComposer({
               {itemTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
             </select>
           </label>
-          <CatalogSelector key={`${selectorResetKey}-category`} kind="category" name="itemCategoryId" selectorName="category" label="Category" searchLabel="Search categories" searchPlaceholder="Category code or name" selectedId={categoryId} required refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setCategoryId, value)} onResolutionChange={handleResolutionChange} />
+          <CatalogSelector key={`${selectorResetKey}-category`} kind="category" name="itemCategoryId" selectorName="category" label="Category" searchPlaceholder="Select or search categories" selectedId={categoryId} required refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setCategoryId, value)} onResolutionChange={handleResolutionChange} />
         </section>
 
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -453,9 +550,9 @@ export function ItemCreateComposer({
             <p className="mt-1 text-sm text-slate-600">Base UOM is required. Purchase and issue UOM deliberately default to None.</p>
           </div>
           <div className="grid gap-4 xl:grid-cols-3">
-            <CatalogSelector key={`${selectorResetKey}-base`} kind="uom" name="baseUomId" selectorName="baseUom" label="Base UOM" searchLabel="Search base UOMs" searchPlaceholder="UOM code or name" selectedId={baseUomId} required refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setBaseUomId, value)} onResolutionChange={handleResolutionChange} />
-            <CatalogSelector key={`${selectorResetKey}-purchase`} kind="uom" name="purchaseUomId" selectorName="purchaseUom" label="Purchase UOM" searchLabel="Search purchase UOMs" searchPlaceholder="UOM code or name" selectedId={purchaseUomId} required={false} refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setPurchaseUomId, value)} onResolutionChange={handleResolutionChange} />
-            <CatalogSelector key={`${selectorResetKey}-issue`} kind="uom" name="issueUomId" selectorName="issueUom" label="Issue UOM" searchLabel="Search issue UOMs" searchPlaceholder="UOM code or name" selectedId={issueUomId} required={false} refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setIssueUomId, value)} onResolutionChange={handleResolutionChange} />
+            <CatalogSelector key={`${selectorResetKey}-base`} kind="uom" name="baseUomId" selectorName="baseUom" label="Base UOM" searchPlaceholder="Select or search active UOMs" selectedId={baseUomId} required refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setBaseUomId, value)} onResolutionChange={handleResolutionChange} />
+            <CatalogSelector key={`${selectorResetKey}-purchase`} kind="uom" name="purchaseUomId" selectorName="purchaseUom" label="Purchase UOM" searchPlaceholder="None, or search active UOMs" selectedId={purchaseUomId} required={false} refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setPurchaseUomId, value)} onResolutionChange={handleResolutionChange} />
+            <CatalogSelector key={`${selectorResetKey}-issue`} kind="uom" name="issueUomId" selectorName="issueUom" label="Issue UOM" searchPlaceholder="None, or search active UOMs" selectedId={issueUomId} required={false} refreshKey={lookupRefreshKey} onSelectedIdChange={(value) => update(setIssueUomId, value)} onResolutionChange={handleResolutionChange} />
           </div>
         </section>
 

@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II UI Specification: Recipes and Costing
 
-**Status:** Costing foundation plus controlled recipe create/revision/archive, recipe-version workflow, and menu-price decision actions implemented
+**Status:** Costing foundation, controlled recipe workflow, default-off `DEC-0279` serving consumption, and the `DEC-0280` brand-default adoption hierarchy implemented and verified locally; named-role browser UAT and production activation remain pending
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
@@ -20,6 +20,16 @@ Current release behavior shows recipe versions, ingredient lines, price basis, c
 6. Recipe-version workflow and menu-price decision action surfaces when the role
    and status permit them
 7. Read-only revision workbook export for large recipe planning
+8. Restaurant Ops **Servings & Consumption** workspace with role-aware tabs for
+   Serving Declarations, Review & Posting, and Branch Configuration; server
+   filters, pagination, responsive declaration entry, independent verification,
+   explicit expected-consumption posting/reversal, FEFO allocation detail and
+   audit history
+9. Exact-branch configuration with an operational read-only view for staff,
+   supervisors and managers, plus permission-gated Admin controls for issue
+   location, service-period version, company default schedule, high-shrink
+   sentinel cohort, effective menu-recipe mappings, readiness validation and
+   explicit activation
 
 ## Global UI Rules
 
@@ -46,6 +56,52 @@ Current release behavior shows recipe versions, ingredient lines, price basis, c
   price apply action.
 - Recipe actions do not mutate inventory, POS sales, finance, or approval-source
   records.
+- Serving fact create/edit/submit/verify actions do not mutate inventory. Only the
+  separately permissioned **Post expected consumption** action writes dedicated
+  `CONSUMPTION_OUT` ledger movements, atomically and exactly once.
+- Paid and authorized complimentary servings are supported. Complimentary lines
+  require a reason and operational reference. Staff meals and prepared-but-
+  not-served failures are excluded from the serving form and remain separate
+  controlled workflows.
+- Recipe readiness failures retain the serving fact as `DERIVATION_BLOCKED` and
+  show actionable blockers; no partial ingredient posting is allowed.
+- Consumption exports and details use **Expected/Book Consumption**, never
+  physical actual consumption. Physical counts remain the independent on-hand
+  evidence.
+- Brand menu items inherit an effective brand-default recipe. Explicit branch
+  unavailability and location overrides remain controlled exceptions; quantity
+  readiness and pending cost evidence are shown separately.
+- Recipe ownership is selected from the user's live Company/Brand scope, not
+  inferred from assigned branch locations. An active brand can therefore own
+  recipes before its first branch is configured. Location remains optional
+  price-preview and downstream operational context; it does not own a recipe.
+- Staff and supervisors record servings from the declarations workspace. Managers
+  use the separate Review & Posting queue only when their live verify/post
+  permissions allow it. The Branch Configuration tab is readable as selected-
+  branch operational context, while create/activate/adopt/override/cancel controls
+  are absent without their dedicated live Admin permissions.
+
+## Implemented Recipe Adoption Surface — `DEC-0280`
+
+The controlled surface separates formula publication from operational adoption
+and shows:
+
+- one effective-dated brand-default published recipe per active brand `MenuItem`;
+- explicit Company-shared recipe adoption by the selected brand;
+- effective branch availability exclusions and exact-location recipe overrides;
+- the deterministic resolved state: `Unavailable`, `Location override`,
+  `Brand default`, or `Blocked`;
+- a newly published version as a candidate only, with a separate controlled
+  successor rollout for an already adopted menu item;
+- quantity readiness separately from cost readiness, so pending cost evidence does
+  not hide an otherwise valid formula/UOM/issue-location quantity path; and
+- effective dates, actor, reason, branch impact/readiness preview, concurrency
+  conflict, and audit history for each controlled action.
+
+No publish, adopt, exclude, override, restore, or rollout action may post inventory.
+Cross-brand selection and implicit Company/shared fallback are absent from the
+catalog and rejected by the server. Local automated validation is complete;
+named-role browser UAT and production activation remain pending.
 
 ## Future-Gated Details
 

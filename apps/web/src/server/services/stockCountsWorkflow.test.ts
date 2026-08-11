@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     approvalInstance: { updateMany: vi.fn() },
     inventoryBalance: { findMany: vi.fn() },
     inventoryPilotFamilyActivation: { findUnique: vi.fn() },
+    servingDeclaration: { findFirst: vi.fn() },
     stockAdjustment: { findFirst: vi.fn(), create: vi.fn() },
     stockAdjustmentLine: { createMany: vi.fn() },
     auditEvent: { create: vi.fn() }
@@ -202,6 +203,7 @@ describe("Stock Count workflow integrity", () => {
     mocks.tx.stockCountRecountTransition.findUnique.mockResolvedValue(null);
     mocks.tx.stockCountRecountTransition.create.mockResolvedValue({ id: "transition-1" });
     mocks.tx.inventoryPilotFamilyActivation.findUnique.mockResolvedValue(null);
+    mocks.tx.servingDeclaration.findFirst.mockResolvedValue(null);
     mocks.tx.stockCountLine.count.mockResolvedValue(0);
     mocks.tx.stockCountLine.findMany.mockResolvedValue([]);
     mocks.tx.stockCountLine.createMany.mockResolvedValue({ count: 1 });

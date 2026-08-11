@@ -11,7 +11,7 @@ describe("stock count ordinary review approval adapter", () => {
     expect(submit).toContain(
       'process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true"'
     );
-    expect(submit).toContain("await withApprovalProducerTransaction({");
+    expect(submit).toMatch(/await withApprovalProducerTransaction\(\s*\{/);
     expect(submit).not.toContain(": prisma.$transaction(action)");
     expect(submit).toContain("classifyStockCountAttemptForPilotApproval");
   });
@@ -23,10 +23,10 @@ describe("stock count ordinary review approval adapter", () => {
     expect(source).toContain(
       "INVENTORY_PILOT_APPROVAL_ERRORS.ENDPOINT_CAPABILITY_MISMATCH"
     );
-    expect(submit).toContain('count, "SUBMIT"');
+    expect(submit).toMatch(/count,\s*"SUBMIT"/);
     expect(review).toContain('"REVALIDATE"');
     expect(review).toContain("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_REQUIRED");
-    expect(review).toContain("await withApprovalProducerTransaction({");
+    expect(review).toMatch(/await withApprovalProducerTransaction\(\s*\{/);
   });
 
   test("admits only the locked current attempt and creates the normalized graph and intent", () => {
@@ -58,8 +58,12 @@ describe("stock count ordinary review approval adapter", () => {
     expect(submit).toContain("STOCK_COUNT_APPROVAL_IDEMPOTENCY_CONFLICT");
     expect(submit).toContain("replay.requestCanonicalJson !== request.canonicalJson");
     expect(submit).toContain("count.currentAttemptId !== locked.attempt.id");
-    expect(submit).toContain("currentActivation.currentActivationEventId !== replay.activationEventId");
-    expect(submit).toContain("currentActivation.generation !== replay.activationGeneration");
+    expect(submit).toMatch(
+      /currentActivation\.currentActivationEventId !==\s*replay\.activationEventId/
+    );
+    expect(submit).toMatch(
+      /currentActivation\.generation !== replay\.activationGeneration/
+    );
     expect(submit).not.toContain("count.version !== replay.sessionVersionAfter");
     expect(submit).not.toContain("locked.attempt.version !== replay.attemptVersionAfter");
   });

@@ -11,81 +11,90 @@ import {
   summarizeActualConsumptionRows,
   summarizeFoodCostAnalysisRows,
   transitionMenuPriceDecision,
-  transitionRecipeVersion
+  transitionRecipeVersion,
 } from "./recipes";
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   userRoleAssignment: {
-    findMany: vi.fn()
-  }
+    findMany: vi.fn(),
+  },
 }));
 const mockContext = vi.hoisted(() => ({
-  requireSessionContext: vi.fn()
+  requireSessionContext: vi.fn(),
 }));
 
 vi.mock("@ogfi/database", () => ({
-  prisma: mockPrisma
+  prisma: mockPrisma,
 }));
 
 vi.mock("./context", async () => {
   const actual = await vi.importActual<typeof import("./context")>("./context");
   return {
     ...actual,
-    requireSessionContext: mockContext.requireSessionContext
+    requireSessionContext: mockContext.requireSessionContext,
   };
 });
 
-const serviceSource = readFileSync(new URL("./recipes.ts", import.meta.url), "utf8");
+const serviceSource = readFileSync(
+  new URL("./recipes.ts", import.meta.url),
+  "utf8",
+);
 const detailPageSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/[id]/page.tsx"),
-  "utf8"
+  "utf8",
 );
 const listPageSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/page.tsx"),
-  "utf8"
+  "utf8",
 );
 const recipeCreatePageSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/new/page.tsx"),
-  "utf8"
+  "utf8",
 );
 const recipeRevisionPageSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/[id]/revise/page.tsx"),
-  "utf8"
+  "utf8",
 );
 const analysisDrilldownSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/analysis/page.tsx"),
-  "utf8"
+  "utf8",
 );
 const recipeExportRouteSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/export/route.ts"),
-  "utf8"
+  "utf8",
 );
 const recipeRevisionWorkbookRouteSource = readFileSync(
-  path.resolve(__dirname, "../../app/(app)/recipes/[id]/revision-template/route.ts"),
-  "utf8"
+  path.resolve(
+    __dirname,
+    "../../app/(app)/recipes/[id]/revision-template/route.ts",
+  ),
+  "utf8",
 );
 const analysisExportRouteSource = readFileSync(
   path.resolve(__dirname, "../../app/(app)/recipes/analysis/export/route.ts"),
-  "utf8"
+  "utf8",
 );
 const schemaSource = readFileSync(
-  path.resolve(__dirname, "../../../../../packages/database/prisma/schema.prisma"),
-  "utf8"
+  path.resolve(
+    __dirname,
+    "../../../../../packages/database/prisma/schema.prisma",
+  ),
+  "utf8",
 );
 const salesImportMigration = readFileSync(
   path.resolve(
     __dirname,
-    "../../../../../packages/database/prisma/migrations/20260703103000_phase2_sales_import_food_cost_foundation/migration.sql"
+    "../../../../../packages/database/prisma/migrations/20260703103000_phase2_sales_import_food_cost_foundation/migration.sql",
   ),
-  "utf8"
+  "utf8",
 );
 
 const session = {
   user: {
     id: "00000000-0000-4000-8000-000000000202",
     email: "costing.manager@example.test",
-    displayName: "Costing Manager"
+    displayName: "Costing Manager",
   },
   context: {
     tenantId: "00000000-0000-4000-8000-000000000001",
@@ -95,10 +104,35 @@ const session = {
     brandName: "Yakiniku Like",
     locationId: "00000000-0000-4000-8000-000000000004",
     locationName: "SM North Edsa",
-    locationType: "BRANCH"
+    locationType: "BRANCH",
   },
-  permissionCodes: [permissions.recipePublish, permissions.menuPriceDecide]
+  permissionCodes: [permissions.recipePublish, permissions.menuPriceDecide],
 };
+
+function addCompanyManagedRecipeScope<T extends Record<string, unknown>>(
+  tx: T,
+) {
+  return Object.assign(tx, {
+    userScopeAssignment: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          scopeType: "COMPANY",
+          scopeId: session.context.companyId,
+          accessLevel: "MANAGE",
+        },
+      ]),
+    },
+    brand: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: session.context.brandId,
+          code: "YL",
+          name: "Yakiniku Like",
+        },
+      ]),
+    },
+  });
+}
 
 function recipePublishForm() {
   const form = new FormData();
@@ -132,18 +166,18 @@ describe("Phase 2 recipe and food-cost foundations", () => {
             {
               permission: {
                 tenantId: session.context.tenantId,
-                code: permissions.recipePublish
-              }
+                code: permissions.recipePublish,
+              },
             },
             {
               permission: {
                 tenantId: session.context.tenantId,
-                code: permissions.menuPriceDecide
-              }
-            }
-          ]
-        }
-      }
+                code: permissions.menuPriceDecide,
+              },
+            },
+          ],
+        },
+      },
     ]);
   });
 
@@ -155,10 +189,10 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(schemaSource).toContain("brandId");
     expect(schemaSource).toContain("locationId");
     expect(salesImportMigration).toContain(
-      "RestaurantSalesImportBatch_companyId_locationId_businessDate_sourceSystem_importRef_key"
+      "RestaurantSalesImportBatch_companyId_locationId_businessDate_sourceSystem_importRef_key",
     );
     expect(salesImportMigration).toContain(
-      "RestaurantSalesImportLine_batchId_menuItemId_salesChannel_key"
+      "RestaurantSalesImportLine_batchId_menuItemId_salesChannel_key",
     );
   });
 
@@ -166,11 +200,13 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("getFoodCostAnalysisDashboard");
     expect(serviceSource).toContain("buildRecipeCostingExportRows");
     expect(serviceSource).toContain("buildFoodCostAnalysisExportRows");
-    expect(serviceSource).toContain("prisma.restaurantSalesImportLine.findMany");
+    expect(serviceSource).toContain(
+      "prisma.restaurantSalesImportLine.findMany",
+    );
     expect(serviceSource).toContain('batch: { status: "POSTED" }');
     expect(serviceSource).toContain("prisma.inventoryMovement.findMany");
     expect(serviceSource).toContain("actualConsumptionMovementTypes");
-    expect(serviceSource).toContain("? \"WITHIN_TARGET\"");
+    expect(serviceSource).toContain('? "WITHIN_TARGET"');
     expect(serviceSource).toContain("WASTAGE_OUT");
     expect(serviceSource).toContain("ADJUSTMENT_OUT");
     expect(serviceSource).toContain("COUNT_VARIANCE_OUT");
@@ -184,13 +220,17 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("transitionRecipeVersion");
     expect(serviceSource).toContain("recipeVersionWorkflowSchema");
     expect(serviceSource).toContain("assertPhase2WorkflowTransitionAllowed");
-    expect(serviceSource).toContain("requirePermission(session, transition.permissionCode)");
+    expect(serviceSource).toContain(
+      "requirePermission(session, transition.permissionCode)",
+    );
     expect(serviceSource).toContain("RECIPE_VERSION_SELF_APPROVAL_BLOCKED");
     expect(serviceSource).toContain("RECIPE_VERSION_TRANSITION_CONFLICT");
     expect(serviceSource).toContain("txAny.recipeVersionTransition.create");
-    expect(serviceSource).toContain("eventType: `recipe_version.${transition.action.toLowerCase()}`");
     expect(serviceSource).toContain(
-      "recipe_version_transition_only_no_inventory_or_finance_mutation"
+      "eventType: `recipe_version.${transition.action.toLowerCase()}`",
+    );
+    expect(serviceSource).toContain(
+      "recipe_version_transition_only_no_inventory_or_finance_mutation",
     );
     expect(serviceSource).toContain("currentVersionId: current.id");
     expect(serviceSource).toContain("publishedVersionId: current.id");
@@ -198,6 +238,59 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).not.toContain("inventoryMovement.create");
     expect(serviceSource).not.toContain("inventoryBalance.update");
     expect(serviceSource).not.toContain("generalLedger");
+  });
+
+  it("keeps publication candidate-only and advances defaults only through the separate controlled rollout command", () => {
+    const transitionSource = serviceSource.slice(
+      serviceSource.indexOf("export async function transitionRecipeVersion"),
+      serviceSource.indexOf("export function getRecipeVersionActionsForStatus"),
+    );
+    expect(transitionSource).not.toContain(
+      "advancePublishedRecipeBrandDefaults",
+    );
+    expect(transitionSource).not.toContain("menuRecipeRollout");
+    expect(serviceSource).toContain(
+      "previewRecipePublicationConsumptionImpact",
+    );
+    expect(serviceSource).toContain("loadRecipePublicationConsumptionImpact");
+    expect(serviceSource).toContain("advancePublishedRecipeBrandDefaults");
+    expect(serviceSource).toContain("rolloutPublishedRecipeSuccessor");
+    expect(serviceSource).toContain(
+      "requirePermission(session, permissions.menuRecipeRollout)",
+    );
+    expect(serviceSource).toContain(
+      "requirePermission(session, permissions.recipePublish)",
+    );
+    expect(serviceSource).toContain("previewSnapshotHash");
+    expect(serviceSource).toContain(
+      "RESTAURANT_MENU_POLICY_IDEMPOTENCY_CONFLICT",
+    );
+    expect(serviceSource).toContain('isolationLevel: "Serializable"');
+    expect(serviceSource).toContain('locationType: "BRANCH"');
+    expect(serviceSource).toContain("MENU_RECIPE_ROLLOUT_NOT_SERVICE_BOUNDARY");
+    expect(serviceSource).toContain("MENU_RECIPE_ROLLOUT_IMPACT_UNSAFE");
+    expect(serviceSource).toContain("MENU_RECIPE_NOT_QUANTITY_READY");
+    expect(serviceSource).toContain('scopeType: "BRAND_DEFAULT"');
+    expect(serviceSource).toContain("locationId: null");
+    expect(serviceSource).toContain(
+      "recipe_version.brand_default_successor_scheduled",
+    );
+    expect(serviceSource).toContain(
+      "successor_brand_defaults_only_no_location_override_availability_inventory_or_finance_mutation",
+    );
+  });
+
+  it("fails recipe costing closed across brands while allowing explicit shared adoption", () => {
+    expect(serviceSource).toContain("RecipeCostingScopeOptions");
+    expect(serviceSource).toContain("loadRecipeBrandScopeOptions");
+    expect(serviceSource).toContain(
+      'scopeType: { in: ["COMPANY", "BRAND", "LOCATION"] }',
+    );
+    expect(serviceSource).not.toContain("session.authorizedLocations.some");
+    expect(serviceSource).toContain("MENU_RECIPE_BRAND_SCOPE_DENIED");
+    expect(serviceSource).toContain("brandAdoptions");
+    expect(serviceSource).toContain("brandId: selectedBrandId");
+    expect(serviceSource).toContain(": { brandId: null }");
   });
 
   it("publishes approved recipe versions through transition, audit, and active-version pointer updates", async () => {
@@ -216,38 +309,38 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       recipe: {
         id: "00000000-0000-4000-8000-000000000911",
         brandId: session.context.brandId,
-        recipeCode: "YL-KARUBI-SET"
-      }
+        recipeCode: "YL-KARUBI-SET",
+      },
     };
     const updatedVersion = {
       ...currentVersion,
       status: "PUBLISHED",
       publishedAt: new Date("2026-07-06T00:00:00.000Z"),
-      publishedByUserId: session.user.id
+      publishedByUserId: session.user.id,
     };
-    const tx = {
+    const tx = addCompanyManagedRecipeScope({
       recipeVersion: {
         findFirst: vi.fn().mockResolvedValue(currentVersion),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(updatedVersion)
+        findUniqueOrThrow: vi.fn().mockResolvedValue(updatedVersion),
       },
       recipeVersionTransition: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({})
+        create: vi.fn().mockResolvedValue({}),
       },
       recipe: {
-        update: vi.fn().mockResolvedValue({})
+        update: vi.fn().mockResolvedValue({}),
       },
       auditEvent: {
-        create: vi.fn().mockResolvedValue({})
-      }
-    };
+        create: vi.fn().mockResolvedValue({}),
+      },
+    });
     mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
-      callback(tx)
+      callback(tx),
     );
 
     await expect(transitionRecipeVersion(recipePublishForm())).resolves.toBe(
-      "00000000-0000-4000-8000-000000000901"
+      "00000000-0000-4000-8000-000000000901",
     );
 
     expect(tx.recipeVersion.updateMany).toHaveBeenNthCalledWith(
@@ -255,13 +348,13 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       expect.objectContaining({
         where: {
           id: currentVersion.id,
-          status: "APPROVED"
+          status: "APPROVED",
         },
         data: expect.objectContaining({
           status: "PUBLISHED",
-          publishedByUserId: session.user.id
-        })
-      })
+          publishedByUserId: session.user.id,
+        }),
+      }),
     );
     expect(tx.recipeVersion.updateMany).toHaveBeenNthCalledWith(
       2,
@@ -269,19 +362,19 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         where: {
           recipeId: currentVersion.recipeId,
           id: { not: currentVersion.id },
-          status: "PUBLISHED"
+          status: "PUBLISHED",
         },
         data: expect.objectContaining({
-          status: "SUPERSEDED"
-        })
-      })
+          status: "SUPERSEDED",
+        }),
+      }),
     );
     expect(tx.recipe.update).toHaveBeenCalledWith({
       where: { id: currentVersion.recipeId },
       data: {
         currentVersionId: currentVersion.id,
-        publishedVersionId: currentVersion.id
-      }
+        publishedVersionId: currentVersion.id,
+      },
     });
     expect(tx.recipeVersionTransition.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -294,9 +387,9 @@ describe("Phase 2 recipe and food-cost foundations", () => {
           approvedByUserId: session.user.id,
           reason: "Approved costing ready for branch rollout.",
           evidenceReference: "COSTING-PACK-901",
-          idempotencyKey: "recipe-publish-901"
-        })
-      })
+          idempotencyKey: "recipe-publish-901",
+        }),
+      }),
     );
     expect(tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -307,10 +400,11 @@ describe("Phase 2 recipe and food-cost foundations", () => {
           metadata: expect.objectContaining({
             recipeCode: "YL-KARUBI-SET",
             action: "PUBLISH",
-            boundary: "recipe_version_transition_only_no_inventory_or_finance_mutation"
-          })
-        })
-      })
+            boundary:
+              "recipe_version_transition_only_no_inventory_or_finance_mutation",
+          }),
+        }),
+      }),
     );
   });
 
@@ -323,7 +417,7 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("RECIPE_CODE_DUPLICATE");
     expect(serviceSource).toContain("recipe.draft_created");
     expect(serviceSource).toContain(
-      "recipe_draft_create_only_no_inventory_menu_price_pos_or_finance_mutation"
+      "recipe_draft_create_only_no_inventory_menu_price_pos_or_finance_mutation",
     );
     expect(serviceSource).toContain("versions: {");
     expect(serviceSource).toContain('status: "DRAFT"');
@@ -360,7 +454,7 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("RECIPE_OPEN_VERSION_EXISTS");
     expect(serviceSource).toContain("recipe.revision_draft_created");
     expect(serviceSource).toContain(
-      "recipe_revision_draft_only_no_inventory_menu_price_pos_or_finance_mutation"
+      "recipe_revision_draft_only_no_inventory_menu_price_pos_or_finance_mutation",
     );
     expect(serviceSource).toContain("archiveRecipe");
     expect(serviceSource).toContain("archiveRecipeSchema");
@@ -368,7 +462,7 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("RECIPE_OPEN_VERSION_BLOCKS_ARCHIVE");
     expect(serviceSource).toContain("recipe.archived");
     expect(serviceSource).toContain(
-      "recipe_archive_only_no_inventory_menu_price_pos_or_finance_mutation"
+      "recipe_archive_only_no_inventory_menu_price_pos_or_finance_mutation",
     );
     expect(serviceSource).not.toContain("inventoryMovement.create");
     expect(serviceSource).not.toContain("restaurantSalesImportLine.create");
@@ -380,10 +474,16 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("transitionMenuPriceDecision");
     expect(serviceSource).toContain("menuPriceDecisionSchema");
     expect(serviceSource).toContain("MENU_PRICE_DECISION");
-    expect(serviceSource).toContain("MENU_PRICE_DECISION_SELF_APPROVAL_BLOCKED");
+    expect(serviceSource).toContain(
+      "MENU_PRICE_DECISION_SELF_APPROVAL_BLOCKED",
+    );
     expect(serviceSource).toContain("txAny.operationalStatusTransition.create");
-    expect(serviceSource).toContain("menu_price_decision_only_no_recipe_inventory_pos_or_finance_mutation");
-    expect(serviceSource).toContain("menu_price_apply_inserts_effective_dated_price_only");
+    expect(serviceSource).toContain(
+      "menu_price_decision_only_no_recipe_inventory_pos_or_finance_mutation",
+    );
+    expect(serviceSource).toContain(
+      "menu_price_apply_inserts_effective_dated_price_only",
+    );
     expect(serviceSource).toContain("txAny.menuPrice.create");
     expect(serviceSource).toContain("txAny.menuPrice.updateMany");
     expect(serviceSource).not.toContain("menuPrice.update({");
@@ -409,72 +509,72 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       approvedAt: new Date("2026-07-05T00:00:00.000Z"),
       approvedByUserId: "00000000-0000-4000-8000-000000000203",
       appliedAt: null,
-      appliedByUserId: null
+      appliedByUserId: null,
     };
     const updatedDecision = {
       ...currentDecision,
       status: "APPLIED",
       appliedAt: new Date("2026-07-06T00:00:00.000Z"),
-      appliedByUserId: session.user.id
+      appliedByUserId: session.user.id,
     };
     const tx = {
       menuPriceDecision: {
         findFirst: vi.fn().mockResolvedValue(currentDecision),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(updatedDecision)
+        findUniqueOrThrow: vi.fn().mockResolvedValue(updatedDecision),
       },
       operationalStatusTransition: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({})
+        create: vi.fn().mockResolvedValue({}),
       },
       menuPrice: {
         findMany: vi.fn().mockResolvedValue([
           {
             id: "00000000-0000-4000-8000-000000000913",
             effectiveFrom: new Date("2026-07-01T00:00:00.000Z"),
-            effectiveTo: null
-          }
+            effectiveTo: null,
+          },
         ]),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        create: vi.fn().mockResolvedValue({})
+        create: vi.fn().mockResolvedValue({}),
       },
       auditEvent: {
-        create: vi.fn().mockResolvedValue({})
-      }
+        create: vi.fn().mockResolvedValue({}),
+      },
     };
     mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
-      callback(tx)
+      callback(tx),
     );
 
-    await expect(transitionMenuPriceDecision(menuPriceApplyForm())).resolves.toBe(
-      "00000000-0000-4000-8000-000000000902"
-    );
+    await expect(
+      transitionMenuPriceDecision(menuPriceApplyForm()),
+    ).resolves.toBe("00000000-0000-4000-8000-000000000902");
 
     expect(tx.menuPriceDecision.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           id: currentDecision.id,
-          status: "APPROVED"
+          status: "APPROVED",
         },
         data: expect.objectContaining({
           status: "APPLIED",
           appliedByUserId: session.user.id,
           reason: "Approved price change effective next menu cycle.",
-          evidenceReference: "PRICE-PACK-902"
-        })
-      })
+          evidenceReference: "PRICE-PACK-902",
+        }),
+      }),
     );
     expect(tx.menuPrice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           id: "00000000-0000-4000-8000-000000000913",
-          effectiveTo: null
+          effectiveTo: null,
         },
         data: {
           effectiveTo: currentDecision.effectiveFrom,
-          status: "SUPERSEDED"
-        }
-      })
+          status: "SUPERSEDED",
+        },
+      }),
     );
     expect(tx.menuPrice.create).toHaveBeenCalledWith({
       data: {
@@ -487,8 +587,8 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         currencyCode: "PHP",
         price: "459",
         effectiveFrom: currentDecision.effectiveFrom,
-        effectiveTo: null
-      }
+        effectiveTo: null,
+      },
     });
     expect(tx.operationalStatusTransition.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -501,9 +601,9 @@ describe("Phase 2 recipe and food-cost foundations", () => {
           actorUserId: session.user.id,
           reason: "Approved price change effective next menu cycle.",
           evidenceReference: "PRICE-PACK-902",
-          idempotencyKey: "menu-price-apply-902"
-        })
-      })
+          idempotencyKey: "menu-price-apply-902",
+        }),
+      }),
     );
     expect(tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -515,10 +615,10 @@ describe("Phase 2 recipe and food-cost foundations", () => {
             menuItemId: currentDecision.menuItemId,
             locationId: currentDecision.locationId,
             action: "APPLY",
-            boundary: "menu_price_apply_inserts_effective_dated_price_only"
-          })
-        })
-      })
+            boundary: "menu_price_apply_inserts_effective_dated_price_only",
+          }),
+        }),
+      }),
     );
   });
 
@@ -529,19 +629,23 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       companyId: session.context.companyId,
       brandId: session.context.brandId,
       locationId: session.context.locationId,
-      status: "APPLIED"
+      status: "APPLIED",
     };
     const tx = {
-      menuPriceDecision: { findFirst: vi.fn().mockResolvedValue(currentDecision) },
+      menuPriceDecision: {
+        findFirst: vi.fn().mockResolvedValue(currentDecision),
+      },
       operationalStatusTransition: {
-        findFirst: vi.fn().mockResolvedValue({ id: "existing-transition" })
-      }
+        findFirst: vi.fn().mockResolvedValue({ id: "existing-transition" }),
+      },
     };
-    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
-
-    await expect(transitionMenuPriceDecision(menuPriceApplyForm())).resolves.toBe(
-      currentDecision.id
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
+      callback(tx),
     );
+
+    await expect(
+      transitionMenuPriceDecision(menuPriceApplyForm()),
+    ).resolves.toBe(currentDecision.id);
     expect(tx.operationalStatusTransition.findFirst).toHaveBeenCalledOnce();
   });
 
@@ -558,49 +662,55 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       effectiveFrom: new Date("2026-07-10T00:00:00.000Z"),
       effectiveTo: null,
       status: "APPROVED",
-      requestedByUserId: "00000000-0000-4000-8000-000000000101"
+      requestedByUserId: "00000000-0000-4000-8000-000000000101",
     };
     const tx = {
       menuPriceDecision: {
         findFirst: vi.fn().mockResolvedValue(currentDecision),
-        updateMany: vi.fn()
+        updateMany: vi.fn(),
       },
-      operationalStatusTransition: { findFirst: vi.fn().mockResolvedValue(null) },
+      operationalStatusTransition: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       menuPrice: {
         findMany: vi.fn().mockResolvedValue([
           {
             id: "00000000-0000-4000-8000-000000000913",
             effectiveFrom: new Date("2026-07-01T00:00:00.000Z"),
-            effectiveTo: new Date("2026-07-20T00:00:00.000Z")
-          }
-        ])
-      }
+            effectiveTo: new Date("2026-07-20T00:00:00.000Z"),
+          },
+        ]),
+      },
     };
-    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
-
-    await expect(transitionMenuPriceDecision(menuPriceApplyForm())).rejects.toThrow(
-      "MENU_PRICE_EFFECTIVE_RANGE_OVERLAP"
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
+      callback(tx),
     );
+
+    await expect(
+      transitionMenuPriceDecision(menuPriceApplyForm()),
+    ).rejects.toThrow("MENU_PRICE_EFFECTIVE_RANGE_OVERLAP");
     expect(tx.menuPriceDecision.updateMany).not.toHaveBeenCalled();
   });
 
   it("scopes menu-price decision transitions to the active brand or company-wide records", async () => {
     const tx = {
-      menuPriceDecision: { findFirst: vi.fn().mockResolvedValue(null) }
+      menuPriceDecision: { findFirst: vi.fn().mockResolvedValue(null) },
     };
-    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
-
-    await expect(transitionMenuPriceDecision(menuPriceApplyForm())).rejects.toThrow(
-      "MENU_PRICE_DECISION_NOT_FOUND"
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
+      callback(tx),
     );
+
+    await expect(
+      transitionMenuPriceDecision(menuPriceApplyForm()),
+    ).rejects.toThrow("MENU_PRICE_DECISION_NOT_FOUND");
     expect(tx.menuPriceDecision.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           AND: expect.arrayContaining([
-            { OR: [{ brandId: null }, { brandId: session.context.brandId }] }
-          ])
-        })
-      })
+            { OR: [{ brandId: null }, { brandId: session.context.brandId }] },
+          ]),
+        }),
+      }),
     );
   });
 
@@ -611,24 +721,26 @@ describe("Phase 2 recipe and food-cost foundations", () => {
       companyId: session.context.companyId,
       recipeId: "00000000-0000-4000-8000-000000000911",
       status: "PUBLISHED",
-      recipe: { brandId: session.context.brandId }
+      recipe: { brandId: session.context.brandId },
     };
-    const tx = {
+    const tx = addCompanyManagedRecipeScope({
       recipeVersion: { findFirst: vi.fn().mockResolvedValue(currentVersion) },
       recipeVersionTransition: {
-        findFirst: vi.fn().mockResolvedValue({ id: "existing-transition" })
-      }
-    };
-    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+        findFirst: vi.fn().mockResolvedValue({ id: "existing-transition" }),
+      },
+    });
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) =>
+      callback(tx),
+    );
 
     await expect(transitionRecipeVersion(recipePublishForm())).resolves.toBe(
-      currentVersion.id
+      currentVersion.id,
     );
     expect(tx.recipeVersionTransition.findFirst).toHaveBeenCalledWith({
       where: {
         recipeVersionId: currentVersion.id,
-        idempotencyKey: "recipe-publish-901"
-      }
+        idempotencyKey: "recipe-publish-901",
+      },
     });
   });
 
@@ -637,55 +749,78 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("versionHistory");
     expect(serviceSource).toContain("isSelectedCostingVersion");
     expect(serviceSource).toContain("selectedVersionStatus");
-    expect(detailPageSource).toContain("getRecipeCostingSummary(session, id)");
+    expect(detailPageSource).toContain("recipeScopeOptions");
+    expect(detailPageSource).toContain("getRecipeCostingSummary(");
     expect(detailPageSource).toContain("transitionRecipeVersionAction");
     expect(detailPageSource).toContain("/revise");
-    expect(recipeRevisionPageSource).toContain("createRecipeRevisionDraftAction");
+    expect(recipeRevisionPageSource).toContain(
+      "createRecipeRevisionDraftAction",
+    );
     expect(detailPageSource).toContain("archiveRecipeAction");
     expect(detailPageSource).toContain("createMenuPriceDecisionAction");
     expect(detailPageSource).toContain("transitionMenuPriceDecisionAction");
     expect(detailPageSource).toContain("getRecipeVersionActionsForStatus");
     expect(detailPageSource).toContain("getMenuPriceDecisionActionsForStatus");
     expect(detailPageSource).toContain("transitionRecipeVersion(formData)");
-    expect(recipeRevisionPageSource).toContain("createRecipeRevisionDraft(formData)");
+    expect(recipeRevisionPageSource).toContain(
+      "createRecipeRevisionDraft(formData)",
+    );
     expect(detailPageSource).toContain("archiveRecipe(formData)");
     expect(detailPageSource).toContain("createMenuPriceDecision(formData)");
     expect(detailPageSource).toContain("transitionMenuPriceDecision(formData)");
     expect(detailPageSource).toContain("recipe.selectedVersionStatus");
-    expect(detailPageSource).toContain("Recipe publishing changes the costing basis only");
+    expect(detailPageSource).toContain(
+      "Recipe publishing approves a candidate formula",
+    );
     expect(detailPageSource).toContain("Version workflow");
     expect(detailPageSource).toContain("Create Revision Draft");
     expect(detailPageSource).toContain("Export Revision Workbook");
-    expect(detailPageSource).toContain("/recipes/${recipe.id}/revision-template");
+    expect(detailPageSource).toContain(
+      "/recipes/${recipe.id}/revision-template",
+    );
     expect(detailPageSource).toContain("/revise");
     expect(recipeRevisionPageSource).toContain("Current ingredient lines");
     expect(recipeRevisionPageSource).toContain("RecipeRevisionAddLinesEditor");
     expect(recipeRevisionPageSource).toContain("line.${line.lineNo}.sortOrder");
     expect(recipeRevisionPageSource).toContain("line.${line.lineNo}.remove");
     expect(detailPageSource).toContain("Archive Recipe");
-    expect(recipeRevisionPageSource).toContain("createRecipeRevisionDraftAction");
+    expect(recipeRevisionPageSource).toContain(
+      "createRecipeRevisionDraftAction",
+    );
     expect(detailPageSource).toContain("action={archiveRecipeAction}");
     expect(detailPageSource).toContain("Menu price decision");
     expect(detailPageSource).toContain("Propose Price");
-    expect(detailPageSource).toContain("Applying inserts a new effective-dated menu price");
-    expect(detailPageSource).toContain("action={transitionRecipeVersionAction}");
-    expect(detailPageSource).toContain("action={createMenuPriceDecisionAction}");
-    expect(detailPageSource).toContain("action={transitionMenuPriceDecisionAction}");
+    expect(detailPageSource).toContain(
+      "Applying inserts a new effective-dated menu price",
+    );
+    expect(detailPageSource).toContain(
+      "action={transitionRecipeVersionAction}",
+    );
+    expect(detailPageSource).toContain(
+      "action={createMenuPriceDecisionAction}",
+    );
+    expect(detailPageSource).toContain(
+      "action={transitionMenuPriceDecisionAction}",
+    );
     expect(detailPageSource).toContain("action.requiresReason");
     expect(detailPageSource).toContain("action.requiresEvidence");
     expect(detailPageSource).toContain("No workflow action is available");
     expect(detailPageSource).toContain("line.costingNote");
     expect(recipeRevisionWorkbookRouteSource).toContain(
-      "buildRecipeRevisionWorkbookRows"
+      "buildRecipeRevisionWorkbookRows",
     );
     expect(recipeRevisionWorkbookRouteSource).toContain(
-      "recipe-revision-workbook"
+      "recipe-revision-workbook",
     );
     expect(recipeRevisionWorkbookRouteSource).toContain(
-      "Planning export only; apply changes through Create Revision Draft"
+      "Planning export only; apply changes through Create Revision Draft",
     );
-    expect(recipeRevisionWorkbookRouteSource).toContain("canExportRecipeCosting");
-    expect(recipeRevisionWorkbookRouteSource).not.toContain("createRecipeRevisionDraft");
+    expect(recipeRevisionWorkbookRouteSource).toContain(
+      "canExportRecipeCosting",
+    );
+    expect(recipeRevisionWorkbookRouteSource).not.toContain(
+      "createRecipeRevisionDraft",
+    );
     expect(recipeRevisionWorkbookRouteSource).not.toContain("updateMany");
     expect(detailPageSource).toContain("recipe.costingStatus");
     expect(detailPageSource).toContain("recipe.costedLineCount");
@@ -710,8 +845,12 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(listPageSource).toContain("paginatedFoodCostRecipes");
     expect(listPageSource).toContain("foodCostPageHref");
     expect(listPageSource).toContain("food-cost records");
-    expect(listPageSource).toContain("Page {recipeLibraryPage} of {recipeLibraryTotalPages}");
-    expect(listPageSource).toContain("Page {foodCostPage} of {foodCostTotalPages}");
+    expect(listPageSource).toContain(
+      "Page {recipeLibraryPage} of {recipeLibraryTotalPages}",
+    );
+    expect(listPageSource).toContain(
+      "Page {foodCostPage} of {foodCostTotalPages}",
+    );
     expect(listPageSource).toContain("View Recipe");
     expect(listPageSource).toContain("visibleAnalysisRows");
     expect(listPageSource).toContain("recipe.selectedVersionStatus");
@@ -732,12 +871,24 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(listPageSource).not.toContain('"PREP_RECIPE"');
     expect(listPageSource).toContain("No recipes match the filters");
     expect(listPageSource).toContain("No sales rows match the filters");
-    expect(listPageSource).toContain("listRecipeCostingSummaries(session)");
+    expect(listPageSource).toContain(
+      "listRecipeCostingSummaries(session, { brandId: selectedBrandId })",
+    );
     expect(listPageSource).toContain("getFoodCostAnalysisDashboard(session)");
-    expect(listPageSource).toContain('href="/recipes/new"');
+    expect(listPageSource).toContain('buildQueryHref("/recipes/new"');
     expect(listPageSource).toContain("Create Draft Recipe");
     expect(recipeCreatePageSource).toContain("createDraftRecipeAction");
-    expect(recipeCreatePageSource).toContain("getRecipeCreateOptions(session)");
+    expect(recipeCreatePageSource).toContain(
+      "getRecipeCreateOptions(session, {",
+    );
+    expect(recipeCreatePageSource).toContain('name="brandId"');
+    expect(serviceSource).toContain("loadRecipeBrandScopeOptions");
+    expect(serviceSource).toContain(
+      'scopeType: { in: ["COMPANY", "BRAND", "LOCATION"] }',
+    );
+    expect(serviceSource).toContain(
+      'await assertRecipeBrandScope(session, requestedBrandId, "MANAGE", tx)',
+    );
     expect(recipeCreatePageSource).toContain("RecipeIngredientLinesEditor");
     expect(recipeCreatePageSource).toContain("Creates a draft only");
     expect(listPageSource).not.toContain("inventoryMovement.create");
@@ -745,9 +896,13 @@ describe("Phase 2 recipe and food-cost foundations", () => {
   });
 
   it("provides a read-only food-cost analysis drilldown", () => {
-    expect(analysisDrilldownSource).toContain("getFoodCostAnalysisDashboard(session, {");
+    expect(analysisDrilldownSource).toContain(
+      "getFoodCostAnalysisDashboard(session, {",
+    );
     expect(analysisDrilldownSource).toContain("Actual Ledger Evidence");
-    expect(analysisDrilldownSource).toContain("Branch-level actual cost is not allocated");
+    expect(analysisDrilldownSource).toContain(
+      "Branch-level actual cost is not allocated",
+    );
     expect(analysisDrilldownSource).toContain("searchParams");
     expect(analysisDrilldownSource).toContain('name="q"');
     expect(analysisDrilldownSource).toContain('name="status"');
@@ -761,29 +916,47 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(analysisDrilldownSource).toContain("ANALYSIS_ROWS_PER_PAGE = 10");
     expect(analysisDrilldownSource).toContain("paginatedSalesRows");
     expect(analysisDrilldownSource).toContain("paginatedActualRows");
-    expect(analysisDrilldownSource).toContain('getSearchParam(params, "salesPage")');
-    expect(analysisDrilldownSource).toContain('getSearchParam(params, "actualPage")');
+    expect(analysisDrilldownSource).toContain(
+      'getSearchParam(params, "salesPage")',
+    );
+    expect(analysisDrilldownSource).toContain(
+      'getSearchParam(params, "actualPage")',
+    );
     expect(analysisDrilldownSource).toContain("salesPageHref");
     expect(analysisDrilldownSource).toContain("actualPageHref");
     expect(analysisDrilldownSource).toContain('itemLabel="sales rows"');
     expect(analysisDrilldownSource).toContain('itemLabel="actual ledger rows"');
     expect(analysisDrilldownSource).toContain("visibleSalesSummary");
     expect(analysisDrilldownSource).toContain("visibleActualSummary");
-    expect(analysisDrilldownSource).toContain("dashboard.statusCounts.WITHIN_TARGET");
-    expect(analysisDrilldownSource).toContain("dashboard.statusCounts.ABOVE_TARGET");
-    expect(analysisDrilldownSource).toContain("dashboard.statusCounts.MISSING_COST");
-    expect(analysisDrilldownSource).toContain("dashboard.statusCounts.AWAITING_ACTUALS");
+    expect(analysisDrilldownSource).toContain(
+      "dashboard.statusCounts.WITHIN_TARGET",
+    );
+    expect(analysisDrilldownSource).toContain(
+      "dashboard.statusCounts.ABOVE_TARGET",
+    );
+    expect(analysisDrilldownSource).toContain(
+      "dashboard.statusCounts.MISSING_COST",
+    );
+    expect(analysisDrilldownSource).toContain(
+      "dashboard.statusCounts.AWAITING_ACTUALS",
+    );
     expect(analysisDrilldownSource).toContain("Visible sales filter");
     expect(analysisDrilldownSource).toContain("Visible ledger evidence");
     expect(analysisDrilldownSource).toContain("filterFoodCostAnalysisRows");
     expect(analysisDrilldownSource).toContain("filterActualConsumptionRows");
     expect(analysisDrilldownSource).toContain("summarizeFoodCostAnalysisRows");
     expect(analysisDrilldownSource).toContain("summarizeActualConsumptionRows");
-    expect(analysisDrilldownSource).toContain("getFoodCostAnalysisDashboard(session, {");
+    expect(analysisDrilldownSource).toContain(
+      "getFoodCostAnalysisDashboard(session, {",
+    );
     expect(analysisDrilldownSource).toContain("buildQueryHref");
     expect(analysisDrilldownSource).toContain("/recipes/analysis/export");
-    expect(analysisDrilldownSource).toContain("No sales rows match the filters");
-    expect(analysisDrilldownSource).toContain("No actual rows match the filters");
+    expect(analysisDrilldownSource).toContain(
+      "No sales rows match the filters",
+    );
+    expect(analysisDrilldownSource).toContain(
+      "No actual rows match the filters",
+    );
     expect(analysisDrilldownSource).not.toContain("inventoryMovement.create");
     expect(analysisDrilldownSource).not.toContain("form action");
   });
@@ -802,9 +975,9 @@ describe("Phase 2 recipe and food-cost foundations", () => {
           {
             itemCode: "BEEF-KARUBI",
             itemName: "Beef Karubi",
-            preparationNote: "Slice thin"
-          }
-        ]
+            preparationNote: "Slice thin",
+          },
+        ],
       },
       {
         recipeCode: "REC-2",
@@ -814,7 +987,9 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         selectedVersionStatus: "PUBLISHED",
         brandName: "Yakiniku Like",
         menuItemName: null,
-        lines: [{ itemCode: "GARLIC", itemName: "Garlic", preparationNote: null }]
+        lines: [
+          { itemCode: "GARLIC", itemName: "Garlic", preparationNote: null },
+        ],
       },
       {
         recipeCode: "REC-3",
@@ -824,41 +999,43 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         selectedVersionStatus: "SUPERSEDED",
         brandName: "Yakiniku Like",
         menuItemName: null,
-        lines: [{ itemCode: "SAUCE", itemName: "Sauce", preparationNote: null }]
-      }
+        lines: [
+          { itemCode: "SAUCE", itemName: "Sauce", preparationNote: null },
+        ],
+      },
     ] as never;
     const rows = [
       {
         menuItemName: "Karubi Set",
         recipeName: "Karubi Set",
-        status: "ABOVE_TARGET"
+        status: "ABOVE_TARGET",
       },
       {
         menuItemName: "Chicken Set",
         recipeName: "Chicken Set",
-        status: "WITHIN_TARGET"
-      }
+        status: "WITHIN_TARGET",
+      },
     ] as never;
 
     expect(
       filterRecipeCostingSummaries(recipes, { q: "beef", type: "MENU" }).map(
-        (recipe) => recipe.recipeCode
-      )
+        (recipe) => recipe.recipeCode,
+      ),
     ).toEqual(["REC-1"]);
     expect(
       filterRecipeCostingSummaries(recipes, { type: "PREP" }).map(
-        (recipe) => recipe.recipeCode
-      )
+        (recipe) => recipe.recipeCode,
+      ),
     ).toEqual(["REC-2", "REC-3"]);
     expect(
       filterRecipeCostingSummaries(recipes, { status: "ARCHIVED" }).map(
-        (recipe) => recipe.recipeCode
-      )
+        (recipe) => recipe.recipeCode,
+      ),
     ).toEqual(["REC-3"]);
     expect(
       filterFoodCostAnalysisRows(rows, { status: "ABOVE_TARGET" }).map(
-        (row) => row.menuItemName
-      )
+        (row) => row.menuItemName,
+      ),
     ).toEqual(["Karubi Set"]);
     expect(
       filterActualConsumptionRows(
@@ -866,72 +1043,82 @@ describe("Phase 2 recipe and food-cost foundations", () => {
           {
             itemCode: "BEEF-KARUBI",
             itemName: "Beef Karubi",
-            movementType: "WASTAGE_OUT"
+            movementType: "WASTAGE_OUT",
           },
           {
             itemCode: "RICE-JASMINE",
             itemName: "Jasmine Rice",
-            movementType: "ADJUSTMENT_OUT"
-          }
+            movementType: "ADJUSTMENT_OUT",
+          },
         ] as never,
-        { actualQ: "beef", movementType: "WASTAGE_OUT" }
-      ).map((row) => row.itemCode)
+        { actualQ: "beef", movementType: "WASTAGE_OUT" },
+      ).map((row) => row.itemCode),
     ).toEqual(["BEEF-KARUBI"]);
     expect(
       summarizeFoodCostAnalysisRows([
         {
           quantitySold: 10,
           netSalesAmount: 1000,
-          theoreticalCost: 320
+          theoreticalCost: 320,
         },
         {
           quantitySold: 5,
           netSalesAmount: 500,
-          theoreticalCost: null
-        }
-      ] as never)
+          theoreticalCost: null,
+        },
+      ] as never),
     ).toEqual({
       rowCount: 2,
       quantitySold: 15,
       netSalesAmount: 1500,
       theoreticalCost: 320,
-      theoreticalFoodCostPercent: 21.33
+      theoreticalFoodCostPercent: 21.33,
     });
     expect(
       summarizeActualConsumptionRows([
         {
           quantityBaseUom: 2.1234567,
-          totalCost: 100.111
+          totalCost: 100.111,
         },
         {
           quantityBaseUom: 3,
-          totalCost: 50.224
-        }
-      ] as never)
+          totalCost: 50.224,
+        },
+      ] as never),
     ).toEqual({
       rowCount: 2,
       quantityBaseUom: 5.123457,
-      totalCost: 150.34
+      totalCost: 150.34,
     });
     expect(recipeExportRouteSource).toContain("getFilterParams(request)");
-    expect(recipeExportRouteSource).toContain("buildRecipeCostingExportRows(session");
+    expect(recipeExportRouteSource).toContain("buildRecipeCostingExportRows(");
     expect(listPageSource).toContain("Export Recipe Costing CSV");
     expect(listPageSource).toContain("Export Food Cost CSV");
     expect(listPageSource).toContain("Export Sales Analysis CSV");
-    expect(listPageSource).toContain('businessDate: getSearchParam(params, "businessDate")');
-    expect(listPageSource).toContain('actualQ: getSearchParam(params, "actualQ")');
-    expect(listPageSource).toContain('movementType: getSearchParam(params, "movementType")');
+    expect(listPageSource).toContain(
+      'businessDate: getSearchParam(params, "businessDate")',
+    );
+    expect(listPageSource).toContain(
+      'actualQ: getSearchParam(params, "actualQ")',
+    );
+    expect(listPageSource).toContain(
+      'movementType: getSearchParam(params, "movementType")',
+    );
     expect(serviceSource).toContain('"Menu Price"');
     expect(serviceSource).toContain('"Food Cost Percent"');
     expect(serviceSource).toContain('"Gross Margin"');
     expect(analysisExportRouteSource).toContain("getFilterParams(request)");
     expect(analysisExportRouteSource).toContain('searchParams.get("actualQ")');
-    expect(analysisExportRouteSource).toContain('searchParams.get("movementType")');
+    expect(analysisExportRouteSource).toContain(
+      'searchParams.get("movementType")',
+    );
     expect(analysisExportRouteSource).toContain("getStrictDateSearchParam");
     expect(analysisExportRouteSource).toContain('"businessDate"');
-    expect(analysisExportRouteSource).toContain("FOOD_COST_BUSINESS_DATE_INVALID");
     expect(analysisExportRouteSource).toContain(
-      "buildFoodCostAnalysisExportRows("
+      "FOOD_COST_BUSINESS_DATE_INVALID",
+    );
+    expect(analysisExportRouteSource).toContain(
+      "buildFoodCostAnalysisExportRows(",
     );
     expect(serviceSource).toContain("filterActualConsumptionRows");
     expect(serviceSource).toContain("parseBusinessDateFilter");
@@ -942,7 +1129,9 @@ describe("Phase 2 recipe and food-cost foundations", () => {
     expect(serviceSource).toContain("Costing Status");
     expect(serviceSource).toContain("Pending Cost Line Count");
     expect(serviceSource).toContain("No supplier price history");
-    expect(serviceSource).toContain("Missing UOM conversion to supplier price unit");
+    expect(serviceSource).toContain(
+      "Missing UOM conversion to supplier price unit",
+    );
     expect(serviceSource).toContain("hasPendingLineCost");
     expect(serviceSource).toContain("Filtered Sales Rows");
     expect(serviceSource).toContain("Within Target Rows");
@@ -962,47 +1151,51 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         uomId: "kg",
         unitPrice: 420,
         effectiveFrom: new Date("2026-07-01T00:00:00.000Z"),
-        effectiveTo: null
+        effectiveTo: null,
       },
       {
         itemId: "beef-karubi",
         uomId: "kg",
         unitPrice: 390,
         effectiveFrom: new Date("2026-05-01T00:00:00.000Z"),
-        effectiveTo: new Date("2026-07-01T00:00:00.000Z")
+        effectiveTo: new Date("2026-07-01T00:00:00.000Z"),
       },
       {
         itemId: "beef-karubi",
         uomId: "kg",
         unitPrice: 360,
         effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-        effectiveTo: new Date("2026-05-01T00:00:00.000Z")
+        effectiveTo: new Date("2026-05-01T00:00:00.000Z"),
       },
       {
         itemId: "beef-shortplate",
         uomId: "kg",
         unitPrice: 510,
         effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-        effectiveTo: null
-      }
+        effectiveTo: null,
+      },
     ];
 
     expect(
       pickEffectiveSupplierUnitPrice(
         priceRows,
         "beef-karubi",
-        new Date("2026-06-15T00:00:00.000Z")
-      )
+        new Date("2026-06-15T00:00:00.000Z"),
+      ),
     ).toBe(390);
     expect(
       pickEffectiveSupplierUnitPrice(
         priceRows,
         "beef-karubi",
-        new Date("2026-07-15T00:00:00.000Z")
-      )
+        new Date("2026-07-15T00:00:00.000Z"),
+      ),
     ).toBe(420);
-    expect(pickEffectiveSupplierUnitPrice(priceRows, "beef-karubi", null)).toBe(420);
-    expect(pickEffectiveSupplierUnitPrice(priceRows, "missing-item", null)).toBeNull();
+    expect(pickEffectiveSupplierUnitPrice(priceRows, "beef-karubi", null)).toBe(
+      420,
+    );
+    expect(
+      pickEffectiveSupplierUnitPrice(priceRows, "missing-item", null),
+    ).toBeNull();
   });
 
   it("converts recipe quantities into supplier price UOM before costing", () => {
@@ -1011,14 +1204,14 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         itemId: "beef-karubi",
         fromUomId: "gram",
         toUomId: "kg",
-        conversionFactor: 0.001
+        conversionFactor: 0.001,
       },
       {
         itemId: "beef-shortplate",
         fromUomId: "tray",
         toUomId: "kg",
-        conversionFactor: 1.25
-      }
+        conversionFactor: 1.25,
+      },
     ];
 
     expect(
@@ -1027,14 +1220,26 @@ describe("Phase 2 recipe and food-cost foundations", () => {
         "beef-karubi",
         "gram",
         "kg",
-        conversions
-      )
+        conversions,
+      ),
     ).toBe(0.15);
     expect(
-      convertRecipeQuantityToPriceUom(2, "beef-shortplate", "kg", "kg", conversions)
+      convertRecipeQuantityToPriceUom(
+        2,
+        "beef-shortplate",
+        "kg",
+        "kg",
+        conversions,
+      ),
     ).toBe(2);
     expect(
-      convertRecipeQuantityToPriceUom(1, "missing-item", "gram", "kg", conversions)
+      convertRecipeQuantityToPriceUom(
+        1,
+        "missing-item",
+        "gram",
+        "kg",
+        conversions,
+      ),
     ).toBeNull();
   });
 });

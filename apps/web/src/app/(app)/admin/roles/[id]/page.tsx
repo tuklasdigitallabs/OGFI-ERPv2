@@ -6,6 +6,10 @@ import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
 import {
+  ApplyRecommendedRolePermissionsButton,
+  RolePermissionEditor,
+} from "@/components/RolePermissionEditor";
+import {
   actionErrorRedirectPath,
   getActionFeedback
 } from "@/server/services/actionFeedback";
@@ -47,7 +51,9 @@ async function applyRecommendedRolePermissionsAction(formData: FormData) {
     redirect(actionErrorRedirectPath(`/admin/roles/${roleId}`, error));
   }
   revalidatePath(`/admin/roles/${roleId}`);
-  redirect(`/admin/roles/${roleId}`);
+  redirect(
+    `/admin/roles/${roleId}?success=CORE_ADMIN_ROLE_RECOMMENDED_PERMISSIONS_APPLIED`,
+  );
 }
 
 export default async function CoreAdminRoleDetailPage({
@@ -96,12 +102,42 @@ export default async function CoreAdminRoleDetailPage({
   const { id } = await params;
   const queryParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(queryParams);
-  const assignmentQuery = Array.isArray(queryParams.assignmentQuery) ? queryParams.assignmentQuery[0] : queryParams.assignmentQuery;
-  const assignmentPageValue = Number.parseInt(String(Array.isArray(queryParams.assignmentPage) ? queryParams.assignmentPage[0] : queryParams.assignmentPage ?? "1"), 10);
-  const permissionQuery = Array.isArray(queryParams.permissionQuery) ? queryParams.permissionQuery[0] : queryParams.permissionQuery;
-  const permissionPageValue = Number.parseInt(String(Array.isArray(queryParams.permissionPage) ? queryParams.permissionPage[0] : queryParams.permissionPage ?? "1"), 10);
-  const permissionFilterValue = Array.isArray(queryParams.permissionFilter) ? queryParams.permissionFilter[0] : queryParams.permissionFilter;
-  const permissionFilter = permissionFilterValue === "SENSITIVE" || permissionFilterValue === "OVERRIDES" || permissionFilterValue === "RECOMMENDED_DRIFT" ? permissionFilterValue : "ALL";
+  const assignmentQuery = Array.isArray(queryParams.assignmentQuery)
+    ? queryParams.assignmentQuery[0]
+    : queryParams.assignmentQuery;
+  const assignmentPageValue = Number.parseInt(
+    String(
+      Array.isArray(queryParams.assignmentPage)
+        ? queryParams.assignmentPage[0]
+        : (queryParams.assignmentPage ?? "1"),
+    ),
+    10,
+  );
+  const permissionQuery = Array.isArray(queryParams.permissionQuery)
+    ? queryParams.permissionQuery[0]
+    : queryParams.permissionQuery;
+  const permissionPageValue = Number.parseInt(
+    String(
+      Array.isArray(queryParams.permissionPage)
+        ? queryParams.permissionPage[0]
+        : (queryParams.permissionPage ?? "1"),
+    ),
+    10,
+  );
+  const permissionFilterValue = Array.isArray(queryParams.permissionFilter)
+    ? queryParams.permissionFilter[0]
+    : queryParams.permissionFilter;
+  const permissionFilter =
+    permissionFilterValue === "SENSITIVE" ||
+    permissionFilterValue === "OVERRIDES" ||
+    permissionFilterValue === "RECOMMENDED_DRIFT"
+      ? permissionFilterValue
+      : "ALL";
+  const recommendedPermissionsApplied =
+    (Array.isArray(queryParams.success)
+      ? queryParams.success[0]
+      : queryParams.success) ===
+    "CORE_ADMIN_ROLE_RECOMMENDED_PERMISSIONS_APPLIED";
   const role = await getCoreAdminRoleDetail(session, id, {
     ...(assignmentQuery ? { query: assignmentQuery } : {}),
     page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1,
@@ -209,162 +245,65 @@ export default async function CoreAdminRoleDetailPage({
               </div>
             </div>
           ) : null}
-          <form method="get" className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-            <input type="hidden" name="permissionPage" value="1" />
-            {assignmentQuery ? <input type="hidden" name="assignmentQuery" value={assignmentQuery} /> : null}
-            {Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? <input type="hidden" name="assignmentPage" value={assignmentPageValue} /> : null}
-            <input className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm" name="permissionQuery" defaultValue={role.permissionPage.query} placeholder="Search permission code or action" />
-            <select className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm" name="permissionFilter" defaultValue={role.permissionPage.filter}>
-              <option value="ALL">All permissions</option>
-              <option value="SENSITIVE">Sensitive</option>
-              <option value="OVERRIDES">Overrides</option>
-              <option value="RECOMMENDED_DRIFT">Recommended drift</option>
-            </select>
-            <button type="submit" className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>
-          </form>
-          <form action={updateRolePermissionsAction} className="mt-5">
-            <input name="roleId" type="hidden" value={role.id} />
-            <input name="returnPath" type="hidden" value={permissionReturnPath} />
-            {role.enabledPermissionCodes
-              .filter((code) => !role.permissionGroups.some((group) => group.permissions.some((permission) => permission.code === code)))
-              .map((code) => <input key={code} name="permissionCodes" type="hidden" value={code} />)}
-            {role.permissionPage.totalItems === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                No permissions match the current search or filter. Clear the filter to review the complete scoped permission catalog.
-              </div>
-            ) : null}
-            <div className="space-y-4">
-              {role.permissionGroups.map((group) => (
-                <section
-                  key={group.name}
-                  className="overflow-hidden rounded-xl border border-slate-200"
+          <RolePermissionEditor
+            action={updateRolePermissionsAction}
+            assignmentPage={
+              Number.isFinite(assignmentPageValue)
+                ? assignmentPageValue
+                : undefined
+            }
+            assignmentQuery={assignmentQuery}
+            enabledPermissionCodes={role.enabledPermissionCodes}
+            groups={role.permissionGroups}
+            integrityIssue={role.permissionIntegrityIssue}
+            permissionFilter={role.permissionPage.filter}
+            permissionPage={role.permissionPage.page}
+            permissionPageSize={role.permissionPage.pageSize}
+            permissionQuery={role.permissionPage.query}
+            permissionTotal={role.permissionPage.totalItems}
+            returnPath={permissionReturnPath}
+            resetDraft={recommendedPermissionsApplied}
+            roleId={role.id}
+          />
+          {role.hasRecommendedSet ? (
+            <div className="mt-3 flex justify-end">
+              <EntryModal
+                title="Apply Recommended Permissions"
+                triggerClassName="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                triggerLabel="Apply Recommended Set"
+              >
+                <form
+                  action={applyRecommendedRolePermissionsAction}
+                  className="ogfi-form-shell mt-4 grid gap-4"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
-                    <div>
-                      <h3 className="font-bold text-slate-950">{group.name}</h3>
-                      <p className="text-xs text-slate-500">
-                        {group.enabledCount}/{group.permissions.length} enabled on this page ·{" "}
-                        {group.recommendedCount} recommended on this page
+                  <input name="roleId" type="hidden" value={role.id} />
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                    <div className="flex gap-2">
+                      <RotateCcw
+                        aria-hidden="true"
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                      />
+                      <p>
+                        This replaces the saved role permissions with the system
+                        recommended set for {role.name}. Any unsaved page
+                        selections are discarded, and current custom additions
+                        and removals are recorded in the audit diff.
                       </p>
                     </div>
-                    <Badge tone="neutral">{group.permissions.length} permissions</Badge>
                   </div>
-                  <div className="divide-y divide-slate-100">
-                    {group.permissions.map((permission) => (
-                      <label
-                        key={permission.id}
-                        className="ogfi-toggle-row grid cursor-pointer gap-3 px-4 py-4 md:grid-cols-[1fr_auto] md:items-center"
-                        data-testid="admin-role-permission-toggle"
-                      >
-                        <span className="min-w-0">
-                          <span className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-slate-950">
-                              {permission.label}
-                            </span>
-                            {permission.recommended ? (
-                              <Badge tone="info" size="sm">Recommended</Badge>
-                            ) : null}
-                            {permission.sensitive ? (
-                              <Badge tone="warning" size="sm">Sensitive</Badge>
-                            ) : null}
-                            {permission.overrideState === "ADDED_FROM_RECOMMENDED" ? (
-                              <Badge tone="warning" size="sm">Added override</Badge>
-                            ) : null}
-                            {permission.overrideState === "REMOVED_FROM_RECOMMENDED" ? (
-                              <Badge tone="destructive" size="sm">Removed override</Badge>
-                            ) : null}
-                          </span>
-                          <span className="mt-1 block text-sm text-slate-600">
-                            {permission.description}
-                          </span>
-                        </span>
-                        <span className="flex items-center justify-between gap-3 md:justify-end">
-                          <span className="text-xs font-semibold text-slate-500">
-                            {permission.enabled ? "Enabled" : "Off"}
-                          </span>
-                          <input
-                            className="peer sr-only"
-                            defaultChecked={permission.enabled}
-                            name="permissionCodes"
-                            type="checkbox"
-                            value={permission.code}
-                          />
-                          <span
-                            aria-hidden="true"
-                            className="h-7 w-12 rounded-full border border-slate-300 bg-slate-200 p-0.5 transition-colors peer-checked:border-blue-500 peer-checked:bg-blue-600"
-                          >
-                            <span className="block h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              ))}
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">
+                    Reason
+                    <input
+                      className="rounded-md border border-slate-300 px-3 py-2"
+                      name="reason"
+                      required
+                    />
+                  </label>
+                  <ApplyRecommendedRolePermissionsButton />
+                </form>
+              </EntryModal>
             </div>
-            <PaginationBar
-              page={role.permissionPage.page}
-              pageSize={role.permissionPage.pageSize}
-              totalItems={role.permissionPage.totalItems}
-              itemLabel="permissions"
-              controlClassName="min-h-11"
-              getPageHref={(nextPage) => `/admin/roles/${role.id}?permissionPage=${nextPage}${role.permissionPage.query ? `&permissionQuery=${encodeURIComponent(role.permissionPage.query)}` : ""}${role.permissionPage.filter !== "ALL" ? `&permissionFilter=${role.permissionPage.filter}` : ""}${assignmentQuery ? `&assignmentQuery=${encodeURIComponent(assignmentQuery)}` : ""}${Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? `&assignmentPage=${assignmentPageValue}` : ""}`}
-            />
-            {role.permissionIntegrityIssue ? null : <div className="sticky bottom-0 mt-5 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-[0_-18px_42px_-34px_rgba(15,23,42,0.7)] backdrop-blur">
-              <label className="grid gap-1 text-sm font-semibold text-slate-700">
-                Change reason
-                <input
-                  className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm"
-                  name="reason"
-                  placeholder="Explain why this role permission set is being changed"
-                  required
-                />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-                  Save Permission Overrides
-                </button>
-                <ButtonLink href="/admin?tab=roles" tone="ghost" className="min-h-10">
-                  Cancel and Return
-                </ButtonLink>
-                {role.hasRecommendedSet ? (
-                  <EntryModal
-                    title="Apply Recommended Permissions"
-                    triggerClassName="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                    triggerLabel="Apply Recommended Set"
-                  >
-                    <form
-                      action={applyRecommendedRolePermissionsAction}
-                      className="ogfi-form-shell mt-4 grid gap-4"
-                    >
-                      <input name="roleId" type="hidden" value={role.id} />
-                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                        <div className="flex gap-2">
-                          <RotateCcw aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-                          <p>
-                            This replaces the current role permissions with the system
-                            recommended set for {role.name}. Current custom additions and
-                            removals will be recorded in the audit diff.
-                          </p>
-                        </div>
-                      </div>
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Reason
-                        <input
-                          className="rounded-md border border-slate-300 px-3 py-2"
-                          name="reason"
-                          required
-                        />
-                      </label>
-                      <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                        Apply Recommended Permissions
-                      </button>
-                    </form>
-                  </EntryModal>
-                ) : null}
-              </div>
-            </div>}
-          </form>
+          ) : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">

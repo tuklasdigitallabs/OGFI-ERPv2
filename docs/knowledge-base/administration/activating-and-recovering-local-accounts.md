@@ -79,7 +79,7 @@ The temporary password is single-use. Issuing another one invalidates prior sess
 
 ## What Happens Next
 
-After activation, the user signs in with organization code, email, and the new password. Privileged users must complete runtime MFA enrollment or challenge. Current role and scope assignments continue to control which companies, brands, locations, and modules the user can access.
+After activation, the user confirms the read-only organization and signs in with email and the new password. Privileged users must complete runtime MFA enrollment or challenge. Current role and scope assignments continue to control which companies, brands, locations, and modules the user can access.
 
 ## Related Articles
 

@@ -308,8 +308,13 @@ describe("item master-data controls", () => {
     expect(composer).toContain("useDebouncedValue(query, 250)");
     expect(composer).toContain("createItemCatalogRequestController");
     expect(composer).toContain("fetchItemMasterCatalog");
-    expect(composer).toContain("Selected:</span> {selectedOption.code} / {selectedOption.label}");
-    expect(composer).toContain('required ? `Select ${label.toLowerCase()}` : "None"');
+    expect(composer).toContain('role="combobox"');
+    expect(composer).toContain('aria-autocomplete="list"');
+    expect(composer).toContain('role="listbox"');
+    expect(composer).toContain('<input name={name} type="hidden" value={selectedId} />');
+    expect(composer).toContain('code: "None"');
+    expect(composer).not.toContain("Selected:</span>");
+    expect(composer).not.toContain("Search base UOMs");
     expect(composer).toContain('const [categoryId, setCategoryId] = useState("")');
     expect(composer).toContain('const [baseUomId, setBaseUomId] = useState("")');
     expect(composer).toContain("!selectorReady.category");

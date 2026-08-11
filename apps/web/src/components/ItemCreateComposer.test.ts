@@ -149,6 +149,13 @@ describe("Create Item catalog controller", () => {
 
   test("component wiring distinguishes true and filtered empty states and preserves recovery controls", () => {
     const source = readFileSync(path.resolve(__dirname, "ItemCreateComposer.tsx"), "utf8");
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('role="listbox"');
+    expect(source).toContain('type="hidden" value={selectedId}');
+    expect(source).toContain("None, or search active UOMs");
+    expect(source).not.toContain("Search base UOMs");
+    expect(source).not.toContain("Search purchase UOMs");
+    expect(source).not.toContain("Search issue UOMs");
     expect(source).toContain("No active {kind === \"category\" ? \"categories\" : \"UOMs\"} are configured");
     expect(source).toContain("Close this composer, then open the");
     expect(source).toContain(">Clear search</button>");

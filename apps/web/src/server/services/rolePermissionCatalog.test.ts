@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { permissions } from "./authorization";
+import {
+  canAdoptBrandMenuRecipe,
+  canManageBranchMenuAvailability,
+  canOverrideBranchMenuRecipe,
+  canRolloutMenuRecipeSuccessor,
+  permissions
+} from "./authorization";
 import {
   getPermissionPresentation,
   getRecommendedPermissionCodesForRole,
@@ -28,6 +34,21 @@ describe("role permission catalog metadata", () => {
     });
     expect(getPermissionPresentation(permissions.menuPriceDecide)).toMatchObject({
       label: "Decide menu price changes",
+      group: "Restaurant Operations",
+      sensitive: true
+    });
+    expect(getPermissionPresentation(permissions.menuRecipeAdopt)).toMatchObject({
+      label: "Adopt brand menu recipes",
+      group: "Restaurant Operations",
+      sensitive: true
+    });
+    expect(getPermissionPresentation(permissions.menuRecipeBranchException)).toMatchObject({
+      label: "Manage branch menu recipe exceptions",
+      group: "Restaurant Operations",
+      sensitive: true
+    });
+    expect(getPermissionPresentation(permissions.menuRecipeRollout)).toMatchObject({
+      label: "Roll out successor menu recipes",
       group: "Restaurant Operations",
       sensitive: true
     });
@@ -102,6 +123,21 @@ describe("role permission catalog metadata", () => {
     expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).not.toContain(
       permissions.supplierConfidentialView
     );
+    for (const permissionCode of [
+      permissions.menuRecipeAdopt,
+      permissions.menuRecipeBranchException,
+      permissions.menuRecipeRollout
+    ]) {
+      expect(getRecommendedPermissionCodesForRole("CONFIGURED_REQUESTER")).not.toContain(
+        permissionCode
+      );
+      expect(getRecommendedPermissionCodesForRole("CONFIGURED_APPROVER")).not.toContain(
+        permissionCode
+      );
+      expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).not.toContain(
+        permissionCode
+      );
+    }
     expect(getRecommendedPermissionCodesForRole("UNMAPPED_ROLE")).toEqual([]);
   });
 
@@ -121,6 +157,9 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.foodSafetyCorrect)).toBe(true);
     expect(isSensitivePermissionCode(permissions.recipePublish)).toBe(true);
     expect(isSensitivePermissionCode(permissions.menuPriceDecide)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.menuRecipeAdopt)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.menuRecipeBranchException)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.menuRecipeRollout)).toBe(true);
     expect(isSensitivePermissionCode(permissions.evidenceLegalHoldSet)).toBe(true);
     expect(isSensitivePermissionCode(permissions.evidenceRetentionView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.supplierConfidentialView)).toBe(true);
@@ -130,6 +169,39 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.inventoryPilotConfigurationDraft)).toBe(true);
     expect(isSensitivePermissionCode(permissions.inventoryPilotConfigurationSeal)).toBe(true);
     expect(isSensitivePermissionCode(permissions.openingInventoryRequestExecute)).toBe(true);
+  });
+
+  test("does not let broad legacy permissions imply DEC-0280 authorities", () => {
+    const broadLegacyPermissions = [
+      permissions.coreAdminister,
+      permissions.recipeManage,
+      permissions.recipePublish,
+      permissions.consumptionConfigure
+    ];
+
+    expect(canAdoptBrandMenuRecipe(broadLegacyPermissions)).toBe(false);
+    expect(canManageBranchMenuAvailability(broadLegacyPermissions)).toBe(false);
+    expect(canOverrideBranchMenuRecipe(broadLegacyPermissions)).toBe(false);
+    expect(canRolloutMenuRecipeSuccessor(broadLegacyPermissions)).toBe(false);
+
+    expect(canAdoptBrandMenuRecipe([permissions.menuRecipeAdopt])).toBe(true);
+    expect(
+      canManageBranchMenuAvailability([permissions.menuRecipeBranchException])
+    ).toBe(true);
+    expect(canOverrideBranchMenuRecipe([permissions.menuRecipeBranchException])).toBe(false);
+    expect(
+      canOverrideBranchMenuRecipe([
+        permissions.menuRecipeBranchException,
+        permissions.menuRecipeAdopt
+      ])
+    ).toBe(true);
+    expect(canRolloutMenuRecipeSuccessor([permissions.menuRecipeRollout])).toBe(false);
+    expect(
+      canRolloutMenuRecipeSuccessor([
+        permissions.menuRecipeRollout,
+        permissions.recipePublish
+      ])
+    ).toBe(true);
   });
 
   test("documents Phase 2 restaurant operations permission codes", () => {
@@ -161,6 +233,9 @@ describe("role permission catalog metadata", () => {
       permissions.recipeApprove,
       permissions.recipePublish,
       permissions.recipeArchive,
+      permissions.menuRecipeAdopt,
+      permissions.menuRecipeBranchException,
+      permissions.menuRecipeRollout,
       permissions.menuCostView,
       permissions.menuPriceDecide
     ];

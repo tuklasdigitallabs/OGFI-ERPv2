@@ -1208,46 +1208,6 @@
     ]
   },
   {
-    "id": "admin/page.tsx#createRoleAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/coreAdmin.ts#createCoreAdminRole"
-    ],
-    "callChains": [
-      "createRoleAction -> server/services/coreAdmin.ts#createCoreAdminRole"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "requirePermission(core.administer)",
-      "tenant role predicate"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS"
-    ],
-    "noMutationControls": [
-      "role count unchanged on live core-admin or tenant-role permission denial"
-    ]
-  },
-  {
     "id": "admin/page.tsx#createUserAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -3037,6 +2997,51 @@
       "AUTHZ-ADMIN-MASTER-UPDATES-LIVE-PERMISSION-DENIED-NO-MUTATION",
       "AUTHZ-ADMIN-MASTER-UPDATES-EXACT-TENANT-COMPANY-DENIED-NO-MUTATION",
       "AUTHZ-ADMIN-MASTER-UPDATES-REQUIRE-REASON-AND-AUDIT-BEFORE-AFTER"
+    ]
+  },
+  {
+    "id": "app/api/admin/roles/create/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "core.administer AND core.tenant_role_administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "service-session",
+      "live-core-admin-permission",
+      "live-tenant-role-admin-permission",
+      "company-manage-scope",
+      "validated-input",
+      "transactional-write",
+      "audit-event"
+    ],
+    "denialContract": "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/coreAdmin.ts#createCoreAdminRole"
+    ],
+    "callChains": [
+      "app/api/admin/roles/create/route.ts#POST -> server/services/coreAdmin.ts#createCoreAdminRole"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "noMutationControls": [
+      "role count unchanged on live core-admin or tenant-role permission denial"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "requirePermission(core.administer)",
+      "tenant role predicate"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS"
     ]
   },
   {
@@ -14806,6 +14811,48 @@
     ]
   },
   {
+    "id": "recipes/[id]/page.tsx#rolloutPublishedRecipeAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/recipes.ts#rolloutPublishedRecipeSuccessor"
+    ],
+    "callChains": [
+      "rolloutPublishedRecipeAction -> server/services/recipes.ts#rolloutPublishedRecipeSuccessor"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live rollout and recipe-publish permissions",
+      "fresh privileged MFA",
+      "reviewed preview hash",
+      "serializable brand successor transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "brand defaults, audit, inventory movement, and inventory balance remain unchanged on denied or stale rollout"
+    ]
+  },
+  {
     "id": "recipes/[id]/page.tsx#transitionMenuPriceDecisionAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -18320,6 +18367,23 @@
     "noMutationControls": [
       "stale password creates no session"
     ]
+  },
+  {
+    "id": "server/services/authentication.ts#getConfiguredLoginOrganization",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "authentication.server_configured_tenant",
+    "scopeDimensions": [
+      "TENANT"
+    ],
+    "guardChain": [
+      "server-owned-login-tenant-configuration",
+      "active-tenant-lookup",
+      "minimal-public-organization-projection"
+    ],
+    "denialContract": "GENERIC_LOGIN_CONFIGURATION_ERROR_NO_TENANT_DIRECTORY",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION"
   },
   {
     "id": "server/services/authentication.ts#getValidatedSessionPrincipal",
@@ -30500,6 +30564,27 @@
     ]
   },
   {
+    "id": "server/services/localUatDatabaseAdmission.ts#assertLocalUatDatabaseAdmission",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/maintenance.ts#buildMaintenanceExportRows",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.maintenanceView",
@@ -38054,6 +38139,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/recipes.ts#getRecipeBrandScopeOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.recipeView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/recipes.ts#getRecipeCostingSummary",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.recipeView",
@@ -38115,6 +38221,81 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/recipes.ts#previewRecipePublicationConsumptionImpact",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.recipeView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "recipe access permission",
+      "exact company and brand impact projection",
+      "immutable preview snapshot hash"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "preview reads current branch readiness and creates no assignment, audit, or inventory mutation"
+    ]
+  },
+  {
+    "id": "server/services/recipes.ts#rolloutPublishedRecipeSuccessor",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.menuRecipeRollout | permissions.recipePublish",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live rollout and recipe-publish permissions",
+      "fresh privileged MFA",
+      "reviewed preview hash",
+      "serializable brand successor transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "brand defaults, audit, inventory movement, and inventory balance remain unchanged on denied or stale rollout"
+    ]
   },
   {
     "id": "server/services/recipes.ts#transitionMenuPriceDecision",
@@ -39061,6 +39242,888 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#activateRestaurantConsumptionConfiguration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionConfigure",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live configuration permission",
+      "exact location configuration transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "configuration state and audit remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#adoptSharedRecipeForBrand",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live adopt permission",
+      "fresh privileged MFA",
+      "exact company and brand adoption transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "shared recipe adoption and audit remain unchanged on permission, MFA, scope, or cross-brand denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#assertLiveMenuRecipeAuthority",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#assignBrandMenuRecipeDefault",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live adopt permission",
+      "fresh privileged MFA",
+      "exact company and brand default transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "brand default, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#assignLocationMenuRecipeOverride",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live branch-exception and adopt permissions",
+      "fresh privileged MFA",
+      "exact branch and parent-manage override transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "location override, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#assignMenuRecipe",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live configuration permission",
+      "scoped published-recipe assignment"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "recipe assignment and audit remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#cancelFutureRestaurantMenuPolicy",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "target-specific live menu-policy permissions",
+      "fresh privileged MFA",
+      "future-only exact-scope cancellation transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "future policy, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#cancelServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "scoped mutable-state transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "posted facts"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#cancelVerifiedServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionVerify",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "MFA",
+      "non-encoder exact-scope transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "posted facts"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#configureRestaurantConsumption",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionConfigure",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live configuration permission",
+      "versioned exact-scope configuration"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "active configuration and audit remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#createServingCorrection",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "idempotent immutable supersession"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "source declaration",
+      "inventory movement",
+      "inventory balance"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#createServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "exact branch configuration and catalog scope"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "other tenant data"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#endLocationMenuRecipeOverride",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live branch-exception and adopt permissions",
+      "fresh privileged MFA",
+      "exact branch and parent-manage recovery transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "override end, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#getRestaurantConsumptionSettings",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionView | permissions.consumptionCreate | permissions.consumptionVerify | permissions.consumptionPost | permissions.consumptionReverse | permissions.consumptionConfigure",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live settings permission",
+      "exact tenant company brand and location read scope"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "settings read exposes no cross-scope policy or configuration data and creates no mutation"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#getRestaurantConsumptionWorkspace",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#getServingDeclarationDetail",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#listRestaurantConsumptionCatalog",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live consumption-create permission",
+      "exact branch menu and availability read scope"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "catalog read exposes no cross-brand menu item and creates no mutation"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#listRestaurantConsumptionExportRows",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#postServingConsumption",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionPost",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live post permission",
+      "MFA",
+      "stable inventory-location lock",
+      "FEFO ledger writer"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK"
+    ],
+    "noMutationControls": [
+      "partial posting",
+      "negative stock",
+      "duplicate movement",
+      "direct balance mutation"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#returnServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionVerify",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "scoped review-state transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "submitted fact history"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#reverseServingConsumption",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionReverse",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live reverse permission",
+      "MFA",
+      "exact original allocation reversal"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "original movement",
+      "duplicate reversal",
+      "unrelated balance"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#setMenuItemLocationAvailability",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live branch-exception permission",
+      "fresh privileged MFA",
+      "exact branch or parent-manage availability transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "branch availability, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#submitServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "exact location and closed-period declaration"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "other tenant facts"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#updateServingDeclarationDraft",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "scoped optimistic-version draft update"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "submitted or posted facts",
+      "inventory movement",
+      "inventory balance"
+    ]
+  },
+  {
+    "id": "server/services/restaurantConsumption.ts#verifyServingDeclaration",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.consumptionVerify | permissions.consumptionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK",
+      "BOUNDARY_CASE:RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "MFA",
+      "non-encoder exact-scope verification"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "self-verified fact"
+    ]
   },
   {
     "id": "server/services/restaurantOpsNotifications.ts#runRestaurantOpsExceptionReminderScan",
@@ -42190,6 +43253,911 @@
     ],
     "noMutationControls": [
       "batch, lines, and audit snapshots"
+    ]
+  },
+  {
+    "id": "servings/[id]/edit/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/[id]/edit/page.tsx#updateAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#updateServingDeclarationDraft"
+    ],
+    "callChains": [
+      "updateAction -> server/services/restaurantConsumption.ts#updateServingDeclarationDraft"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "scoped optimistic-version draft update"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "submitted or posted facts",
+      "inventory movement",
+      "inventory balance"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#cancelServingAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#cancelServingDeclaration"
+    ],
+    "callChains": [
+      "cancelServingAction -> server/services/restaurantConsumption.ts#cancelServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "scoped mutable-state transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "posted facts"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#cancelVerifiedServingAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#cancelVerifiedServingDeclaration"
+    ],
+    "callChains": [
+      "cancelVerifiedServingAction -> server/services/restaurantConsumption.ts#cancelVerifiedServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "MFA",
+      "non-encoder exact-scope transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "posted facts"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#createCorrectionAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#createServingCorrection"
+    ],
+    "callChains": [
+      "createCorrectionAction -> server/services/restaurantConsumption.ts#createServingCorrection"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "idempotent immutable supersession"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "source declaration",
+      "inventory movement",
+      "inventory balance"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#postConsumptionAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#postServingConsumption"
+    ],
+    "callChains": [
+      "postConsumptionAction -> server/services/restaurantConsumption.ts#postServingConsumption"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live post permission",
+      "MFA",
+      "stable inventory-location lock",
+      "FEFO ledger writer"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK"
+    ],
+    "noMutationControls": [
+      "partial posting",
+      "negative stock",
+      "duplicate movement",
+      "direct balance mutation"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#returnServingAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#returnServingDeclaration"
+    ],
+    "callChains": [
+      "returnServingAction -> server/services/restaurantConsumption.ts#returnServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "scoped review-state transition"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "submitted fact history"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#reverseConsumptionAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#reverseServingConsumption"
+    ],
+    "callChains": [
+      "reverseConsumptionAction -> server/services/restaurantConsumption.ts#reverseServingConsumption"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live reverse permission",
+      "MFA",
+      "exact original allocation reversal"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "original movement",
+      "duplicate reversal",
+      "unrelated balance"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#submitServingAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#submitServingDeclaration"
+    ],
+    "callChains": [
+      "submitServingAction -> server/services/restaurantConsumption.ts#submitServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "exact location and closed-period declaration"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "other tenant facts"
+    ]
+  },
+  {
+    "id": "servings/[id]/page.tsx#verifyServingAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#verifyServingDeclaration"
+    ],
+    "callChains": [
+      "verifyServingAction -> server/services/restaurantConsumption.ts#verifyServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live verify permission",
+      "MFA",
+      "non-encoder exact-scope verification"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "self-verified fact"
+    ]
+  },
+  {
+    "id": "servings/export/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "session",
+      "route-authorization",
+      "scoped-service-builder"
+    ],
+    "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ROUTE-MATRIX-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext",
+      "server/services/exportAudit.ts#buildReportCsvMetadata",
+      "server/services/exportAudit.ts#logOperationalExportAudit",
+      "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
+      "server/services/restaurantConsumption.ts#listRestaurantConsumptionExportRows"
+    ],
+    "callChains": [
+      "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
+      "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
+      "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
+      "GET -> server/services/restaurantConsumption.ts#listRestaurantConsumptionExportRows"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY",
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "guarded-export-caller",
+      "assertReportExportScopeFilters",
+      "authorized operational export route",
+      "server/services/exportAudit.ts#logOperationalExportAudit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "FIN-AUTHZ-EXPORT-AUDIT-001",
+      "FIN-AUTHZ-PERM-001",
+      "FIN-AUTHZ-RECORD-001"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "report-source",
+      "money",
+      "inventory",
+      "failure audit only after an authenticated authorized export attempt",
+      "no money or workflow mutation"
+    ]
+  },
+  {
+    "id": "servings/new/page.tsx#createAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#createServingDeclaration"
+    ],
+    "callChains": [
+      "createAction -> server/services/restaurantConsumption.ts#createServingDeclaration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live create permission",
+      "exact branch configuration and catalog scope"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"
+    ],
+    "noMutationControls": [
+      "inventory movement",
+      "inventory balance",
+      "other tenant data"
+    ]
+  },
+  {
+    "id": "servings/new/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/review/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#activateAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#activateRestaurantConsumptionConfiguration"
+    ],
+    "callChains": [
+      "activateAction -> server/services/restaurantConsumption.ts#activateRestaurantConsumptionConfiguration"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live configuration permission",
+      "exact location configuration transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "configuration state and audit remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#availabilityAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#setMenuItemLocationAvailability"
+    ],
+    "callChains": [
+      "availabilityAction -> server/services/restaurantConsumption.ts#setMenuItemLocationAvailability"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live branch-exception permission",
+      "fresh privileged MFA",
+      "exact branch or parent-manage availability transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "branch availability, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#brandDefaultAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#assignBrandMenuRecipeDefault"
+    ],
+    "callChains": [
+      "brandDefaultAction -> server/services/restaurantConsumption.ts#assignBrandMenuRecipeDefault"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live adopt permission",
+      "fresh privileged MFA",
+      "exact company and brand default transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "brand default, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#configureAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#configureRestaurantConsumption"
+    ],
+    "callChains": [
+      "configureAction -> server/services/restaurantConsumption.ts#configureRestaurantConsumption"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live configuration permission",
+      "versioned exact-scope configuration"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"
+    ],
+    "noMutationControls": [
+      "active configuration and audit remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#locationOverrideAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#assignLocationMenuRecipeOverride"
+    ],
+    "callChains": [
+      "locationOverrideAction -> server/services/restaurantConsumption.ts#assignLocationMenuRecipeOverride"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live branch-exception and adopt permissions",
+      "fresh privileged MFA",
+      "exact branch and parent-manage override transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "location override, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "restaurant.consumption.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#recoveryAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#cancelFutureRestaurantMenuPolicy",
+      "server/services/restaurantConsumption.ts#endLocationMenuRecipeOverride"
+    ],
+    "callChains": [
+      "recoveryAction -> server/services/restaurantConsumption.ts#cancelFutureRestaurantMenuPolicy",
+      "recoveryAction -> server/services/restaurantConsumption.ts#endLocationMenuRecipeOverride"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "target-specific live menu-policy permissions",
+      "fresh privileged MFA",
+      "future-only exact-scope cancellation transaction",
+      "live branch-exception and adopt permissions",
+      "exact branch and parent-manage recovery transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "future policy, audit, inventory movement, and inventory balance remain unchanged on denial",
+      "override end, audit, inventory movement, and inventory balance remain unchanged on denial"
+    ]
+  },
+  {
+    "id": "servings/settings/page.tsx#sharedAdoptionAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/restaurantConsumption.ts#adoptSharedRecipeForBrand"
+    ],
+    "callChains": [
+      "sharedAdoptionAction -> server/services/restaurantConsumption.ts#adoptSharedRecipeForBrand"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live adopt permission",
+      "fresh privileged MFA",
+      "exact company and brand adoption transaction"
+    ],
+    "boundaryCaseIds": [
+      "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"
+    ],
+    "noMutationControls": [
+      "shared recipe adoption and audit remain unchanged on permission, MFA, scope, or cross-brand denial"
     ]
   },
   {

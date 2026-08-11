@@ -2,24 +2,24 @@ import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import {
-  getActionFeedback
-} from "@/server/services/actionFeedback";
+import { RecipeBrandContextSelect } from "./_components/RecipeBrandContextSelect";
+import { getActionFeedback } from "@/server/services/actionFeedback";
 import {
   canUseRecipesAndCosting,
   getDefaultAppRoute,
-  permissions
+  permissions,
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
   canExportFoodCostAnalysis,
-  canExportRecipeCosting
+  canExportRecipeCosting,
 } from "@/server/services/exportAuthorization";
 import {
   filterFoodCostAnalysisRows,
   filterRecipeCostingSummaries,
   getFoodCostAnalysisDashboard,
-  listRecipeCostingSummaries
+  getRecipeBrandScopeOptions,
+  listRecipeCostingSummaries,
 } from "@/server/services/recipes";
 
 export const dynamic = "force-dynamic";
@@ -33,13 +33,13 @@ const analysisStatusOptions = [
   "WITHIN_TARGET",
   "ABOVE_TARGET",
   "MISSING_COST",
-  "AWAITING_ACTUALS"
+  "AWAITING_ACTUALS",
 ] as const;
 const RECIPES_PER_PAGE = 10;
 
 function getSearchParam(
   searchParams: Record<string, string | string[] | undefined>,
-  key: string
+  key: string,
 ) {
   const value = searchParams[key];
   return Array.isArray(value) ? value[0] : value;
@@ -53,7 +53,7 @@ function normalizeView(value: string | undefined): RecipeWorkspaceView {
 
 function normalizeOption<T extends readonly string[]>(
   value: string | undefined,
-  options: T
+  options: T,
 ): T[number] {
   return options.includes(value ?? "") ? (value as T[number]) : options[0]!;
 }
@@ -63,11 +63,10 @@ function normalizePage(value: string | undefined) {
   return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-function viewHref(view: RecipeWorkspaceView) {
-  return view === "recipes" ? "/recipes" : `/recipes?view=${view}`;
-}
-
-function buildQueryHref(basePath: string, params: Record<string, string | null | undefined>) {
+function buildQueryHref(
+  basePath: string,
+  params: Record<string, string | null | undefined>,
+) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value && value !== "ALL") {
@@ -85,7 +84,7 @@ function money(value: number | null) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -97,7 +96,7 @@ function percent(value: number | null) {
 }
 
 export default async function RecipesPage({
-  searchParams
+  searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -114,21 +113,54 @@ export default async function RecipesPage({
   const query = (getSearchParam(params, "q") ?? "").trim().toLowerCase();
   const recipeTypeFilter = normalizeOption(
     getSearchParam(params, "type"),
-    recipeTypeOptions
+    recipeTypeOptions,
   );
   const recipeStatusFilter = normalizeOption(
     getSearchParam(params, "status"),
-    recipeStatusOptions
+    recipeStatusOptions,
   );
   const analysisStatusFilter = normalizeOption(
     getSearchParam(params, "analysisStatus"),
-    analysisStatusOptions
+    analysisStatusOptions,
   );
+  const brandScope = await getRecipeBrandScopeOptions(session);
+  const requestedBrandId = getSearchParam(params, "brandId");
+  const defaultBrandId = brandScope.brands.some(
+    (brand) => brand.id === session.context.brandId,
+  )
+    ? session.context.brandId
+    : (brandScope.brands[0]?.id ?? null);
+  const selectedBrandKey =
+    requestedBrandId === "COMPANY_SHARED" && brandScope.canManageCompanyShared
+      ? "COMPANY_SHARED"
+      : brandScope.brands.some((brand) => brand.id === requestedBrandId)
+        ? requestedBrandId!
+        : (defaultBrandId ??
+          (brandScope.canManageCompanyShared ? "COMPANY_SHARED" : ""));
+  const selectedBrandId =
+    selectedBrandKey === "COMPANY_SHARED" ? null : selectedBrandKey || null;
+  const selectedBrandName =
+    selectedBrandKey === "COMPANY_SHARED"
+      ? "Company-shared"
+      : (brandScope.brands.find((brand) => brand.id === selectedBrandId)
+          ?.name ?? "Select a recipe brand");
   const [recipes, foodCostAnalysis] = await Promise.all([
-    listRecipeCostingSummaries(session),
-    getFoodCostAnalysisDashboard(session)
+    listRecipeCostingSummaries(session, { brandId: selectedBrandId }),
+    getFoodCostAnalysisDashboard(session),
   ]);
-  const canCreateRecipe = session.permissionCodes.includes(permissions.recipeManage);
+  const brandContextOptions = [
+    ...brandScope.brands.map((brand) => ({
+      brandId: brand.id,
+      brandName: brand.name,
+    })),
+    ...(brandScope.canManageCompanyShared
+      ? [{ brandId: "COMPANY_SHARED", brandName: "Company-shared library" }]
+      : []),
+  ];
+  const hasSelectedBrand = selectedBrandId !== null;
+  const canCreateRecipe = session.permissionCodes.includes(
+    permissions.recipeManage,
+  );
   const actionFeedback = getActionFeedback(params);
   const canExportRecipes = canExportRecipeCosting(session);
   const canExportAnalysis = canExportFoodCostAnalysis(session);
@@ -139,12 +171,13 @@ export default async function RecipesPage({
           q: getSearchParam(params, "q"),
           status: analysisStatusFilter,
           actualQ: getSearchParam(params, "actualQ"),
-          movementType: getSearchParam(params, "movementType")
+          movementType: getSearchParam(params, "movementType"),
         })
       : buildQueryHref("/recipes/export", {
+          brandId: selectedBrandKey,
           q: getSearchParam(params, "q"),
           type: recipeTypeFilter,
-          status: recipeStatusFilter
+          status: recipeStatusFilter,
         });
   const canExportActiveView =
     activeView === "analysis" ? canExportAnalysis : canExportRecipes;
@@ -155,87 +188,147 @@ export default async function RecipesPage({
         ? "Export Food Cost CSV"
         : "Export Recipe Costing CSV";
   const pricedRecipes = recipes.filter(
-    (recipe) => recipe.currentMenuPrice !== null && recipe.estimatedServingCost !== null
+    (recipe) =>
+      recipe.currentMenuPrice !== null && recipe.estimatedServingCost !== null,
   );
   const pendingCostRecipes = recipes.filter(
-    (recipe) => recipe.costingStatus === "PENDING_COST"
+    (recipe) => recipe.costingStatus === "PENDING_COST",
   );
   const visibleRecipes = filterRecipeCostingSummaries(recipes, {
     q: query,
     type: recipeTypeFilter,
-    status: recipeStatusFilter
+    status: recipeStatusFilter,
   });
   const requestedRecipePage = normalizePage(getSearchParam(params, "page"));
   const recipeLibraryTotalPages = Math.max(
     1,
-    Math.ceil(visibleRecipes.length / RECIPES_PER_PAGE)
+    Math.ceil(visibleRecipes.length / RECIPES_PER_PAGE),
   );
-  const recipeLibraryPage = Math.min(requestedRecipePage, recipeLibraryTotalPages);
+  const recipeLibraryPage = Math.min(
+    requestedRecipePage,
+    recipeLibraryTotalPages,
+  );
   const recipeStartIndex = (recipeLibraryPage - 1) * RECIPES_PER_PAGE;
   const paginatedRecipes = visibleRecipes.slice(
     recipeStartIndex,
-    recipeStartIndex + RECIPES_PER_PAGE
+    recipeStartIndex + RECIPES_PER_PAGE,
   );
-  const recipeShowingStart = visibleRecipes.length === 0 ? 0 : recipeStartIndex + 1;
+  const recipeShowingStart =
+    visibleRecipes.length === 0 ? 0 : recipeStartIndex + 1;
   const recipeShowingEnd = Math.min(
     recipeStartIndex + RECIPES_PER_PAGE,
-    visibleRecipes.length
+    visibleRecipes.length,
   );
   const recipePageHref = (page: number) =>
     buildQueryHref("/recipes", {
       q: getSearchParam(params, "q"),
+      brandId: selectedBrandKey,
       type: recipeTypeFilter,
       status: recipeStatusFilter,
-      page: page > 1 ? String(page) : undefined
+      page: page > 1 ? String(page) : undefined,
     });
   const requestedFoodCostPage = normalizePage(getSearchParam(params, "page"));
   const foodCostTotalPages = Math.max(
     1,
-    Math.ceil(visibleRecipes.length / RECIPES_PER_PAGE)
+    Math.ceil(visibleRecipes.length / RECIPES_PER_PAGE),
   );
   const foodCostPage = Math.min(requestedFoodCostPage, foodCostTotalPages);
   const foodCostStartIndex = (foodCostPage - 1) * RECIPES_PER_PAGE;
   const paginatedFoodCostRecipes = visibleRecipes.slice(
     foodCostStartIndex,
-    foodCostStartIndex + RECIPES_PER_PAGE
+    foodCostStartIndex + RECIPES_PER_PAGE,
   );
   const foodCostShowingStart =
     visibleRecipes.length === 0 ? 0 : foodCostStartIndex + 1;
   const foodCostShowingEnd = Math.min(
     foodCostStartIndex + RECIPES_PER_PAGE,
-    visibleRecipes.length
+    visibleRecipes.length,
   );
   const foodCostPageHref = (page: number) =>
     buildQueryHref("/recipes", {
       view: "food-cost",
+      brandId: selectedBrandKey,
       q: getSearchParam(params, "q"),
       type: recipeTypeFilter,
       status: recipeStatusFilter,
-      page: page > 1 ? String(page) : undefined
+      page: page > 1 ? String(page) : undefined,
     });
-  const visibleAnalysisRows = filterFoodCostAnalysisRows(foodCostAnalysis.rows, {
-    q: query,
-    status: analysisStatusFilter
-  });
+  const visibleAnalysisRows = filterFoodCostAnalysisRows(
+    foodCostAnalysis.rows,
+    {
+      q: query,
+      status: analysisStatusFilter,
+    },
+  );
   return (
     <AppShell
       session={session}
       title="Recipes & Menu Costing"
-      subtitle="Phase II recipe, menu price, and food-cost foundation"
+      subtitle={`${selectedBrandName} recipe library, menu adoption, and food-cost evidence`}
       activeNav={activeView === "recipes" ? "recipes" : "food-cost"}
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
+      <section className="mb-5 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-white">
+        <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.55fr)] md:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+              Recipe brand
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-950">
+                {hasSelectedBrand
+                  ? selectedBrandName
+                  : "Company-shared recipe library"}
+              </h2>
+              <Badge tone={hasSelectedBrand ? "info" : "warning"}>
+                {hasSelectedBrand ? "Brand-owned menu" : "Brand required"}
+              </Badge>
+            </div>
+            <p className="mt-2 max-w-3xl text-sm text-slate-600">
+              {hasSelectedBrand
+                ? "Recipes and menu items shown here are limited to this brand plus Company-shared recipes this brand has explicitly adopted. A shared recipe never enters this brand menu automatically."
+                : "Choose an authorized brand to open its recipe library. Until then, only the Company-shared library is visible and no recipe can become sellable downstream."}
+            </p>
+          </div>
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-white/90 p-3">
+            <RecipeBrandContextSelect
+              key={selectedBrandKey || "none"}
+              options={brandContextOptions}
+              selectedBrandId={selectedBrandKey}
+            />
+            <dl className="grid gap-3 border-t border-slate-100 pt-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-500">
+                  Company
+                </dt>
+                <dd className="mt-1 font-bold text-slate-950">
+                  {session.context.companyName}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-500">
+                  Price-preview location
+                </dt>
+                <dd className="mt-1 font-bold text-slate-950">
+                  {session.context.locationName}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
       <div className="ogfi-coordination-cue mb-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">
-              <strong>Phase II boundary:</strong> recipes estimate expected usage and
-              menu cost. Inventory remains the source of truth for actual movements;
-              POS sales and finance postings are not changed by this workspace.
+              <strong>Phase II boundary:</strong> recipes estimate expected
+              usage and menu cost. Inventory remains the source of truth for
+              actual movements; POS sales and finance postings are not changed
+              by this workspace.
             </p>
             <p className="mt-1 text-xs text-blue-900/75">
-              This first slice uses published recipe versions, menu prices, and latest
-              supplier price history as a controlled costing preview.
+              This first slice uses published recipe versions, menu prices, and
+              latest supplier price history as a controlled costing preview.
             </p>
           </div>
           <span>Controlled costing foundation</span>
@@ -245,16 +338,22 @@ export default async function RecipesPage({
       <div className="mb-5 grid gap-4 md:grid-cols-5">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Recipes</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{recipes.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">
+            {recipes.length}
+          </p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Priced menu items</p>
+          <p className="text-sm font-semibold text-slate-500">
+            Priced menu items
+          </p>
           <p className="mt-2 text-3xl font-bold text-blue-700">
             {pricedRecipes.length}
           </p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Pending costing</p>
+          <p className="text-sm font-semibold text-slate-500">
+            Pending costing
+          </p>
           <p className="mt-2 text-3xl font-bold text-amber-700">
             {pendingCostRecipes.length}
           </p>
@@ -266,9 +365,12 @@ export default async function RecipesPage({
           </p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Scope</p>
+          <p className="text-sm font-semibold text-slate-500">Brand scope</p>
           <p className="mt-2 text-lg font-bold text-slate-950">
-            {session.context.brandName}
+            {selectedBrandName}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Cross-brand recipes excluded
           </p>
         </Panel>
       </div>
@@ -280,13 +382,20 @@ export default async function RecipesPage({
               Phase II Costing Workspace
             </h2>
             <p className="text-sm text-slate-500">
-              Cost estimates are source-linked to recipe lines and supplier price history.
+              Cost estimates are source-linked to recipe lines and supplier
+              price history.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info">{recipes.length} recipe records</Badge>
             {canCreateRecipe ? (
-              <ButtonLink href="/recipes/new">Create Draft Recipe</ButtonLink>
+              <ButtonLink
+                href={buildQueryHref("/recipes/new", {
+                  brandId: selectedBrandKey,
+                })}
+              >
+                Create Draft Recipe
+              </ButtonLink>
             ) : null}
             {canExportActiveView ? (
               <ButtonLink href={exportHref} tone="ghost" className="ogfi-chip">
@@ -299,9 +408,21 @@ export default async function RecipesPage({
         <div className="border-b border-slate-100 p-3">
           <div className="grid gap-2 md:grid-cols-3">
             {[
-              { id: "recipes" as const, label: "Recipe Library", detail: "Versions and ingredient lines" },
-              { id: "food-cost" as const, label: "Food Cost View", detail: "Menu price, plate cost, margin" },
-              { id: "analysis" as const, label: "Sales Analysis", detail: "Imported sales and theoretical cost" }
+              {
+                id: "recipes" as const,
+                label: "Recipe Library",
+                detail: "Versions and ingredient lines",
+              },
+              {
+                id: "food-cost" as const,
+                label: "Food Cost View",
+                detail: "Menu price, plate cost, margin",
+              },
+              {
+                id: "analysis" as const,
+                label: "Sales Analysis",
+                detail: "Imported sales and theoretical cost",
+              },
             ].map((tab) => {
               const active = activeView === tab.id;
               return (
@@ -312,7 +433,10 @@ export default async function RecipesPage({
                       ? "rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 shadow-sm"
                       : "rounded-xl border border-transparent px-4 py-3 text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950"
                   }
-                  href={viewHref(tab.id)}
+                  href={buildQueryHref("/recipes", {
+                    view: tab.id === "recipes" ? undefined : tab.id,
+                    brandId: selectedBrandKey,
+                  })}
                 >
                   <span className="block text-sm font-bold">{tab.label}</span>
                   <span className="mt-1 block text-xs font-semibold text-slate-500">
@@ -326,6 +450,7 @@ export default async function RecipesPage({
 
         <form className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_12rem_12rem_auto] md:items-end">
           <input name="view" type="hidden" value={activeView} />
+          <input name="brandId" type="hidden" value={selectedBrandKey} />
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
             <input
@@ -349,7 +474,9 @@ export default async function RecipesPage({
               >
                 {analysisStatusOptions.map((status) => (
                   <option key={status} value={status}>
-                    {status === "ALL" ? "All analysis statuses" : status.replaceAll("_", " ")}
+                    {status === "ALL"
+                      ? "All analysis statuses"
+                      : status.replaceAll("_", " ")}
                   </option>
                 ))}
               </select>
@@ -379,7 +506,9 @@ export default async function RecipesPage({
                 >
                   {recipeStatusOptions.map((status) => (
                     <option key={status} value={status}>
-                      {status === "ALL" ? "All statuses" : status.replaceAll("_", " ")}
+                      {status === "ALL"
+                        ? "All statuses"
+                        : status.replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
@@ -390,7 +519,14 @@ export default async function RecipesPage({
             <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
               Apply
             </button>
-            <ButtonLink href={viewHref(activeView)} tone="ghost" className="min-h-10">
+            <ButtonLink
+              href={buildQueryHref("/recipes", {
+                view: activeView === "recipes" ? undefined : activeView,
+                brandId: selectedBrandKey,
+              })}
+              tone="ghost"
+              className="min-h-10"
+            >
               Clear
             </ButtonLink>
           </div>
@@ -405,115 +541,159 @@ export default async function RecipesPage({
           </div>
         ) : activeView !== "analysis" && visibleRecipes.length === 0 ? (
           <div className="ogfi-empty-state">
-            <p className="font-semibold text-slate-900">No recipes match the filters</p>
+            <p className="font-semibold text-slate-900">
+              No recipes match the filters
+            </p>
             <p className="mt-1 text-sm text-slate-600">
-              Adjust search, recipe type, or status to widen this costing workspace.
+              Adjust search, recipe type, or status to widen this costing
+              workspace.
             </p>
           </div>
         ) : activeView === "recipes" ? (
           <>
-          <div className="divide-y divide-slate-100">
-            {paginatedRecipes.map((recipe) => (
-              <div key={recipe.id} className="p-5">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold text-slate-950">
-                        {recipe.recipeName}
-                      </h3>
-                      <Badge tone="info" size="sm">{recipe.recipeType}</Badge>
-                      <Badge tone={recipe.status === "ACTIVE" ? "success" : "neutral"} size="sm">
-                        {recipe.status.replaceAll("_", " ")}
-                      </Badge>
-                      <Badge
-                        tone={
-                          recipe.selectedVersionStatus === "PUBLISHED"
-                            ? "info"
-                            : "neutral"
-                        }
-                        size="sm"
+            <div className="divide-y divide-slate-100">
+              {paginatedRecipes.map((recipe) => (
+                <div key={recipe.id} className="p-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-bold text-slate-950">
+                          {recipe.recipeName}
+                        </h3>
+                        <Badge tone="info" size="sm">
+                          {recipe.recipeType}
+                        </Badge>
+                        <Badge
+                          tone={
+                            recipe.status === "ACTIVE" ? "success" : "neutral"
+                          }
+                          size="sm"
+                        >
+                          {recipe.status.replaceAll("_", " ")}
+                        </Badge>
+                        <Badge
+                          tone={
+                            recipe.selectedVersionStatus === "PUBLISHED"
+                              ? "info"
+                              : "neutral"
+                          }
+                          size="sm"
+                        >
+                          {recipe.selectedVersionStatus.replaceAll("_", " ")}
+                        </Badge>
+                        <Badge
+                          tone={
+                            recipe.costingStatus === "COSTED"
+                              ? "success"
+                              : "warning"
+                          }
+                          size="sm"
+                        >
+                          {recipe.costingStatus === "COSTED"
+                            ? "Costed"
+                            : `${recipe.pendingCostLineCount} cost evidence pending`}
+                        </Badge>
+                        {recipe.brandId === selectedBrandId ? (
+                          <Badge tone="neutral" size="sm">
+                            Brand recipe
+                          </Badge>
+                        ) : (
+                          <Badge tone="info" size="sm">
+                            Company-shared · adopted by brand
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {recipe.recipeCode} / {recipe.brandName} / Version{" "}
+                        {recipe.versionNo ?? "Pending"}
+                      </p>
+                      {recipe.costingStatus === "PENDING_COST" &&
+                      recipe.selectedVersionStatus === "PUBLISHED" ? (
+                        <p className="mt-2 text-xs font-semibold text-amber-800">
+                          Quantity use may be ready from the approved formula;
+                          peso food-cost analysis remains incomplete until cost
+                          evidence is resolved.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 text-sm sm:grid-cols-4">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase text-slate-500">
+                          Yield
+                        </p>
+                        <p className="font-bold text-slate-900">
+                          {recipe.yieldQuantity ?? "-"}{" "}
+                          {recipe.yieldUomCode ?? ""}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase text-slate-500">
+                          Serving
+                        </p>
+                        <p className="font-bold text-slate-900">
+                          {recipe.servingQuantity ?? "-"}{" "}
+                          {recipe.servingUomCode ?? ""}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase text-slate-500">
+                          Costed lines
+                        </p>
+                        <p className="font-bold text-slate-900">
+                          {recipe.costedLineCount}/{recipe.lineCount}
+                        </p>
+                      </div>
+                      <ButtonLink
+                        href={buildQueryHref(`/recipes/${recipe.id}`, {
+                          brandId: selectedBrandKey,
+                        })}
+                        tone="ghost"
+                        className="min-h-[3.5rem] justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
                       >
-                        {recipe.selectedVersionStatus.replaceAll("_", " ")}
-                      </Badge>
-                      <Badge
-                        tone={
-                          recipe.costingStatus === "COSTED" ? "success" : "warning"
-                        }
-                        size="sm"
-                      >
-                        {recipe.costingStatus === "COSTED"
-                          ? "Costed"
-                          : `${recipe.pendingCostLineCount} pending cost line(s)`}
-                      </Badge>
+                        View Recipe
+                      </ButtonLink>
                     </div>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {recipe.recipeCode} / {recipe.brandName} / Version{" "}
-                      {recipe.versionNo ?? "Pending"}
-                    </p>
-                  </div>
-                  <div className="grid gap-2 text-sm sm:grid-cols-4">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">Yield</p>
-                      <p className="font-bold text-slate-900">
-                        {recipe.yieldQuantity ?? "-"} {recipe.yieldUomCode ?? ""}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">Serving</p>
-                      <p className="font-bold text-slate-900">
-                        {recipe.servingQuantity ?? "-"} {recipe.servingUomCode ?? ""}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">
-                        Costed lines
-                      </p>
-                      <p className="font-bold text-slate-900">
-                        {recipe.costedLineCount}/{recipe.lineCount}
-                      </p>
-                    </div>
-                    <ButtonLink
-                      href={`/recipes/${recipe.id}`}
-                      tone="ghost"
-                      className="min-h-[3.5rem] justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
-                    >
-                      View Recipe
-                    </ButtonLink>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-            <p>
-              Showing {recipeShowingStart}-{recipeShowingEnd} of {visibleRecipes.length} recipes
-            </p>
-            {recipeLibraryTotalPages > 1 ? (
-              <div className="flex items-center gap-2">
-                {recipeLibraryPage > 1 ? (
-                  <ButtonLink href={recipePageHref(recipeLibraryPage - 1)} tone="secondary">
-                    Previous
-                  </ButtonLink>
-                ) : (
-                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
-                    Previous
+              ))}
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Showing {recipeShowingStart}-{recipeShowingEnd} of{" "}
+                {visibleRecipes.length} recipes
+              </p>
+              {recipeLibraryTotalPages > 1 ? (
+                <div className="flex items-center gap-2">
+                  {recipeLibraryPage > 1 ? (
+                    <ButtonLink
+                      href={recipePageHref(recipeLibraryPage - 1)}
+                      tone="secondary"
+                    >
+                      Previous
+                    </ButtonLink>
+                  ) : (
+                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                      Previous
+                    </span>
+                  )}
+                  <span className="font-semibold text-slate-700">
+                    Page {recipeLibraryPage} of {recipeLibraryTotalPages}
                   </span>
-                )}
-                <span className="font-semibold text-slate-700">
-                  Page {recipeLibraryPage} of {recipeLibraryTotalPages}
-                </span>
-                {recipeLibraryPage < recipeLibraryTotalPages ? (
-                  <ButtonLink href={recipePageHref(recipeLibraryPage + 1)} tone="secondary">
-                    Next
-                  </ButtonLink>
-                ) : (
-                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
-                    Next
-                  </span>
-                )}
-              </div>
-            ) : null}
-          </div>
+                  {recipeLibraryPage < recipeLibraryTotalPages ? (
+                    <ButtonLink
+                      href={recipePageHref(recipeLibraryPage + 1)}
+                      tone="secondary"
+                    >
+                      Next
+                    </ButtonLink>
+                  ) : (
+                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                      Next
+                    </span>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </>
         ) : activeView === "food-cost" ? (
           <>
@@ -533,7 +713,8 @@ export default async function RecipesPage({
                     const overTarget =
                       recipe.targetFoodCostPercent !== null &&
                       recipe.estimatedFoodCostPercent !== null &&
-                      recipe.estimatedFoodCostPercent > recipe.targetFoodCostPercent;
+                      recipe.estimatedFoodCostPercent >
+                        recipe.targetFoodCostPercent;
                     return (
                       <div
                         key={recipe.id}
@@ -544,12 +725,16 @@ export default async function RecipesPage({
                             <h3 className="font-bold text-slate-950">
                               {recipe.menuItemName ?? recipe.recipeName}
                             </h3>
-                            <Badge tone={overTarget ? "warning" : "success"} size="sm">
+                            <Badge
+                              tone={overTarget ? "warning" : "success"}
+                              size="sm"
+                            >
                               {overTarget ? "Above target" : "Within target"}
                             </Badge>
                           </div>
                           <p className="mt-1 text-xs font-semibold text-slate-500">
-                            {recipe.recipeName} / {recipe.lineCount} ingredient lines
+                            {recipe.recipeName} / {recipe.lineCount} ingredient
+                            lines
                           </p>
                         </div>
                         <p className="font-bold text-slate-950">
@@ -574,7 +759,9 @@ export default async function RecipesPage({
                           {money(recipe.estimatedGrossMargin)}
                         </p>
                         <ButtonLink
-                          href={`/recipes/${recipe.id}`}
+                          href={buildQueryHref(`/recipes/${recipe.id}`, {
+                            brandId: selectedBrandKey,
+                          })}
                           tone="secondary"
                           className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
                         >
@@ -594,7 +781,10 @@ export default async function RecipesPage({
               {foodCostTotalPages > 1 ? (
                 <div className="flex items-center gap-2">
                   {foodCostPage > 1 ? (
-                    <ButtonLink href={foodCostPageHref(foodCostPage - 1)} tone="secondary">
+                    <ButtonLink
+                      href={foodCostPageHref(foodCostPage - 1)}
+                      tone="secondary"
+                    >
                       Previous
                     </ButtonLink>
                   ) : (
@@ -606,7 +796,10 @@ export default async function RecipesPage({
                     Page {foodCostPage} of {foodCostTotalPages}
                   </span>
                   {foodCostPage < foodCostTotalPages ? (
-                    <ButtonLink href={foodCostPageHref(foodCostPage + 1)} tone="secondary">
+                    <ButtonLink
+                      href={foodCostPageHref(foodCostPage + 1)}
+                      tone="secondary"
+                    >
                       Next
                     </ButtonLink>
                   ) : (
@@ -622,37 +815,49 @@ export default async function RecipesPage({
           <div className="p-5">
             <div className="grid gap-4 md:grid-cols-6">
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Latest sales date</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Latest sales date
+                </p>
                 <p className="mt-2 text-xl font-bold text-slate-950">
                   {foodCostAnalysis.businessDate ?? "No import"}
                 </p>
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Quantity sold</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Quantity sold
+                </p>
                 <p className="mt-2 text-xl font-bold text-slate-950">
                   {foodCostAnalysis.quantitySold}
                 </p>
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Theoretical cost</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Theoretical cost
+                </p>
                 <p className="mt-2 text-xl font-bold text-blue-700">
                   {money(foodCostAnalysis.theoreticalCost)}
                 </p>
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Theoretical %</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Theoretical %
+                </p>
                 <p className="mt-2 text-xl font-bold text-emerald-700">
                   {percent(foodCostAnalysis.theoreticalFoodCostPercent)}
                 </p>
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Actual cost</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Actual cost
+                </p>
                 <p className="mt-2 text-xl font-bold text-amber-700">
                   {money(foodCostAnalysis.actualCost)}
                 </p>
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">
-                <p className="text-xs font-semibold uppercase text-slate-500">Variance</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">
+                  Variance
+                </p>
                 <p
                   className={`mt-2 text-xl font-bold ${
                     (foodCostAnalysis.varianceAmount ?? 0) > 0
@@ -668,19 +873,25 @@ export default async function RecipesPage({
             <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <p className="font-bold">Actual variance is ledger-derived.</p>
-                <ButtonLink href="/recipes/analysis" tone="ghost" className="ogfi-chip">
+                <ButtonLink
+                  href="/recipes/analysis"
+                  tone="ghost"
+                  className="ogfi-chip"
+                >
                   Open Drilldown
                 </ButtonLink>
               </div>
               <p className="mt-1 text-blue-900/80">
-                This view uses posted POS-sales import records and published recipe costs
-                to calculate theoretical food cost. Actual cost is summarized from posted
-                outbound inventory movements for the selected branch and sales date; menu
-                item rows stay theoretical-only until a controlled menu-item consumption
-                source exists.
+                This view uses posted POS-sales import records and published
+                recipe costs to calculate theoretical food cost. Actual cost is
+                summarized from posted outbound inventory movements for the
+                selected branch and sales date; menu item rows stay
+                theoretical-only until a controlled menu-item consumption source
+                exists.
               </p>
               <p className="mt-2 text-xs font-semibold text-blue-900/80">
-                {foodCostAnalysis.actualCostSource} {foodCostAnalysis.actualMovementCount} movement(s).
+                {foodCostAnalysis.actualCostSource}{" "}
+                {foodCostAnalysis.actualMovementCount} movement(s).
               </p>
             </div>
 
@@ -691,7 +902,8 @@ export default async function RecipesPage({
                     Actual Consumption Snapshot
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Ledger outbound movements grouped by ingredient and movement type.
+                    Ledger outbound movements grouped by ingredient and movement
+                    type.
                   </p>
                 </div>
                 <div className="hidden bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-500 lg:grid lg:grid-cols-[1fr_10rem_8rem_9rem] lg:gap-3">
@@ -707,14 +919,18 @@ export default async function RecipesPage({
                       className="grid gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_10rem_8rem_9rem] lg:gap-3"
                     >
                       <div>
-                        <p className="font-bold text-slate-950">{row.itemName}</p>
+                        <p className="font-bold text-slate-950">
+                          {row.itemName}
+                        </p>
                         <p className="text-xs text-slate-500">{row.itemCode}</p>
                       </div>
                       <p className="font-semibold text-slate-700">
                         {row.movementType.replaceAll("_", " ").toLowerCase()}
                       </p>
                       <p className="text-slate-700">{row.quantityBaseUom}</p>
-                      <p className="font-bold text-slate-950">{money(row.totalCost)}</p>
+                      <p className="font-bold text-slate-950">
+                        {money(row.totalCost)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -734,10 +950,12 @@ export default async function RecipesPage({
               <div className="divide-y divide-slate-100">
                 {foodCostAnalysis.rows.length === 0 ? (
                   <div className="ogfi-empty-state">
-                    <p className="font-semibold text-slate-900">No sales import found</p>
+                    <p className="font-semibold text-slate-900">
+                      No sales import found
+                    </p>
                     <p className="mt-1 text-sm text-slate-600">
-                      Import or seed posted sales for the selected branch before running
-                      theoretical food-cost analysis.
+                      Import or seed posted sales for the selected branch before
+                      running theoretical food-cost analysis.
                     </p>
                   </div>
                 ) : visibleAnalysisRows.length === 0 ? (
@@ -746,7 +964,8 @@ export default async function RecipesPage({
                       No sales rows match the filters
                     </p>
                     <p className="mt-1 text-sm text-slate-600">
-                      Adjust search or analysis status to widen this food-cost view.
+                      Adjust search or analysis status to widen this food-cost
+                      view.
                     </p>
                   </div>
                 ) : (
@@ -756,18 +975,28 @@ export default async function RecipesPage({
                       className="grid gap-2 px-4 py-4 text-sm lg:grid-cols-[1.4fr_7rem_9rem_9rem_8rem_8rem_9rem] lg:gap-3"
                     >
                       <div>
-                        <p className="font-bold text-slate-950">{row.menuItemName}</p>
-                        <p className="text-xs text-slate-500">{row.recipeName}</p>
+                        <p className="font-bold text-slate-950">
+                          {row.menuItemName}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {row.recipeName}
+                        </p>
                       </div>
-                      <p className="font-semibold text-slate-900">{row.quantitySold}</p>
-                      <p className="text-slate-700">{money(row.netSalesAmount)}</p>
+                      <p className="font-semibold text-slate-900">
+                        {row.quantitySold}
+                      </p>
+                      <p className="text-slate-700">
+                        {money(row.netSalesAmount)}
+                      </p>
                       <p className="font-bold text-slate-950">
                         {money(row.theoreticalCost)}
                       </p>
                       <p className="font-semibold text-blue-700">
                         {percent(row.theoreticalFoodCostPercent)}
                       </p>
-                      <p className="text-slate-700">{percent(row.targetFoodCostPercent)}</p>
+                      <p className="text-slate-700">
+                        {percent(row.targetFoodCostPercent)}
+                      </p>
                       <Badge
                         tone={
                           row.status === "ABOVE_TARGET"

@@ -1136,9 +1136,6 @@ export async function searchPurchaseRequestDraftLookup(
   await requirePermission(session, permissions.purchaseRequestCreate);
   assertAuthorizedLocation(session, session.context.locationId);
   const values = purchaseRequestDraftLookupInputSchema.parse(input);
-  if (values.kind === "item" && values.query.length < 2 && !values.selectedId) {
-    return { kind: values.kind, options: [], page: 1, pageSize: values.pageSize, totalItems: 0, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
-  }
   if (values.kind === "uom" && !values.itemId) {
     return { kind: values.kind, options: [], page: 1, pageSize: values.pageSize, totalItems: 0, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
   }

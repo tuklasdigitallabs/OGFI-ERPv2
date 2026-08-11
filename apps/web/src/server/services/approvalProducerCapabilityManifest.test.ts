@@ -896,7 +896,7 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
       "dec-0247-c2.dormant-closed-writer-contract.2",
     );
     expect(approvalProducerClosedCapabilityInventoryDigest).toBe(
-      "11ca398d27841266e10334910d0ef9735f7d3610167535417634c3e83e526cd5",
+      "4ad1f1d8d8f16512f6a5bcba0d263606a9b369f3b6cbecb7a1b1de1030dee71c",
     );
     expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe(
       "dec-0261.inventory-pilot-families.1",

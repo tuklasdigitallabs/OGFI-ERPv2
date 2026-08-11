@@ -15,10 +15,18 @@ import {
 } from "lucide-react";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
-import { canUseRecipesAndCosting } from "@/server/services/authorization";
+import {
+  DashboardOverviewAccordion,
+  type DashboardOverviewAccordionSection
+} from "@/components/DashboardOverviewAccordion";
+import {
+  canUseRecipesAndCosting,
+  permissions,
+} from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
   getOperationalDashboard,
+  type DashboardCard,
   type DashboardMetric,
   type DashboardQueueItem,
   type DashboardSourceId,
@@ -81,6 +89,149 @@ function normalizeAnalyticsPanel(value: string | undefined): AnalyticsPanel {
 
 function analyticsPanelHref(panel: AnalyticsPanel) {
   return `/dashboard?view=analytics&panel=${panel}`;
+}
+
+const dashboardIndicatorPriority = {
+  approver: [
+    "pending-approvals",
+    "wastage-exceptions",
+    "adjustment-exceptions",
+    "branch-checklist-reviews",
+    "food-safety-reviews",
+  ],
+  branch: [
+    "transfer-follow-up",
+    "receiving-follow-up",
+    "wastage-exceptions",
+    "branch-checklist-exceptions",
+    "food-safety-exceptions",
+    "maintenance-follow-up",
+  ],
+  operations: [
+    "branch-checklist-exceptions",
+    "food-safety-exceptions",
+    "open-operational-incidents",
+    "maintenance-follow-up",
+    "wastage-exceptions",
+    "transfer-follow-up",
+  ],
+  purchasing: [
+    "open-purchase-requests",
+    "open-purchase-orders",
+    "receiving-follow-up",
+    "pending-approvals",
+    "transfer-follow-up",
+    "wastage-exceptions",
+  ],
+  warehouse: [
+    "receiving-follow-up",
+    "transfer-follow-up",
+    "adjustment-exceptions",
+    "ledger-reconciliation",
+    "wastage-exceptions",
+    "open-purchase-orders",
+  ],
+} as const;
+
+function dashboardIndicatorOrder(role: string, permissionCodes: string[]) {
+  const normalizedRole = role.toLowerCase();
+  const profiles: Array<readonly string[]> = [];
+  const hasAny = (...codes: string[]) =>
+    codes.some((code) => permissionCodes.includes(code));
+
+  if (
+    hasAny(
+      permissions.purchaseRequestApprove,
+      permissions.quoteApprove,
+      permissions.purchaseOrderApprove,
+      permissions.transferApprove,
+      permissions.wastageApprove,
+      permissions.stockAdjustmentApprove,
+      permissions.stockCountReview,
+    )
+  ) {
+    profiles.push(dashboardIndicatorPriority.approver);
+  }
+  if (
+    hasAny(
+      permissions.purchaseRequestCreate,
+      permissions.purchaseRequestSubmit,
+      permissions.quoteManage,
+      permissions.purchaseOrderCreate,
+      permissions.purchaseOrderIssue,
+    )
+  ) {
+    profiles.push(dashboardIndicatorPriority.purchasing);
+  }
+  if (
+    hasAny(
+      permissions.receivingCreate,
+      permissions.receivingPost,
+      permissions.transferDispatch,
+      permissions.transferReceive,
+      permissions.stockCountEnter,
+    )
+  ) {
+    profiles.push(dashboardIndicatorPriority.warehouse);
+  }
+  if (
+    hasAny(
+      permissions.branchOperationsView,
+      permissions.foodSafetyView,
+      permissions.incidentView,
+      permissions.maintenanceView,
+    )
+  ) {
+    profiles.push(dashboardIndicatorPriority.operations);
+  }
+
+  if (profiles.length === 0) {
+    if (normalizedRole.includes("purchas")) {
+      profiles.push(dashboardIndicatorPriority.purchasing);
+    } else if (
+      normalizedRole.includes("warehouse") ||
+      normalizedRole.includes("storekeeper")
+    ) {
+      profiles.push(dashboardIndicatorPriority.warehouse);
+    } else if (normalizedRole.includes("branch")) {
+      profiles.push(dashboardIndicatorPriority.branch);
+    } else if (normalizedRole.includes("approver")) {
+      profiles.push(dashboardIndicatorPriority.approver);
+    } else if (normalizedRole.includes("operations")) {
+      profiles.push(dashboardIndicatorPriority.operations);
+    }
+  }
+
+  profiles.push([
+    "pending-approvals",
+    "open-purchase-requests",
+    "open-purchase-orders",
+    "receiving-follow-up",
+    "transfer-follow-up",
+    "ledger-reconciliation",
+  ]);
+  return Array.from(new Set(profiles.flat()));
+}
+
+function roleAwareIndicators(
+  cards: DashboardCard[],
+  role: string,
+  permissionCodes: string[],
+) {
+  const preferredOrder = dashboardIndicatorOrder(role, permissionCodes);
+  const preferredRank = new Map<string, number>(
+    preferredOrder.map((id, index) => [id, index]),
+  );
+
+  return [...cards]
+    .sort((left, right) => {
+      if ((left.value > 0) !== (right.value > 0)) return left.value > 0 ? -1 : 1;
+      const leftRank = preferredRank.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = preferredRank.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, 6);
 }
 
 function MetricCard({ metric }: { metric: DashboardMetric }) {
@@ -197,9 +348,9 @@ function QueueList({
       {items.map((item) => (
         <div
           key={item.id}
-          className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_11rem_auto] md:items-center"
+          className="grid min-w-0 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
         >
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                 {item.label}
@@ -211,40 +362,176 @@ function QueueList({
                 {item.status.replaceAll("_", " ")}
               </Badge>
             </div>
-            <h3 className="mt-1 font-bold text-slate-950">{item.reference}</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{item.detail}</p>
-            <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              Next action: {item.nextAction ?? actionLabel}
-            </p>
-            <div className="mt-2 grid gap-1 text-xs font-semibold text-slate-500 sm:grid-cols-2">
-              <p>Location: {item.locationName}</p>
-              <p>Owner: {item.ownerLabel}</p>
-              <p>Timing: {item.ageLabel}</p>
-              <p>Severity: {item.severityLabel}</p>
-            </div>
-            {item.nextActor ? (
-              <p className="mt-2 text-xs font-semibold text-slate-500">
-                Assigned to: {item.nextActor}
+            <div className="mt-1 flex min-w-0 flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-3">
+              <h3 className="break-words font-bold text-slate-950">
+                {item.reference}
+              </h3>
+              <p className="break-words text-sm leading-5 text-slate-600">
+                {item.detail}
               </p>
-            ) : null}
-          </div>
-          <div className="text-sm text-slate-600">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Current state
-            </p>
-            <p className="mt-1 font-semibold text-slate-800">
-              {item.status.replaceAll("_", " ")}
-            </p>
+            </div>
+            <dl className="mt-2 grid min-w-0 gap-x-4 gap-y-1 text-xs text-slate-500 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="min-w-0">
+                <dt className="inline font-semibold">Location: </dt>
+                <dd className="inline break-words">{item.locationName}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="inline font-semibold">Owner: </dt>
+                <dd className="inline break-words">{item.ownerLabel}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="inline font-semibold">Timing: </dt>
+                <dd className="inline break-words">{item.ageLabel}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="inline font-semibold">Next: </dt>
+                <dd className="inline break-words">
+                  {item.nextAction ?? actionLabel}
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="sr-only">Next assigned actor</dt>
+                <dd className="inline break-words">
+                  Assigned to: {item.nextActor}
+                </dd>
+              </div>
+            </dl>
           </div>
           <ButtonLink
             href={item.href}
             tone="secondary"
-            className="min-h-11 text-blue-700 hover:bg-blue-50"
+            className="min-h-11 shrink-0 justify-center text-blue-700 hover:bg-blue-50"
           >
             Open
           </ButtonLink>
         </div>
       ))}
+    </div>
+  );
+}
+
+function OverviewQueuePreview({
+  actionLabel,
+  contract,
+  emptyDetail,
+  sourceHref,
+  sourceLabel,
+}: {
+  actionLabel: string;
+  contract: DashboardData["approvalQueueContract"];
+  emptyDetail: string;
+  sourceHref?: string;
+  sourceLabel?: string;
+}) {
+  if (contract.items.length === 0) {
+    return (
+      <div className="p-4">
+        <EmptyDashboardState
+          title={
+            contract.completeness === "PARTIAL"
+              ? "No records shown from available sources"
+              : "Nothing waiting right now"
+          }
+          detail={
+            contract.completeness === "PARTIAL"
+              ? "This partial preview does not confirm there is no work. Review Dashboard source status and the affected source workspaces."
+              : emptyDetail
+          }
+          {...(sourceHref && sourceLabel
+            ? { actionHref: sourceHref, actionLabel: sourceLabel }
+            : {})}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 lg:p-5">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-bold text-slate-950">
+            {queueCountLabel(contract, "records")}
+          </p>
+          <p className="text-xs leading-5 text-slate-500">
+            Ordered by operational priority. Open a record for its authoritative
+            detail and action controls.
+          </p>
+        </div>
+        {sourceHref && sourceLabel ? (
+          <ButtonLink
+            className="min-h-10 shrink-0 justify-center text-blue-700 hover:bg-blue-50"
+            href={sourceHref}
+            tone="secondary"
+          >
+            {sourceLabel}
+          </ButtonLink>
+        ) : null}
+      </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {contract.items.map((item) => (
+          <article
+            className="group grid min-w-0 gap-3 border-b border-slate-100 px-4 py-4 transition-colors last:border-b-0 hover:bg-blue-50/40 lg:grid-cols-[minmax(14rem,0.8fr)_minmax(0,1.2fr)_auto] lg:items-center"
+            key={item.id}
+          >
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  size="sm"
+                  tone={item.priority === "CRITICAL" ? "danger" : "warning"}
+                >
+                  {item.severityLabel || item.priority}
+                </Badge>
+                <Badge size="sm" tone={item.tone}>
+                  {item.status.replaceAll("_", " ")}
+                </Badge>
+              </div>
+              <p className="mt-2 text-[0.65rem] font-bold uppercase tracking-wide text-slate-400">
+                {item.label}
+              </p>
+              <h3 className="mt-0.5 break-words text-base font-bold text-slate-950">
+                {item.reference}
+              </h3>
+            </div>
+            <div className="min-w-0">
+              <p className="line-clamp-1 text-sm leading-5 text-slate-600">
+                {item.detail}
+              </p>
+              <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                <div className="min-w-0">
+                  <dt className="inline font-bold text-slate-400">Location: </dt>
+                  <dd className="inline break-words">{item.locationName}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="inline font-bold text-slate-400">Timing: </dt>
+                  <dd className="inline break-words">{item.ageLabel}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="inline font-bold text-slate-400">Owner: </dt>
+                  <dd className="inline break-words">{item.ownerLabel}</dd>
+                </div>
+                {item.nextActor ? (
+                  <div className="min-w-0">
+                    <dt className="inline font-bold text-slate-400">Assigned: </dt>
+                    <dd className="inline break-words">{item.nextActor}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p className="mt-2 text-xs font-semibold text-slate-600">
+                {item.nextAction ?? actionLabel}
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <ButtonLink
+                className="min-h-10 shrink-0 justify-center text-blue-700 group-hover:bg-blue-50"
+                href={item.href}
+                tone="secondary"
+              >
+                {actionLabel}
+              </ButtonLink>
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -488,242 +775,358 @@ function AnalyticsBarPanel({
   );
 }
 
-function AnalyticsDonutPanel({
+function AnalyticsQueueSummaryPanel({
   approvals,
   exceptions,
-  isPartial
+  approvalIsPartial,
+  exceptionIsPartial,
 }: {
   approvals: number | null;
   exceptions: number;
-  isPartial: boolean;
+  approvalIsPartial: boolean;
+  exceptionIsPartial: boolean;
 }) {
-  const knownApprovals = approvals ?? 0;
-  const total = knownApprovals + exceptions;
-  const approvalDegrees = total > 0 ? (knownApprovals / total) * 360 : 0;
-  const background =
-    total > 0
-      ? `conic-gradient(#2563eb 0deg ${approvalDegrees}deg, #f59e0b ${approvalDegrees}deg 360deg)`
-      : "conic-gradient(#e2e8f0 0deg 360deg)";
-
   return (
     <section className="ogfi-data-surface">
       <div className="border-b border-slate-100 p-4">
-        <h2 className="text-lg font-bold text-slate-950">Attention Split</h2>
+        <h2 className="text-lg font-bold text-slate-950">Queue overview</h2>
         <p className="text-sm text-slate-500">
-          Approval alerts compared with operational exception alerts.
+          Separate bounded previews. Approval decisions and operational
+          exceptions use different record grains and are not added together.
         </p>
       </div>
-      <div className="grid gap-5 p-5 md:grid-cols-[16rem_1fr] md:items-center">
-        <div className="mx-auto grid h-52 w-52 place-items-center rounded-full p-5" style={{ background }}>
-          <div className="grid h-36 w-36 place-items-center rounded-full bg-white text-center shadow-inner">
-            <div>
-              <p className="text-3xl font-bold text-slate-950">{total}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {isPartial ? "shown alerts" : "known alerts"}
-              </p>
-            </div>
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-bold text-blue-950">Assigned approval preview</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {approvals === null ? "Unavailable" : approvals}
+            </p>
           </div>
+          <p className="mt-1 text-sm text-blue-900/70">
+            {approvals === null
+              ? "Approval Inbox is unavailable. Pending work may still exist."
+              : approvalIsPartial
+                ? "Rows shown from the available approval source."
+                : "Assigned decisions shown in this bounded preview."}
+          </p>
         </div>
-        <div className="grid gap-3">
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold text-blue-950">Approval alerts</p>
-              <p className="text-2xl font-bold text-blue-700">
-                {approvals === null ? "Unavailable" : approvals}
-              </p>
-            </div>
-            <p className="mt-1 text-sm text-blue-900/70">
-              {approvals === null
-                ? "Approval Inbox is unavailable. Pending work may still exist; if a reminder scan is available to your role, it covers only your eligible due or overdue work and remains non-actionable until activation."
-                : "Decisions assigned to the logged-in user and visible scope."}
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-bold text-amber-950">
+              Operational exception preview
             </p>
+            <p className="text-2xl font-bold text-amber-700">{exceptions}</p>
           </div>
-          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold text-amber-950">Exception alerts</p>
-              <p className="text-2xl font-bold text-amber-700">{exceptions}</p>
-            </div>
-            <p className="mt-1 text-sm text-amber-900/70">
-              Overdue, variance, discrepancy, and ledger follow-ups.
-            </p>
-          </div>
+          <p className="mt-1 text-sm text-amber-900/70">
+            {exceptionIsPartial
+              ? "Rows shown from available operational sources."
+              : "Overdue, discrepancy, variance, and handoff records shown in this bounded preview."}
+          </p>
         </div>
       </div>
     </section>
   );
 }
 
-function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
+function DashboardOverview({
+  contextKey,
+  dashboard,
+  permissionCodes,
+  role,
+}: {
+  contextKey: string;
+  dashboard: DashboardData;
+  permissionCodes: string[];
+  role: string;
+}) {
   const hasUnavailableSource = dashboardResponseIsPartial(dashboard);
   const approvalQueueIsPartial =
     dashboard.approvalQueueContract.completeness === "PARTIAL";
   const exceptionQueueIsPartial =
     dashboard.exceptionQueueContract.completeness === "PARTIAL";
+  const priorityIndicators = roleAwareIndicators(
+    dashboard.cards,
+    role,
+    permissionCodes,
+  );
+  const approvalSource = dashboard.sourceObservations.find(
+    (source) => source.id === "approvals"
+  );
+  const inventorySource = dashboard.sourceObservations.find(
+    (source) => source.id === "inventory-balances"
+  );
+  const indicatorSourceIds = new Set<DashboardSourceId>([
+    "approvals",
+    "purchase-requests",
+    "purchase-orders",
+    "receiving",
+    "transfers",
+    "stock-counts",
+    "wastage",
+    "stock-adjustments",
+    "inventory-reconciliation",
+    "branch-operations",
+    "food-safety",
+    "incidents",
+    "maintenance"
+  ]);
+  const hasIndicatorSource = dashboard.sourceObservations.some((source) =>
+    indicatorSourceIds.has(source.id)
+  );
+  const approvalHasRows =
+    dashboard.approvalQueueContract.availability === "AVAILABLE" &&
+    dashboard.approvalQueueContract.items.length > 0;
+  const exceptionHasRows = dashboard.exceptionQueueContract.items.length > 0;
+  const criticalExceptionCount = dashboard.exceptionQueueContract.items.filter(
+    (item) => item.priority === "CRITICAL"
+  ).length;
+  const highExceptionCount = dashboard.exceptionQueueContract.items.filter(
+    (item) => item.priority === "HIGH"
+  ).length;
+  const hasPositiveIndicator = priorityIndicators.some((card) => card.value > 0);
+  const positiveIndicatorCount = priorityIndicators.filter(
+    (card) => card.value > 0,
+  ).length;
+  const topIndicator = priorityIndicators[0];
+  const topException = dashboard.exceptionQueueContract.items[0];
+  const sections: DashboardOverviewAccordionSection[] = [];
+
+  if (approvalSource) {
+    const approvalUnavailable =
+      dashboard.approvalQueueContract.availability === "UNAVAILABLE";
+    sections.push({
+      id: "assigned-approvals",
+      title: "Assigned Approvals",
+      supportingText: approvalUnavailable
+        ? "The approval preview is unavailable; pending work may still exist."
+        : approvalQueueIsPartial
+          ? "Assigned decisions shown from the available approval source; additional work may still exist."
+          : "Decisions assigned to you in the selected operating scope.",
+      snapshots: approvalUnavailable
+        ? [
+            { label: "Queue", value: "Unavailable", tone: "warning" },
+            { label: "Pending", value: "May still exist", tone: "warning" },
+            { label: "Access", value: "Hardened UAT", tone: "neutral" },
+          ]
+        : [
+            {
+              label: "Assigned",
+              value: String(dashboard.approvalQueueContract.displayedCount),
+              tone: approvalHasRows ? "warning" : "success",
+            },
+            {
+              label: "Highest priority",
+              value:
+                dashboard.approvalQueueContract.items[0]?.severityLabel ??
+                "None waiting",
+              tone: approvalHasRows ? "warning" : "neutral",
+            },
+            {
+              label: "Coverage",
+              value: approvalQueueIsPartial ? "Partial" : "Complete",
+              tone: approvalQueueIsPartial ? "warning" : "success",
+            },
+          ],
+      body: approvalUnavailable ? (
+        <div className="p-4">
+          <EmptyDashboardState
+            title="Approval preview and queue are unavailable"
+            detail={dashboard.approvalQueueContract.unavailableDetail ?? "Pending approval work may still exist. Follow your workflow owner's release guidance until the Approval Inbox is activated."}
+          />
+        </div>
+      ) : (
+        <OverviewQueuePreview
+          actionLabel="Review"
+          contract={dashboard.approvalQueueContract}
+          emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
+          sourceHref="/approvals"
+          sourceLabel="Open Approval Inbox"
+        />
+      )
+    });
+  }
+
+  if (dashboard.exceptionQueueContract.contributors.length > 0) {
+    sections.push({
+      id: "operational-exceptions",
+      title: "Operational Exceptions",
+      supportingText: exceptionQueueIsPartial
+        ? "Exceptions shown from available sources; additional work may still exist."
+        : "Overdue, discrepancy, variance, and handoff risk in the selected scope.",
+      snapshots: [
+        {
+          label: "Preview shown",
+          value: String(dashboard.exceptionQueueContract.displayedCount),
+          tone: exceptionHasRows ? "warning" : "success",
+        },
+        {
+          label: "Urgent in preview",
+          value:
+            criticalExceptionCount > 0
+              ? `${criticalExceptionCount} critical`
+              : highExceptionCount > 0
+                ? `${highExceptionCount} high`
+                : "No critical items",
+          tone:
+            criticalExceptionCount > 0
+              ? "destructive"
+              : highExceptionCount > 0
+                ? "warning"
+                : "success",
+        },
+        {
+          label: "Next focus",
+          value: topException?.label ?? "No exceptions",
+          tone: topException ? "info" : "neutral",
+        },
+      ],
+      body: (
+        <OverviewQueuePreview
+          actionLabel="Open"
+          contract={dashboard.exceptionQueueContract}
+          emptyDetail="Open exceptions are pulled from purchasing, receiving, transfers, counts, and inventory controls."
+        />
+      )
+    });
+  }
+
+  if (hasIndicatorSource) {
+    sections.push({
+      id: "priority-indicators",
+      title: "Priority Indicators",
+      supportingText: hasUnavailableSource
+        ? `Up to six source-backed indicators prioritized for ${role}; values use separate grains and may omit unavailable sources.`
+        : `Up to six source-backed indicators prioritized for ${role}; values use separate grains and are not additive.`,
+      snapshots: [
+        {
+          label: "Positive signals",
+          value: String(positiveIndicatorCount),
+          tone: hasPositiveIndicator ? "info" : "success",
+        },
+        {
+          label: "Top signal",
+          value: topIndicator
+            ? `${topIndicator.label}: ${topIndicator.value}`
+            : "No indicators",
+          tone: topIndicator?.tone ?? "neutral",
+        },
+        {
+          label: "Coverage",
+          value: hasUnavailableSource ? "Available sources" : "All checked",
+          tone: hasUnavailableSource ? "warning" : "success",
+        },
+      ],
+      body: priorityIndicators.length === 0 ? (
+        <div className="p-4">
+          <EmptyDashboardState
+            title={hasUnavailableSource ? "No indicators shown from available sources" : "No operational indicators available"}
+            detail={hasUnavailableSource ? "This does not confirm there are no matching records. Review Dashboard source status and the unavailable source workspaces." : "Indicators appear after your role receives permission to view matching source records."}
+          />
+        </div>
+      ) : (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3 lg:p-5">
+          {priorityIndicators.map((card) => (
+            <a
+              className="group min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600"
+              href={card.href}
+              key={card.id}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900">{card.label}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{card.description}</p>
+                </div>
+                <span className="text-2xl font-bold text-violet-700">{card.value}</span>
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <Badge tone={card.tone} size="sm">
+                  {card.value > 0 ? "Matching records" : hasUnavailableSource ? "Zero in available sources" : "No matching records"}
+                </Badge>
+                <span className="text-xs font-bold text-violet-700">View source</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )
+    });
+  }
+
+  if (inventorySource) {
+    const stockUnavailable = inventorySource.availability === "UNAVAILABLE";
+    sections.push({
+      id: "stock-balance-signals",
+      title: "Stock Balance Signals",
+      supportingText: stockUnavailable
+        ? "The authorized stock source is unavailable; stock work may still exist."
+        : "Approved balance-row measures for the selected location; values are not combined.",
+      snapshots: stockUnavailable
+        ? [
+            { label: "Source", value: "Unavailable", tone: "warning" },
+            { label: "Balance", value: "Not confirmed", tone: "warning" },
+            { label: "Action", value: "Open Inventory", tone: "neutral" },
+          ]
+        : dashboard.stockHealth.slice(0, 3).map((metric) => ({
+            label: metric.label,
+            value: metric.displayValue,
+            tone: metric.tone,
+          })),
+      body: stockUnavailable ? (
+        <div className="p-4">
+          <EmptyDashboardState
+            title="Stock balance signals unavailable"
+            detail="The stock source could not be read for this dashboard response. Open Inventory for the authoritative current records."
+            actionHref={inventorySource.href}
+            actionLabel="Open Inventory"
+          />
+        </div>
+      ) : dashboard.stockHealth.length === 0 ? (
+        <div className="p-4">
+          <EmptyDashboardState
+            title="No stock balance signals available"
+            detail="No approved balance-row signal is available in the selected operating scope."
+            actionHref={inventorySource.href}
+            actionLabel="Open Inventory"
+          />
+        </div>
+      ) : (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3 lg:p-5">
+          {dashboard.stockHealth.map((metric) => {
+            const content = (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                  <p className="font-semibold text-slate-900">{metric.label}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{metric.detail}</p>
+                  </div>
+                  <span className="text-2xl font-bold text-emerald-700">{metric.displayValue}</span>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <Badge tone={metric.tone} size="sm">Balance-row signal</Badge>
+                  {metric.href ? <span className="text-xs font-bold text-emerald-700">View inventory</span> : null}
+                </div>
+              </>
+            );
+            return metric.href ? (
+              <a className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" href={metric.href} key={metric.id}>
+                {content}
+              </a>
+            ) : (
+              <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" key={metric.id}>
+                {content}
+              </div>
+            );
+          })}
+        </div>
+      )
+    });
+  }
 
   return (
-    <>
-      <section className="ogfi-data-surface mb-5">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Action first</p>
-            <h2 className="mt-1 text-lg font-bold text-slate-950">Today’s work</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              A bounded priority preview of records assigned to you or requiring attention in the selected scope. Opened records recheck source-workspace access.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {dashboard.approvalQueueContract.availability === "UNAVAILABLE" ? (
-              <Badge tone="neutral" size="sm">Approval preview unavailable</Badge>
-            ) : (
-              <Badge tone="warning" size="sm">
-                {queueCountLabel(dashboard.approvalQueueContract, "priority approvals")}
-              </Badge>
-            )}
-            <Badge tone="warning" size="sm">
-              {queueCountLabel(dashboard.exceptionQueueContract, "priority exceptions")}
-            </Badge>
-          </div>
-        </div>
-        <div className="grid gap-4 p-4 xl:grid-cols-2">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="font-bold text-slate-950">Assigned approvals</h3>
-                <p className="text-sm text-slate-500">Only decisions you can act on are included.</p>
-              </div>
-              {dashboard.approvalQueueContract.availability !== "UNAVAILABLE" ? (
-                <ButtonLink href="/approvals" tone="secondary" className="min-h-11 text-blue-700 hover:bg-blue-50">
-                  Open approvals
-                </ButtonLink>
-              ) : null}
-            </div>
-            {dashboard.approvalQueueContract.availability === "UNAVAILABLE" ? (
-              <div className="p-4">
-                <EmptyDashboardState
-                  title="Approval preview and queue are unavailable"
-                  detail={dashboard.approvalQueueContract.unavailableDetail ?? "Pending approval work may still exist. Follow your workflow owner's release guidance until the Approval Inbox is activated."}
-                />
-              </div>
-            ) : (
-              <QueueList
-                actionLabel="Review assigned approval"
-                emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
-                items={dashboard.approvalQueueContract.items}
-                isPartial={approvalQueueIsPartial}
-              />
-            )}
-          </section>
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 p-4">
-              <h3 className="font-bold text-slate-950">Operational exceptions</h3>
-              <p className="text-sm text-slate-500">Overdue, variance, discrepancy, and handoff risk in the selected scope.</p>
-            </div>
-            <QueueList
-              actionLabel="Open source record"
-              emptyDetail="Open exceptions are pulled from purchasing, receiving, transfers, counts, and inventory controls."
-              items={dashboard.exceptionQueueContract.items}
-              isPartial={exceptionQueueIsPartial}
-            />
-          </section>
-        </div>
-      </section>
-
-      <div className="mb-5 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="ogfi-data-surface">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">Operational Indicators</h2>
-              <p className="text-sm text-slate-500">
-                Counts and exceptions from purchasing, receiving, stock controls, and restaurant operations
-              </p>
-            </div>
-            <Badge tone={hasUnavailableSource ? "warning" : "info"} size="sm">
-              {dashboard.cards.length} indicators
-              {hasUnavailableSource ? " from available sources" : ""}
-            </Badge>
-          </div>
-          {dashboard.cards.length === 0 ? (
-            <div className="p-5">
-              <p className="font-semibold text-slate-900">
-                {hasUnavailableSource
-                  ? "No operational indicators shown from available sources"
-                  : "No operational widgets available"}
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                {hasUnavailableSource
-                  ? "This does not confirm there are no exceptions. Open the unavailable source workspaces in Dashboard source status."
-                  : "Widgets appear after your role receives permission to view source records."}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3 p-4 md:grid-cols-2">
-              {dashboard.cards.map((card) => (
-                <a
-                  key={card.id}
-                  className="ogfi-metric-card rounded-[1rem] border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-blue-200 hover:bg-blue-50/50"
-                  href={card.href}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-500">{card.label}</p>
-                      <p className="mt-2 text-3xl font-bold text-slate-950">{card.value}</p>
-                    </div>
-                    <Badge tone={card.tone} size="sm">
-                      {card.value > 0
-                        ? "Action"
-                        : hasUnavailableSource
-                          ? "Zero in available sources"
-                          : "No matching records"}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{card.description}</p>
-                </a>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="ogfi-data-surface">
-          <div className="border-b border-slate-100 p-4">
-            <h2 className="text-lg font-bold text-slate-950">Data Source Coverage</h2>
-            <p className="text-sm text-slate-500">
-              Source-backed metrics and their authorized drill-downs
-            </p>
-          </div>
-          <div className="grid gap-3 p-4">
-            {dashboard.sourceHealth.map((metric) => (
-              <MetricCard key={metric.id} metric={metric} />
-            ))}
-          </div>
-        </section>
-      </div>
-
-      {dashboard.stockHealth.length > 0 ? (
-        <section className="ogfi-data-surface mb-5">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">Stock balance signals</h2>
-              <p className="text-sm text-slate-500">
-                Current balance-row signals for the selected location
-              </p>
-            </div>
-            <ButtonLink
-              href="/inventory"
-              tone="secondary"
-              className="min-h-11 text-blue-700 hover:bg-blue-50"
-            >
-              View Inventory
-            </ButtonLink>
-          </div>
-          <div className="grid gap-3 p-4 md:grid-cols-3">
-            {dashboard.stockHealth.map((metric) => (
-              <MetricCard key={metric.id} metric={metric} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-    </>
+    <DashboardOverviewAccordion
+      key={`${contextKey}:${sections.map((section) => section.id).join("|")}`}
+      sections={sections}
+    />
   );
 }
 
@@ -766,8 +1169,8 @@ function DashboardAnalytics({
     },
     {
       id: "attention",
-      label: "Attention Split",
-      detail: "Approvals vs exceptions"
+      label: "Queue overview",
+      detail: "Separate bounded previews",
     },
     {
       id: "details",
@@ -817,10 +1220,19 @@ function DashboardAnalytics({
       ) : null}
 
       {activePanel === "attention" ? (
-        <AnalyticsDonutPanel
-          approvals={dashboard.approvalQueueContract.availability === "AVAILABLE" ? dashboard.approvalQueue.length : null}
-          exceptions={dashboard.exceptionQueue.length}
-          isPartial={dashboardResponseIsPartial(dashboard)}
+        <AnalyticsQueueSummaryPanel
+          approvals={
+            dashboard.approvalQueueContract.availability === "AVAILABLE"
+              ? dashboard.approvalQueueContract.displayedCount
+              : null
+          }
+          exceptions={dashboard.exceptionQueueContract.displayedCount}
+          approvalIsPartial={
+            dashboard.approvalQueueContract.completeness === "PARTIAL"
+          }
+          exceptionIsPartial={
+            dashboard.exceptionQueueContract.completeness === "PARTIAL"
+          }
         />
       ) : null}
 
@@ -922,7 +1334,7 @@ function DashboardReports({
       href: stockAdjustmentDashboardProfileHref("stock-adjustment-exceptions-v1"),
       kind: "EXACT_VIEW"
     }),
-    ...(dashboard.approvalQueueContract.availability === "AVAILABLE"
+    ...(dashboard.approvalQueueContract.availability !== "UNAVAILABLE"
       ? fromSource("approvals", {
           title: "Approval Inbox",
           detail: "Open the authorized approval source workspace for the selected scope.",
@@ -1158,6 +1570,11 @@ export default async function DashboardPage({
   const activeView = normalizeDashboardView(getSearchParam(params, "view"));
   const activeAnalyticsPanel = normalizeAnalyticsPanel(getSearchParam(params, "panel"));
   const dashboard = await getOperationalDashboard(session);
+  const overviewControlStatuses = dashboard.sourceHealth.filter((metric) =>
+    ["dashboard-trust-gate", "ledger-reconciliation-blocked"].includes(
+      metric.id,
+    ),
+  );
 
   return (
     <AppShell
@@ -1166,50 +1583,80 @@ export default async function DashboardPage({
       subtitle="Operational performance, stock health, and control exceptions"
       activeNav="dashboard"
     >
-      <section className="ogfi-dashboard-hero mb-6 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-5 pt-5">
-          <div className="ogfi-tab-list mb-4">
+      <section className="mb-4 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex min-w-0 flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+              <Building2 aria-hidden="true" className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Selected operating scope
+              </p>
+              <p className="break-words font-bold text-slate-950">
+                {dashboard.scope.locationName}
+              </p>
+              <p className="break-words text-xs text-slate-500">
+                {dashboard.scope.companyName} / {dashboard.scope.brandName} /{" "}
+                {dashboard.scope.locationType} · {session.user.role}
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+            <Badge tone="info" size="sm">
+              Dashboard assembled{" "}
+              {formatDashboardCheckedAt(dashboard.assembledAt)}
+            </Badge>
+            {overviewControlStatuses.map((metric) => {
+              const status = (
+                <Badge tone={metric.tone} size="sm">
+                  {metric.label}: {metric.displayValue}
+                </Badge>
+              );
+              return metric.href ? (
+                <a
+                  key={metric.id}
+                  className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                  href={metric.href}
+                >
+                  {status}
+                </a>
+              ) : (
+                <span key={metric.id}>{status}</span>
+              );
+            })}
+          </div>
+        </div>
+        <nav
+          aria-label="Dashboard views"
+          className="border-t border-slate-100 px-3 py-2"
+        >
+          <div className="ogfi-tab-list">
             {dashboardViews.map((view) => (
               <a
                 key={view}
-                className={activeView === view ? "ogfi-tab is-active" : "ogfi-tab"}
+                aria-current={activeView === view ? "page" : undefined}
+                className={
+                  activeView === view ? "ogfi-tab is-active" : "ogfi-tab"
+                }
                 href={dashboardViewHref(view)}
               >
                 {dashboardViewLabels[view]}
               </a>
             ))}
           </div>
-        </div>
-        <div className="p-5">
-          <div className="ogfi-scope-card rounded-[1rem] border border-slate-200 bg-slate-50 p-5">
-            <div className="flex items-start gap-3">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <Building2 aria-hidden="true" className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Selected operating scope
-                </p>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
-                  {dashboard.scope.locationName}
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  {dashboard.scope.companyName} / {dashboard.scope.brandName} /{" "}
-                  {dashboard.scope.locationType}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge tone="info" size="sm">
-                Dashboard assembled {formatDashboardCheckedAt(dashboard.assembledAt)}
-              </Badge>
-            </div>
-          </div>
-        </div>
+        </nav>
         <SourceObservationDisclosure dashboard={dashboard} />
       </section>
 
-      {activeView === "overview" ? <DashboardOverview dashboard={dashboard} /> : null}
+      {activeView === "overview" ? (
+        <DashboardOverview
+          contextKey={session.context.locationId}
+          dashboard={dashboard}
+          permissionCodes={session.permissionCodes}
+          role={session.user.role}
+        />
+      ) : null}
       {activeView === "analytics" ? (
         <DashboardAnalytics
           activePanel={activeAnalyticsPanel}

@@ -255,8 +255,8 @@ Execute configuration and cohort preparation only when the release owner has exp
 4. Under **Items**, select the exact high-risk pilot Items. Enter the catalog change reason and save.
 5. Under **Named users**, assign five distinct eligible users for the Opening Inventory responsibilities. Enter the named-user change reason and save.
 6. Under **Routes**, bind one eligible approval rule for each displayed family. For `PurchaseRequest`, use the standard non-emergency `DEFAULT` route resolved through `purchase_request_approval_rule_v1`. Enter the route-binding reason and save.
-7. Under **Readiness**, select **Validate readiness** and confirm that exactly eight families are evaluated: `PurchaseRequest`, `QuotationRecommendation`, `PurchaseOrder`, `InventoryTransfer`, `StockCountAttemptReview`, `WastageReport`, `StockAdjustment`, and `OpeningInventoryCutover`.
-8. Resolve every `Blocked` result in its authoritative source, then validate again. Do not treat `Ready at cutoff` as permanent authority.
+7. Under **Readiness**, select **Validate readiness** and confirm that exactly eight families are evaluated: `PurchaseRequest`, `QuotationRecommendation`, `PurchaseOrder`, `InventoryTransfer`, `StockCountAttemptReview`, `WastageReport`, `StockAdjustment`, and `OpeningInventoryCutover`. Confirm all family rows start closed, each closed row shows status, blocker count, and evidence cutoff, re-click closes the row, and opening another row closes the previous row.
+8. Expand every `Blocked` result, resolve each listed issue in its authoritative source, then validate again. Do not treat `Ready at cutoff` as permanent authority.
 9. Sign in as the separate authorized sealer with fresh MFA. Verify all memberships, routes, readiness snapshots, lineage, and activity.
 10. Enter the seal reason and select **Seal immutable revision**.
 11. Record the sealed revision number and immutable SHA-256 digest.

@@ -4,14 +4,17 @@ import {
   exportAuthRequiredResponse,
   exportErrorResponse,
   getExportFailureReasonCode,
-  exportPermissionDeniedResponse
+  exportPermissionDeniedResponse,
 } from "@/server/services/exportErrors";
 import {
   buildReportCsvMetadata,
-  logOperationalExportAudit
+  logOperationalExportAudit,
 } from "@/server/services/exportAudit";
 import { canExportRecipeCosting } from "@/server/services/exportAuthorization";
-import { buildRecipeCostingExportRows } from "@/server/services/recipes";
+import {
+  buildRecipeCostingExportRows,
+  type RecipeCostingExportFilters,
+} from "@/server/services/recipes";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +23,17 @@ function getFilterParams(request: Request) {
   const q = searchParams.get("q") ?? undefined;
   const type = searchParams.get("type") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
-  return {
+  const brandParam = searchParams.get("brandId") ?? undefined;
+  const brandId = brandParam === "COMPANY_SHARED" ? null : brandParam;
+  const filters: RecipeCostingExportFilters = {
     ...(q ? { q } : {}),
     ...(type ? { type } : {}),
-    ...(status ? { status } : {})
+    ...(status ? { status } : {}),
   };
+  if (brandParam) {
+    filters.brandId = brandId ?? null;
+  }
+  return filters;
 }
 
 export async function GET(request: Request) {
@@ -37,7 +46,7 @@ export async function GET(request: Request) {
       session,
       reportId: "recipe-costing",
       eventType: "report.export_denied",
-      reasonCode: "PERMISSION_DENIED"
+      reasonCode: "PERMISSION_DENIED",
     });
     return exportPermissionDeniedResponse();
   }
@@ -46,28 +55,31 @@ export async function GET(request: Request) {
     await logOperationalExportAudit({
       session,
       reportId: "recipe-costing",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
     });
-    const rows = await buildRecipeCostingExportRows(session, getFilterParams(request));
+    const rows = await buildRecipeCostingExportRows(
+      session,
+      getFilterParams(request),
+    );
     await logOperationalExportAudit({
       session,
       reportId: "recipe-costing",
       eventType: "report.export_completed",
-      rowCount: Math.max(0, rows.length - 1)
+      rowCount: Math.max(0, rows.length - 1),
     });
 
     return csvExportResponse(rows, "recipe-costing.csv", {
       metadata: await buildReportCsvMetadata({
         session,
-        reportId: "recipe-costing"
-      })
+        reportId: "recipe-costing",
+      }),
     });
   } catch (error) {
     await logOperationalExportAudit({
       session,
       reportId: "recipe-costing",
       eventType: "report.export_failed",
-      reasonCode: getExportFailureReasonCode(error)
+      reasonCode: getExportFailureReasonCode(error),
     });
     const errorResponse = exportErrorResponse(error);
     if (errorResponse) {

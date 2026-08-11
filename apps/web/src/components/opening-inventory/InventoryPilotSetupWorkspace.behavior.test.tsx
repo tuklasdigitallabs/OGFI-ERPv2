@@ -298,6 +298,50 @@ describe("Inventory Pilot Setup Center behavior", () => {
     }
   });
 
+  it("keeps readiness families closed initially with status, blocker, and cutoff snapshots", () => {
+    const record = {
+      ...sealedRecord(),
+      readiness: [
+        {
+          family: "PurchaseRequest",
+          label: "Purchase Request",
+          ready: true,
+          blockers: [],
+          checkedAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          family: "InventoryTransfer",
+          label: "Inventory Transfer",
+          ready: false,
+          blockers: ["Endpoint scope is incomplete."],
+          checkedAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          family: "OpeningInventoryCutover",
+          label: "Opening Inventory Cutover",
+          ready: null,
+          blockers: [],
+          checkedAt: null,
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <Readiness record={record} action={idleAction} canEdit={false} />,
+    );
+
+    expect(html).toContain('aria-label="Seal-time readiness families"');
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(3);
+    expect(html).toContain("Purchase Request");
+    expect(html).toContain("Inventory Transfer");
+    expect(html).toContain("Opening Inventory Cutover");
+    expect(html).toContain("Ready");
+    expect(html).toContain("Blocked");
+    expect(html).toContain("Not retained");
+    expect(html.match(/Blockers/g)).toHaveLength(3);
+    expect(html.match(/Evidence cutoff/g)).toHaveLength(3);
+    expect(html).not.toContain("Endpoint scope is incomplete.");
+  });
+
   it("renders missing or malformed resolver evidence as unavailable and fail-closed", () => {
     const record = {
       ...sealedRecord(),

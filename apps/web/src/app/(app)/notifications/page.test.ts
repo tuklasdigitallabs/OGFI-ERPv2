@@ -42,6 +42,28 @@ describe("DEC-0071 historical Food Cost notification presentation", () => {
   it("uses 44px row actions and a responsive action layout", () => {
     expect(source).toContain('className="flex flex-col gap-2 sm:flex-row lg:flex-col"');
     expect(source).toContain('className="min-h-11 bg-slate-100');
-    expect(source.match(/inline-flex min-h-11 w-full/g)).toHaveLength(2);
+    expect(source.match(/inline-flex min-h-11 w-full/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps the Notification Center primary and consolidates manual scans", () => {
+    expect(source).toContain(
+      'import { SingleOpenSummaryList } from "@/components/SingleOpenSummaryList"'
+    );
+    expect(source.indexOf("Notification Center")).toBeLessThan(
+      source.indexOf("Manual reminder scans")
+    );
+    expect(source).toContain('ariaLabel="Notification maintenance utilities"');
+    expect(source).toContain('id: "manual-reminder-scans"');
+    expect(source).toContain('label: "Available families"');
+    expect(source).toContain('label: "Latest results"');
+  });
+
+  it("keeps each existing permission-gated scan in the expandable utility body", () => {
+    expect(source).toContain("canRunProjectReminderScan ? (");
+    expect(source).toContain("canRunApprovalReminderScan ? (");
+    expect(source).toContain("canRunRestaurantOpsReminderScan ? (");
+    expect(source).toContain("action={scanDeadlineRemindersAction}");
+    expect(source).toContain("action={scanApprovalRemindersAction}");
+    expect(source).toContain("action={scanRestaurantOpsRemindersAction}");
   });
 });

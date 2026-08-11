@@ -85,7 +85,8 @@ const ids = {
   supplier: "00000000-0000-4000-8000-000000000111",
   item: "00000000-0000-4000-8000-000000000112",
   uom: "00000000-0000-4000-8000-000000000113",
-  movement: "00000000-0000-4000-8000-000000000114"
+  movement: "00000000-0000-4000-8000-000000000114",
+  session: "00000000-0000-4000-8000-000000000115"
 } as const;
 
 const session = {
@@ -94,6 +95,11 @@ const session = {
     email: "receiver@example.test",
     displayName: "Receiving Operator",
     role: "Storekeeper"
+  },
+  authentication: {
+    sessionId: ids.session,
+    assuranceLevel: "MFA" as const,
+    mfaAuthenticatedAt: new Date()
   },
   context: {
     tenantId: ids.tenant,
@@ -257,6 +263,18 @@ function makeQueryRaw(input?: {
     if (sql.includes('FROM "User"')) {
       return [{ status: input?.userStatus ?? "ACTIVE", privilegeEpoch: 0 }];
     }
+    if (sql.includes('FROM "AuthSession"')) {
+      return [
+        {
+          status: "ACTIVE",
+          assuranceLevel: "MFA",
+          mfaAuthenticatedAt: new Date(),
+          privilegeEpochAtIssue: 0,
+          idleExpiresAt: new Date(Date.now() + 60_000),
+          absoluteExpiresAt: new Date(Date.now() + 60_000)
+        }
+      ];
+    }
     if (sql.includes('FROM "UserRoleAssignment"')) {
       return input?.permissionGranted === false ? [] : [{ id: "role-1" }];
     }
@@ -376,6 +394,7 @@ describe("receiving Purchase Order serialization", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("AUTH_MODE", "local");
     mockContext.requireSessionContext.mockResolvedValue(session);
     mockAuthorization.requirePermission.mockResolvedValue(undefined);
     mockPrivilegedMfa.assertPrivilegedMfaForAction.mockResolvedValue(undefined);
@@ -651,6 +670,8 @@ describe("receiving Purchase Order serialization", () => {
   });
 
   it("rejects posting when strict privileged-MFA evidence is revoked after receipt locking", async () => {
+    vi.stubEnv("APP_ENV", "development");
+    vi.stubEnv("AUTH_MODE", "demo");
     const tx = makePostTransaction({ strictMfa: true, verifiedMfa: false });
     mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 

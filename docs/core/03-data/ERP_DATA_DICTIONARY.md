@@ -882,6 +882,58 @@ Implemented/additive schema foundation:
 
 Phase II workflow records must preserve tenant, company, brand, location where applicable, actor, status, reason/evidence where required, and auditability. Recipe, menu-price, and operational workflow changes must not post inventory or finance effects unless a separate approved module owns that posting.
 
+### 14.1 Manual servings and controlled expected consumption (`DEC-0279`)
+
+- `RestaurantConsumptionConfiguration` owns a default-off, versioned branch
+  schedule and exact inventory issue location. Its sentinel rules hold reviewed
+  item IDs and configurable pilot/high-risk/general count cadences.
+- The current local `MenuRecipeAssignment` exact-branch shape is retained as
+  implementation history but is not the authoritative activation target.
+  `DEC-0280` requires an additive migration to an effective-dated brand-default
+  adoption plus exact-location unavailability/override exceptions; prior serving
+  snapshots and assignment history must not be rewritten.
+- `ServingDeclaration` / `ServingDeclarationLine` record the observed paid or
+  complimentary portions for one configured service period. Complimentary lines
+  require an operational reason and reference. Staff meals and prepared-but-
+  unserved food are excluded and remain separate Authorized Consumption/Wastage
+  facts.
+- `ServingIngredientSnapshot` is the immutable, high-precision recipe/UOM
+  derivation created by an independent verifier. Missing or ambiguous recipe/UOM
+  evidence leaves the declaration `DERIVATION_BLOCKED` and creates no stock
+  movement.
+- `ConsumptionPosting` / `ConsumptionPostingAllocation` own the separately
+  authorized, all-or-zero FEFO posting and full-document reversal. Posted rows
+  create `CONSUMPTION_OUT`; reversal rows create exact linked `REVERSAL`
+  movements. Negative stock and partial posting are prohibited.
+- Recipe-derived quantities are labeled **Expected/Book Consumption**. They are
+  not independent physical-actual evidence; approved count cutoffs and physical
+  count results remain authoritative for observed on-hand and unexplained
+  variance.
+
+### 14.2 Confirmed pending recipe-adoption model (`DEC-0280`)
+
+Physical table/field naming remains subject to the reviewed additive migration,
+but the source model must represent:
+
+- an effective-dated brand-default adoption binding one active brand `MenuItem`
+  to one published same-brand `RecipeVersion`, or to a Company-shared version that
+  the brand explicitly adopts;
+- an effective-dated exact-`BRANCH` exception that is either `UNAVAILABLE` or a
+  `LOCATION_OVERRIDE`, with actor, reason, source adoption, and recipe version
+  where applicable;
+- a controlled successor-rollout record binding an already adopted menu item,
+  current adoption/version, candidate published successor, effective time,
+  actor/reason, idempotency/concurrency identity, and terminal outcome; and
+- immutable resolution evidence on each verified serving snapshot: resolution
+  time, `UNAVAILABLE | LOCATION_OVERRIDE | BRAND_DEFAULT | BLOCKED`, adoption and
+  exception identity, resolved recipe version, and scope evidence.
+
+Effective ranges for the same brand/menu-item default or exact-location exception
+must not overlap. Cross-brand relationships, unpublished versions, implicit shared-
+recipe fallback, automatic adoption on publication, and rollout for an unadopted
+menu item are invalid. Cost-readiness fields remain separate from quantity-readiness
+fields. None of these records creates inventory movements.
+
 ---
 
 ## 15. Phase III Finance Configuration Data Extensions

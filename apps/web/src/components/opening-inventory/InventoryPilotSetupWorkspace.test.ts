@@ -105,6 +105,15 @@ describe("InventoryPilotSetupWorkspace visible controls", () => {
     expect(source).toContain('window.addEventListener("beforeunload"');
   });
 
+  it("uses the shared single-open summary pattern for bounded readiness evidence", () => {
+    expect(source).toContain("SingleOpenSummaryList");
+    expect(source).toContain('ariaLabel="Seal-time readiness families"');
+    expect(source).toContain('{ label: "Status", value: status, tone: statusTone }');
+    expect(source).toContain('label: "Blockers"');
+    expect(source).toContain('label: "Evidence cutoff"');
+    expect(source).toContain("result.blockers.map");
+  });
+
   it("uses shared toast feedback and refreshes authoritative state after mutations", () => {
     expect(source).toContain("useActionToast");
     expect(source).toContain("useEntryModalFeedback");

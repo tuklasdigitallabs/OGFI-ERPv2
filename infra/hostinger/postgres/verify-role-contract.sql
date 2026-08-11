@@ -2218,7 +2218,7 @@ BEGIN
         AND routine.proowner = owner_oid AND routine.prosecdef
         AND routine.pronargs = 0 AND routine.prorettype = 'trigger'::regtype
         AND routine.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
-        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = '00bb66895c1f3fe48c5772fa893ad3c993d47cc3684182d9e30c345ce9ed4659';
+        AND encode(pg_catalog.sha256(convert_to(routine.prosrc, 'UTF8')), 'hex') = 'b03336f48ef196af1727340c4254a608adfaad9ec43d8913c49317599d2852c4';
     IF NOT FOUND THEN RAISE EXCEPTION 'Inventory movement balance-cache writer routine contract is unsafe'; END IF;
     PERFORM 1 FROM pg_proc routine
       WHERE routine.oid = 'public.guard_inventory_balance_derived_cache()'::regprocedure

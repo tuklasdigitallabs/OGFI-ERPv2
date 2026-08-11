@@ -1,16 +1,20 @@
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { canUseStockCounts, permissions, requirePermission } from "./authorization";
+import {
+  canUseStockCounts,
+  permissions,
+  requirePermission,
+} from "./authorization";
 import {
   assertAuthorizedLocation,
   requireSessionContext,
-  type SessionContext
+  type SessionContext,
 } from "./context";
 import type { CsvRow } from "./csv";
 import {
   lockInventoryLocationForPosting,
-  normalizeInventoryLotKey
+  normalizeInventoryLotKey,
 } from "./inventory";
 import { getStockCountCadencePolicy } from "./policySettings";
 import { nextStockAdjustmentReference } from "./stockAdjustments";
@@ -19,11 +23,11 @@ import {
   compareDashboardTaskOrder,
   dashboardTaskAfterWhere,
   type DashboardTaskCursor,
-  type DashboardTaskFilter
+  type DashboardTaskFilter,
 } from "./dashboardTasks";
 import {
   assertAnyEligibleApprovalActorForStep,
-  configureApprovalStepRouting
+  configureApprovalStepRouting,
 } from "./approvalRouting";
 import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
@@ -33,13 +37,11 @@ import {
   INVENTORY_PILOT_APPROVAL_ERRORS,
   inventoryPilotCanonicalJson,
   inventoryPilotDigest,
-  type InventoryPilotApprovalAttestation
+  type InventoryPilotApprovalAttestation,
 } from "./inventoryPilotApprovalPolicy";
 import { recordWorkflowNotifications } from "./notifications";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
-import {
-  CONTROLLED_EVIDENCE_QUALIFICATION_RUNTIME_ENABLED
-} from "./controlledEvidenceQualification";
+import { CONTROLLED_EVIDENCE_QUALIFICATION_RUNTIME_ENABLED } from "./controlledEvidenceQualification";
 
 const countTypes = ["FULL", "CYCLE", "SPOT", "HIGH_VALUE", "OPENING"] as const;
 
@@ -53,34 +55,34 @@ const scheduleStockCountSchema = z.object({
   countType: z.enum(countTypes),
   scheduledDate: optionalDateSchema,
   blindCount: z.coerce.boolean().default(true),
-  freezeMovements: z.coerce.boolean().default(false)
+  freezeMovements: z.coerce.boolean().default(false),
 });
 
 const stockCountActionSchema = z.object({
   id: z.string().uuid(),
-  idempotencyKey: z.string().trim().min(1).max(200).optional()
+  idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 
 const stockCountLineEntrySchema = z.object({
   lineId: z.string().uuid(),
   countedQuantityBaseUom: z.coerce.number().min(0),
-  notes: z.string().trim().max(1000).optional()
+  notes: z.string().trim().max(1000).optional(),
 });
 
 const saveStockCountSchema = z.object({
   id: z.string().uuid(),
-  lines: z.array(stockCountLineEntrySchema).min(1)
+  lines: z.array(stockCountLineEntrySchema).min(1),
 });
 
 const reviewStockCountSchema = z.object({
   id: z.string().uuid(),
   reviewAction: z.enum(["REVIEW", "RECOUNT"]),
-  reviewNotes: z.string().trim().min(5).max(1000)
+  reviewNotes: z.string().trim().min(5).max(1000),
 });
 
 const cancelStockCountSchema = z.object({
   id: z.string().uuid(),
-  cancellationReason: z.string().trim().min(5).max(500)
+  cancellationReason: z.string().trim().min(5).max(500),
 });
 
 const requestStockCountRecountSchema = z.object({
@@ -90,7 +92,7 @@ const requestStockCountRecountSchema = z.object({
   expectedAttemptVersion: z.coerce.number().int().positive(),
   reason: z.string().trim().min(5).max(500),
   evidenceReference: z.string().trim().min(1).max(240),
-  idempotencyKey: z.string().trim().min(1).max(120)
+  idempotencyKey: z.string().trim().min(1).max(120),
 });
 
 const STOCK_COUNT_RECOUNT_RECOVERY_V1_ENABLED =
@@ -127,7 +129,7 @@ export function assertStockCountAssignedActor(input: {
 
 export function isStockCountScheduledStartEligible(
   scheduledDate: Date | null,
-  now = new Date()
+  now = new Date(),
 ) {
   return (
     scheduledDate === null ||
@@ -153,14 +155,14 @@ function hasCompleteStockCountLineage(count: StockCountProtectedRead) {
       (line) =>
         line.countedQuantityBaseUom !== null &&
         Boolean(line.countedByUserId) &&
-        Boolean(line.countedAt)
+        Boolean(line.countedAt),
     )
   );
 }
 
 export function canExposeStockCountProtectedFacts(
   session: SessionContext,
-  count: StockCountProtectedRead
+  count: StockCountProtectedRead,
 ) {
   if (!session.permissionCodes.includes(permissions.stockCountReview)) {
     return false;
@@ -176,7 +178,7 @@ export function canExposeStockCountProtectedFacts(
 
 export function canReviewStockCountCurrentActor(
   session: SessionContext,
-  count: StockCountProtectedRead
+  count: StockCountProtectedRead,
 ) {
   return (
     session.permissionCodes.includes(permissions.stockCountReview) &&
@@ -188,14 +190,16 @@ export function canReviewStockCountCurrentActor(
 }
 
 function assertStockCountReviewLineage(
-  count: Pick<StockCountProtectedRead, "lines">
+  count: Pick<StockCountProtectedRead, "lines">,
 ) {
-  if (!hasCompleteStockCountLineage({
-    status: "SUBMITTED",
-    blindCount: true,
-    createdByUserId: "lineage-check",
-    lines: count.lines
-  })) {
+  if (
+    !hasCompleteStockCountLineage({
+      status: "SUBMITTED",
+      blindCount: true,
+      createdByUserId: "lineage-check",
+      lines: count.lines,
+    })
+  ) {
     throw new Error("STOCK_COUNT_REVIEW_LINEAGE_INCOMPLETE");
   }
 }
@@ -233,7 +237,7 @@ export function assertStockCountCanCancel(status: string) {
 
 export function calculateCountVariance(
   countedQuantityBaseUom: number,
-  systemQuantityBaseUom: number
+  systemQuantityBaseUom: number,
 ) {
   if (!Number.isFinite(countedQuantityBaseUom) || countedQuantityBaseUom < 0) {
     throw new Error("STOCK_COUNT_QUANTITY_INVALID");
@@ -245,13 +249,13 @@ export function filterCountVarianceLines<
   T extends {
     countedQuantityBaseUom: unknown;
     varianceQuantityBaseUom: unknown;
-  }
+  },
 >(lines: T[]) {
   if (lines.some((line) => line.countedQuantityBaseUom === null)) {
     throw new Error("STOCK_COUNT_HAS_UNCOUNTED_LINES");
   }
   return lines.filter(
-    (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0
+    (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0,
   );
 }
 
@@ -260,7 +264,7 @@ export function recommendedStockCountCadenceDays(
   policy: {
     standardFrequencyDays: number;
     highRiskFrequencyDays: number;
-  }
+  },
 ) {
   return countType === "HIGH_VALUE"
     ? policy.highRiskFrequencyDays
@@ -272,8 +276,8 @@ async function nextStockCountReference(companyId: string) {
   const count = await prisma.stockCountSession.count({
     where: {
       companyId,
-      publicReference: { startsWith: `SC-${year}-` }
-    }
+      publicReference: { startsWith: `SC-${year}-` },
+    },
   });
   return `SC-${year}-${String(count + 1).padStart(5, "0")}`;
 }
@@ -299,8 +303,8 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     inventoryLocation: {
-      locationId: session.context.locationId
-    }
+      locationId: session.context.locationId,
+    },
   };
 }
 
@@ -323,11 +327,11 @@ type LockedStockCount = {
 
 async function findScopedStockCountLocation(
   session: SessionContext,
-  id: string
+  id: string,
 ) {
   const count = await prisma.stockCountSession.findFirst({
     where: scopedStockCountWhere(session, id),
-    select: { id: true, inventoryLocationId: true }
+    select: { id: true, inventoryLocationId: true },
   });
   if (!count) {
     throw new Error("STOCK_COUNT_NOT_FOUND");
@@ -339,7 +343,7 @@ async function lockScopedStockCount(
   tx: TransactionClient,
   session: SessionContext,
   id: string,
-  inventoryLocationId: string
+  inventoryLocationId: string,
 ) {
   const rows = await tx.$queryRaw<LockedStockCount[]>(Prisma.sql`
     SELECT sc.id,
@@ -380,7 +384,9 @@ async function lockScopedStockCount(
     throw new Error("STOCK_COUNT_NOT_FOUND");
   }
   if (count.currentAttemptId) {
-    const attempts = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
+    const attempts = await tx.$queryRaw<
+      Array<{ id: string; version: number }>
+    >(Prisma.sql`
       SELECT id, version
         FROM "StockCountAttempt"
        WHERE id = ${count.currentAttemptId}::uuid
@@ -408,7 +414,7 @@ async function lockScopedStockCount(
 async function ensureStockCountAttempt1(
   tx: TransactionClient,
   session: SessionContext,
-  count: LockedStockCount
+  count: LockedStockCount,
 ) {
   if (count.currentAttemptId) {
     if (count.currentAttemptVersion === null) {
@@ -417,10 +423,12 @@ async function ensureStockCountAttempt1(
     return {
       id: count.currentAttemptId,
       version: count.currentAttemptVersion,
-      needsSessionLink: false
+      needsSessionLink: false,
     };
   }
-  const existingAttempts = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
+  const existingAttempts = await tx.$queryRaw<
+    Array<{ id: string; version: number }>
+  >(Prisma.sql`
     SELECT id, version
       FROM "StockCountAttempt"
      WHERE "stockCountSessionId" = ${count.id}::uuid
@@ -434,13 +442,15 @@ async function ensureStockCountAttempt1(
     return {
       id: existingAttempts[0]!.id,
       version: existingAttempts[0]!.version,
-      needsSessionLink: true
+      needsSessionLink: true,
     };
   }
   if (existingAttempts.length > 1) {
     throw new Error("STOCK_COUNT_ATTEMPT_LINEAGE_INVALID");
   }
-  const rows = await tx.$queryRaw<Array<{ id: string; version: number }>>(Prisma.sql`
+  const rows = await tx.$queryRaw<
+    Array<{ id: string; version: number }>
+  >(Prisma.sql`
     INSERT INTO "StockCountAttempt" (
       "stockCountSessionId", "tenantId", "companyId", "inventoryLocationId",
       "attemptNumber", "status", "blindCount", "freezeMovements",
@@ -473,7 +483,7 @@ async function syncStockCountAttempt1Lines(
   session: SessionContext,
   attemptId: string,
   stockCountSessionId: string,
-  inventoryLocationId: string
+  inventoryLocationId: string,
 ) {
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO "StockCountAttemptLine" (
@@ -537,7 +547,7 @@ type StockCountAttemptParityRow = {
  */
 export async function assertStockCountAttemptLineParity(
   session: SessionContext,
-  stockCountSessionId: string
+  stockCountSessionId: string,
 ) {
   const rows = await prisma.$queryRaw<StockCountAttemptParityRow[]>(Prisma.sql`
     SELECT sc."currentAttemptId",
@@ -671,7 +681,7 @@ export const STOCK_COUNT_ATTEMPT_READ_V1_ENABLED = false;
 export function selectStockCountReadLines<T extends { lineNumber: number }>(
   legacyLines: T[],
   attemptLines: T[] | null | undefined,
-  enabled = STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+  enabled = STOCK_COUNT_ATTEMPT_READ_V1_ENABLED,
 ) {
   if (!enabled) return legacyLines;
   if (!attemptLines) {
@@ -698,13 +708,13 @@ export type StockCountMyTaskPage = {
 
 function stockCountTaskPredicates(
   session: SessionContext,
-  eligibleBefore: Date
+  eligibleBefore: Date,
 ) {
   const currentAttemptFor = (status: string) => ({
     is: {
       status,
-      assignedToUserId: session.user.id
-    }
+      assignedToUserId: session.user.id,
+    },
   });
   const predicates: Array<{
     actionLabel: StockCountMyTaskItem["actionLabel"];
@@ -719,9 +729,9 @@ function stockCountTaskPredicates(
           status: "DRAFT",
           OR: [
             { scheduledDate: null },
-            { scheduledDate: { lt: eligibleBefore } }
-          ]
-        }
+            { scheduledDate: { lt: eligibleBefore } },
+          ],
+        },
       },
       {
         actionLabel: "Enter stock count",
@@ -729,10 +739,10 @@ function stockCountTaskPredicates(
           currentAttempt: currentAttemptFor("IN_PROGRESS"),
           status: "IN_PROGRESS",
           lines: {
-            some: { countedQuantityBaseUom: null }
-          }
-        }
-      }
+            some: { countedQuantityBaseUom: null },
+          },
+        },
+      },
     );
   }
   if (session.permissionCodes.includes(permissions.stockCountSubmit)) {
@@ -743,9 +753,9 @@ function stockCountTaskPredicates(
         status: "IN_PROGRESS",
         lines: {
           some: {},
-          none: { countedQuantityBaseUom: null }
-        }
-      }
+          none: { countedQuantityBaseUom: null },
+        },
+      },
     });
   }
   return predicates;
@@ -754,15 +764,26 @@ function stockCountTaskPredicates(
 /** Returns one assigned, first-pass Stock Count obligation per session. */
 export async function listStockCountMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
+  input: {
+    after?: DashboardTaskCursor;
+    take?: number;
+    filter?: DashboardTaskFilter;
+  } = {},
 ): Promise<StockCountMyTaskPage> {
-  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
-  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
-  if (input.filter?.status && !["DRAFT", "IN_PROGRESS"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.priority && input.filter.priority !== "HIGH")
+    return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE")
+    return { totalCount: 0, items: [], nextCursor: null };
+  if (
+    input.filter?.status &&
+    !["DRAFT", "IN_PROGRESS"].includes(input.filter.status)
+  )
+    return { totalCount: 0, items: [], nextCursor: null };
   const today = new Date(`${dateOnlyInTimeZone(new Date())}T00:00:00.000Z`);
   const eligibleBefore = new Date(today.getTime() + 86_400_000);
-  const predicates = stockCountTaskPredicates(session, eligibleBefore).filter(({ where }) =>
-    !input.filter?.status || where.status === input.filter.status
+  const predicates = stockCountTaskPredicates(session, eligibleBefore).filter(
+    ({ where }) =>
+      !input.filter?.status || where.status === input.filter.status,
   );
   if (predicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
@@ -775,24 +796,24 @@ export async function listStockCountMyTaskPage(
     publicReference: true,
     status: true,
     createdAt: true,
-    currentAttempt: { select: { status: true } }
+    currentAttempt: { select: { status: true } },
   } satisfies Prisma.StockCountSessionSelect;
   const [totalCount, ...taskRows] = await Promise.all([
     prisma.stockCountSession.count({
-      where: { ...scopedWhere, OR: predicates.map(({ where }) => where) }
+      where: { ...scopedWhere, OR: predicates.map(({ where }) => where) },
     }),
     ...predicates.map(async ({ actionLabel, where }) => ({
       actionLabel,
       rows: await prisma.stockCountSession.findMany({
         where: {
           ...scopedWhere,
-          AND: [where, ...(afterWhere ? [afterWhere] : [])]
+          AND: [where, ...(afterWhere ? [afterWhere] : [])],
         },
         select,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        take: take + 1
-      })
-    }))
+        take: take + 1,
+      }),
+    })),
   ]);
   const merged = taskRows
     .flatMap(({ actionLabel, rows }) =>
@@ -805,8 +826,8 @@ export async function listStockCountMyTaskPage(
         createdAt: row.createdAt.toISOString(),
         sourceType: "STOCK_COUNT" as const,
         priority: "HIGH" as const,
-        dueAt: null
-      }))
+        dueAt: null,
+      })),
     )
     .sort(compareDashboardTaskOrder);
   const items = merged.slice(0, take);
@@ -821,9 +842,9 @@ export async function listStockCountMyTaskPage(
             dueAt: null,
             createdAt: last.createdAt,
             sourceType: "STOCK_COUNT",
-            recordId: last.recordId
+            recordId: last.recordId,
           }
-        : null
+        : null,
   };
 }
 
@@ -831,7 +852,7 @@ const stockCountDashboardTaskCandidateLimit = 8;
 const stockCountDashboardActionStatuses = [
   "SUBMITTED",
   "REVIEWED",
-  "RECOUNT_REQUESTED"
+  "RECOUNT_REQUESTED",
 ];
 
 type StockCountDashboardAttemptAggregateRow = {
@@ -861,14 +882,16 @@ export type StockCountDashboardRead = {
  * blind-count values and line detail never leave the counts workspace here.
  */
 export async function getStockCountDashboardRead(
-  session: SessionContext
+  session: SessionContext,
 ): Promise<StockCountDashboardRead> {
   await requirePermission(session, permissions.stockCountReview);
 
   // One scoped current-attempt query supplies both the total and bounded rows.
   // Missing current-attempt lineage is excluded (fail closed); legacy lines are
   // intentionally not consulted by this dashboard contract.
-  const rows = await prisma.$queryRaw<StockCountDashboardAttemptAggregateRow[]>(Prisma.sql`
+  const rows = await prisma.$queryRaw<
+    StockCountDashboardAttemptAggregateRow[]
+  >(Prisma.sql`
     WITH scoped AS (
       SELECT sc.id,
              sc."publicReference",
@@ -945,8 +968,8 @@ export async function getStockCountDashboardRead(
       status: count.status,
       inventoryLocationName: count.inventoryLocationName,
       varianceLineCount: Number(count.varianceLineCount),
-      createdAt: new Date(count.createdAt).toISOString()
-    }))
+      createdAt: new Date(count.createdAt).toISOString(),
+    })),
   };
 }
 
@@ -959,22 +982,25 @@ export async function listStockCountFormOptions(session: SessionContext) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: session.context.locationId,
-      status: "ACTIVE"
+      status: "ACTIVE",
     },
-    orderBy: { name: "asc" }
+    orderBy: { name: "asc" },
   });
 
   return {
     inventoryLocations: inventoryLocations.map((location) => ({
       id: location.id,
-      name: location.name
+      name: location.name,
     })),
     countTypes: countTypes.map((countType) => ({
       value: countType,
       label: countType.replaceAll("_", " "),
-      recommendedCadenceDays: recommendedStockCountCadenceDays(countType, cadencePolicy)
+      recommendedCadenceDays: recommendedStockCountCadenceDays(
+        countType,
+        cadencePolicy,
+      ),
     })),
-    cadencePolicy
+    cadencePolicy,
   };
 }
 
@@ -988,10 +1014,12 @@ export async function listStockCounts(session: SessionContext) {
       createdBy: true,
       assignedTo: true,
       reviewedBy: true,
-      currentAttempt: { select: { id: true, attemptNumber: true, status: true } },
-      lines: true
+      currentAttempt: {
+        select: { id: true, attemptNumber: true, status: true },
+      },
+      lines: true,
     },
-    orderBy: [{ createdAt: "desc" }]
+    orderBy: [{ createdAt: "desc" }],
   });
 
   for (const count of counts) {
@@ -1001,18 +1029,27 @@ export async function listStockCounts(session: SessionContext) {
   return counts.map((count) => mapStockCount(session, count, cadencePolicy));
 }
 
-type StockCountWithRelations = Prisma.StockCountSessionGetPayload<{ include: {
-  inventoryLocation: true; createdBy: true; assignedTo: true; reviewedBy: true;
-  currentAttempt: { select: { id: true; attemptNumber: true; status: true } };
-  lines: true;
-} }>;
+type StockCountWithRelations = Prisma.StockCountSessionGetPayload<{
+  include: {
+    inventoryLocation: true;
+    createdBy: true;
+    assignedTo: true;
+    reviewedBy: true;
+    currentAttempt: { select: { id: true; attemptNumber: true; status: true } };
+    lines: true;
+  };
+}>;
 
-function mapStockCount(session: SessionContext, count: StockCountWithRelations, cadencePolicy: Awaited<ReturnType<typeof getStockCountCadencePolicy>>) {
-    const canShowProtectedFacts = canExposeStockCountProtectedFacts(
-      session,
-      count
-    );
-    return {
+function mapStockCount(
+  session: SessionContext,
+  count: StockCountWithRelations,
+  cadencePolicy: Awaited<ReturnType<typeof getStockCountCadencePolicy>>,
+) {
+  const canShowProtectedFacts = canExposeStockCountProtectedFacts(
+    session,
+    count,
+  );
+  return {
     id: count.id,
     currentAttemptId: count.currentAttempt?.id ?? null,
     currentAttemptNumber: count.currentAttempt?.attemptNumber ?? null,
@@ -1023,27 +1060,27 @@ function mapStockCount(session: SessionContext, count: StockCountWithRelations, 
     createdByName: count.createdBy.displayName,
     assignedToName: count.assignedTo?.displayName ?? null,
     reviewedByName: canShowProtectedFacts
-      ? count.reviewedBy?.displayName ?? null
+      ? (count.reviewedBy?.displayName ?? null)
       : null,
     scheduledDate: count.scheduledDate?.toISOString().slice(0, 10) ?? null,
     recommendedCadenceDays: recommendedStockCountCadenceDays(
       count.countType,
-      cadencePolicy
+      cadencePolicy,
     ),
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
     lineCount: count.lines.length,
     varianceCount: canShowProtectedFacts
       ? count.lines.filter(
-          (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0
+          (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0,
         ).length
-      : null
-    };
-  }
+      : null,
+  };
+}
 
 export async function listStockCountPage(
   session: SessionContext,
-  input: { page?: number; pageSize?: number } = {}
+  input: { page?: number; pageSize?: number } = {},
 ) {
   await requireStockCountRead(session);
   const cadencePolicy = await getStockCountCadencePolicy(session);
@@ -1060,22 +1097,30 @@ export async function listStockCountPage(
       createdBy: true,
       assignedTo: true,
       reviewedBy: true,
-      currentAttempt: { select: { id: true, attemptNumber: true, status: true } },
-      lines: true
+      currentAttempt: {
+        select: { id: true, attemptNumber: true, status: true },
+      },
+      lines: true,
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
-    take: pageSize
+    take: pageSize,
   });
   for (const count of counts) {
     await assertStockCountAttemptLineParity(session, count.id);
   }
-  return { items: counts.map((count) => mapStockCount(session, count, cadencePolicy)), totalItems, page, pageSize, totalPages };
+  return {
+    items: counts.map((count) => mapStockCount(session, count, cadencePolicy)),
+    totalItems,
+    page,
+    pageSize,
+    totalPages,
+  };
 }
 
 export async function buildStockCountExportRows(
   session: SessionContext,
-  input: { maxRows?: number } = {}
+  input: { maxRows?: number } = {},
 ) {
   await requireStockCountRead(session);
   const maxRows = input.maxRows ?? 100_000;
@@ -1107,16 +1152,16 @@ export async function buildStockCountExportRows(
             ? {
                 lines: {
                   orderBy: { lineNumber: "asc" },
-                  include: { item: true, uom: true, countedBy: true }
-                }
+                  include: { item: true, uom: true, countedBy: true },
+                },
               }
             : {}),
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { publicReference: true, status: true }
-          }
-        }
+            select: { publicReference: true, status: true },
+          },
+        },
       },
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -1132,12 +1177,12 @@ export async function buildStockCountExportRows(
           countedAt: true,
           item: { select: { itemCode: true, itemName: true } },
           uom: { select: { uomCode: true } },
-          countedBy: { select: { displayName: true } }
-        }
-      }
+          countedBy: { select: { displayName: true } },
+        },
+      },
     },
     orderBy: [{ createdAt: "desc" }],
-    take: maxRows + 1
+    take: maxRows + 1,
   });
 
   const rows: CsvRow[] = [
@@ -1167,8 +1212,8 @@ export async function buildStockCountExportRows(
       "Line Notes",
       "Counted By",
       "Counted At",
-      "Current Attempt"
-    ]
+      "Current Attempt",
+    ],
   ];
 
   for (const count of counts) {
@@ -1177,11 +1222,11 @@ export async function buildStockCountExportRows(
       count.lines,
       STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
         ? (count.currentAttempt as { lines?: typeof count.lines } | null)?.lines
-        : undefined
+        : undefined,
     );
     const canShowSystemQuantity = canExposeStockCountProtectedFacts(
       session,
-      count
+      count,
     );
     const canShowEnteredCountFacts =
       count.assignedToUserId === session.user.id || canShowSystemQuantity;
@@ -1193,17 +1238,31 @@ export async function buildStockCountExportRows(
       count.inventoryLocation.name,
       count.createdBy.displayName,
       count.assignedTo?.displayName ?? "",
-      canShowSystemQuantity ? count.reviewedBy?.displayName ?? "" : "",
+      canShowSystemQuantity ? (count.reviewedBy?.displayName ?? "") : "",
       count.scheduledDate?.toISOString().slice(0, 10) ?? "",
       count.cutoffAt?.toISOString() ?? "",
       count.submittedAt?.toISOString() ?? "",
-      canShowSystemQuantity ? count.reviewedAt?.toISOString() ?? "" : "",
-      canShowSystemQuantity ? adjustment?.publicReference ?? "" : "",
-      canShowSystemQuantity ? adjustment?.status ?? "" : ""
+      canShowSystemQuantity ? (count.reviewedAt?.toISOString() ?? "") : "",
+      canShowSystemQuantity ? (adjustment?.publicReference ?? "") : "",
+      canShowSystemQuantity ? (adjustment?.status ?? "") : "",
     ];
 
     if (readLines.length === 0) {
-      rows.push([...sharedColumns, "", "", "", "", "", "", "", "", "", "", "", ""]);
+      rows.push([
+        ...sharedColumns,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
       continue;
     }
 
@@ -1223,10 +1282,10 @@ export async function buildStockCountExportRows(
         canShowSystemQuantity && line.varianceQuantityBaseUom !== null
           ? Number(line.varianceQuantityBaseUom)
           : "",
-        canShowEnteredCountFacts ? line.notes ?? "" : "",
-        canShowEnteredCountFacts ? line.countedBy?.displayName ?? "" : "",
-        canShowEnteredCountFacts ? line.countedAt?.toISOString() ?? "" : "",
-        count.currentAttempt?.attemptNumber ?? ""
+        canShowEnteredCountFacts ? (line.notes ?? "") : "",
+        canShowEnteredCountFacts ? (line.countedBy?.displayName ?? "") : "",
+        canShowEnteredCountFacts ? (line.countedAt?.toISOString() ?? "") : "",
+        count.currentAttempt?.attemptNumber ?? "",
       ]);
     }
   }
@@ -1245,8 +1304,8 @@ export async function getStockCount(session: SessionContext, id: string) {
     include: {
       inventoryLocation: {
         include: {
-          location: true
-        }
+          location: true,
+        },
       },
       createdBy: true,
       assignedTo: true,
@@ -1258,24 +1317,24 @@ export async function getStockCount(session: SessionContext, id: string) {
           status: true,
           lines: {
             orderBy: { lineNumber: "asc" },
-            include: { item: true, uom: true, countedBy: true }
+            include: { item: true, uom: true, countedBy: true },
           },
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { id: true, publicReference: true, status: true }
-          }
-        }
+            select: { id: true, publicReference: true, status: true },
+          },
+        },
       },
       lines: {
         orderBy: { lineNumber: "asc" },
         include: {
           item: true,
           uom: true,
-          countedBy: true
-        }
-      }
-    }
+          countedBy: true,
+        },
+      },
+    },
   });
 
   if (!count) {
@@ -1290,7 +1349,7 @@ export async function getStockCount(session: SessionContext, id: string) {
     STOCK_COUNT_ATTEMPT_READ_V1_ENABLED ||
       (count.currentAttempt?.attemptNumber ?? 1) > 1
       ? (count.currentAttempt?.lines as unknown as typeof count.lines)
-      : undefined
+      : undefined,
   );
 
   const auditEvents = await prisma.auditEvent.findMany({
@@ -1298,14 +1357,14 @@ export async function getStockCount(session: SessionContext, id: string) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       entityType: "StockCountSession",
-      entityId: count.id
+      entityId: count.id,
     },
-    orderBy: { occurredAt: "asc" }
+    orderBy: { occurredAt: "asc" },
   });
 
   const canShowSystemQuantity = canExposeStockCountProtectedFacts(
     session,
-    count
+    count,
   );
   const attemptHistory = canShowSystemQuantity
     ? await prisma.stockCountAttempt.findMany({
@@ -1313,7 +1372,7 @@ export async function getStockCount(session: SessionContext, id: string) {
           stockCountSessionId: count.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          inventoryLocationId: count.inventoryLocationId
+          inventoryLocationId: count.inventoryLocationId,
         },
         orderBy: { attemptNumber: "asc" },
         select: {
@@ -1332,7 +1391,7 @@ export async function getStockCount(session: SessionContext, id: string) {
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { id: true, publicReference: true, status: true }
+            select: { id: true, publicReference: true, status: true },
           },
           sourceRecountTransitions: {
             select: {
@@ -1340,27 +1399,24 @@ export async function getStockCount(session: SessionContext, id: string) {
               cutoffDisposition: true,
               occurredAt: true,
               linkedStockAdjustment: {
-                select: { id: true, publicReference: true, status: true }
-              }
+                select: { id: true, publicReference: true, status: true },
+              },
             },
-            take: 1
-          }
-        }
+            take: 1,
+          },
+        },
       })
     : [];
-  const canReviewCurrentActor = canReviewStockCountCurrentActor(
-    session,
-    count
-  );
+  const canReviewCurrentActor = canReviewStockCountCurrentActor(session, count);
   const assignedToCurrentUser = count.assignedToUserId === session.user.id;
   const canShowEnteredCountFacts =
     assignedToCurrentUser || canShowSystemQuantity;
   const scheduledStartEligible = isStockCountScheduledStartEligible(
-    count.scheduledDate
+    count.scheduledDate,
   );
   const hasSnapshotLines = readLines.length > 0;
   const hasUncountedLines = readLines.some(
-    (line) => line.countedQuantityBaseUom === null
+    (line) => line.countedQuantityBaseUom === null,
   );
 
   return {
@@ -1379,27 +1435,26 @@ export async function getStockCount(session: SessionContext, id: string) {
     createdByName: count.createdBy.displayName,
     assignedToName: count.assignedTo?.displayName ?? null,
     reviewedByName: canShowSystemQuantity
-      ? count.reviewedBy?.displayName ?? null
+      ? (count.reviewedBy?.displayName ?? null)
       : null,
     scheduledDate: count.scheduledDate?.toISOString().slice(0, 10) ?? null,
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     startedAt: count.startedAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
     reviewedAt: canShowSystemQuantity
-      ? count.reviewedAt?.toISOString() ?? null
+      ? (count.reviewedAt?.toISOString() ?? null)
       : null,
     cancelledAt: count.cancelledAt?.toISOString() ?? null,
     cancellationReason: count.cancellationReason ?? null,
-    reviewNotes: canShowSystemQuantity ? count.reviewNotes ?? null : null,
+    reviewNotes: canShowSystemQuantity ? (count.reviewNotes ?? null) : null,
     varianceAdjustmentId: canShowSystemQuantity
-      ? count.currentAttempt?.stockAdjustments[0]?.id ?? null
+      ? (count.currentAttempt?.stockAdjustments[0]?.id ?? null)
       : null,
-    varianceAdjustmentReference:
-      canShowSystemQuantity
-        ? count.currentAttempt?.stockAdjustments[0]?.publicReference ?? null
-        : null,
+    varianceAdjustmentReference: canShowSystemQuantity
+      ? (count.currentAttempt?.stockAdjustments[0]?.publicReference ?? null)
+      : null,
     varianceAdjustmentStatus: canShowSystemQuantity
-      ? count.currentAttempt?.stockAdjustments[0]?.status ?? null
+      ? (count.currentAttempt?.stockAdjustments[0]?.status ?? null)
       : null,
     attemptHistory: attemptHistory.map((attempt) => ({
       id: attempt.id,
@@ -1424,9 +1479,9 @@ export async function getStockCount(session: SessionContext, id: string) {
             occurredAt:
               attempt.sourceRecountTransitions[0].occurredAt.toISOString(),
             linkedAdjustment:
-              attempt.sourceRecountTransitions[0].linkedStockAdjustment
+              attempt.sourceRecountTransitions[0].linkedStockAdjustment,
           }
-        : null
+        : null,
     })),
     assignedToCurrentUser,
     scheduledStartEligible,
@@ -1453,22 +1508,22 @@ export async function getStockCount(session: SessionContext, id: string) {
         canShowSystemQuantity && line.varianceQuantityBaseUom !== null
           ? Number(line.varianceQuantityBaseUom)
           : null,
-      notes: canShowEnteredCountFacts ? line.notes ?? null : null,
+      notes: canShowEnteredCountFacts ? (line.notes ?? null) : null,
       countedByName: canShowEnteredCountFacts
-        ? line.countedBy?.displayName ?? null
+        ? (line.countedBy?.displayName ?? null)
         : null,
       countedAt: canShowEnteredCountFacts
-        ? line.countedAt?.toISOString() ?? null
-        : null
+        ? (line.countedAt?.toISOString() ?? null)
+        : null,
     })),
     auditEvents: canShowSystemQuantity
       ? auditEvents.map((event) => ({
           id: event.id,
           eventType: event.eventType,
           occurredAt: event.occurredAt.toISOString(),
-          metadata: event.metadata
+          metadata: event.metadata,
         }))
-      : []
+      : [],
   };
 }
 
@@ -1479,7 +1534,7 @@ export async function scheduleStockCount(formData: FormData) {
   const cadencePolicy = await getStockCountCadencePolicy(session);
   const recommendedCadenceDays = recommendedStockCountCadenceDays(
     values.countType,
-    cadencePolicy
+    cadencePolicy,
   );
 
   const inventoryLocation = await prisma.inventoryLocation.findFirst({
@@ -1488,8 +1543,8 @@ export async function scheduleStockCount(formData: FormData) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: session.context.locationId,
-      status: "ACTIVE"
-    }
+      status: "ACTIVE",
+    },
   });
   if (!inventoryLocation) {
     throw new Error("STOCK_COUNT_INVENTORY_LOCATION_NOT_FOUND");
@@ -1499,7 +1554,9 @@ export async function scheduleStockCount(formData: FormData) {
   let countId: string | null = null;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const publicReference = await nextStockCountReference(session.context.companyId);
+      const publicReference = await nextStockCountReference(
+        session.context.companyId,
+      );
       countId = await prisma.$transaction(async (tx) => {
         const count = await tx.stockCountSession.create({
           data: {
@@ -1512,8 +1569,8 @@ export async function scheduleStockCount(formData: FormData) {
             blindCount: values.blindCount,
             freezeMovements: values.freezeMovements,
             createdByUserId: session.user.id,
-            assignedToUserId: session.user.id
-          }
+            assignedToUserId: session.user.id,
+          },
         });
         const attempt = await tx.stockCountAttempt.create({
           data: {
@@ -1526,9 +1583,9 @@ export async function scheduleStockCount(formData: FormData) {
             blindCount: values.blindCount,
             freezeMovements: values.freezeMovements,
             createdByUserId: session.user.id,
-            assignedToUserId: session.user.id
+            assignedToUserId: session.user.id,
           },
-          select: { id: true }
+          select: { id: true },
         });
         const linked = await tx.stockCountSession.updateMany({
           where: {
@@ -1537,12 +1594,12 @@ export async function scheduleStockCount(formData: FormData) {
             companyId: session.context.companyId,
             inventoryLocationId: inventoryLocation.id,
             currentAttemptId: null,
-            version: count.version
+            version: count.version,
           },
           data: {
             currentAttemptId: attempt.id,
-            version: { increment: 1 }
-          }
+            version: { increment: 1 },
+          },
         });
         if (linked.count !== 1) {
           throw new Error("STOCK_COUNT_ATTEMPT_LINK_FAILED");
@@ -1561,9 +1618,9 @@ export async function scheduleStockCount(formData: FormData) {
               countType: values.countType,
               attemptId: attempt.id,
               recommendedCadenceDays,
-              cadencePolicy
-            }
-          }
+              cadencePolicy,
+            },
+          },
         });
         return count.id;
       });
@@ -1600,7 +1657,7 @@ async function attestStockCountRecountReviewAuthority(
     sessionVersion: number;
     attemptVersion: number;
     lines: readonly StockCountRecountAuthorityLine[];
-  }
+  },
 ): Promise<InventoryPilotApprovalAttestation> {
   if (!STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED) {
     throw new Error("STOCK_COUNT_RECOUNT_REVIEW_APPROVAL_REQUIRED");
@@ -1620,7 +1677,7 @@ async function attestStockCountRecountReviewAuthority(
         status: "IN_PROGRESS",
         inventoryLocationId: input.inventoryLocationId,
         locationId: session.context.locationId,
-        currentAttemptId: input.stockCountAttemptId
+        currentAttemptId: input.stockCountAttemptId,
       },
       attempt: {
         id: input.stockCountAttemptId,
@@ -1630,9 +1687,9 @@ async function attestStockCountRecountReviewAuthority(
         version: input.attemptVersion,
         status: "IN_PROGRESS",
         inventoryLocationId: input.inventoryLocationId,
-        lines: input.lines
-      }
-    }
+        lines: input.lines,
+      },
+    },
   });
 }
 
@@ -1641,6 +1698,37 @@ function requireControlledEvidenceQualificationForRecount(): string {
   // dormant. Keep the required transition FK typed and impossible to satisfy
   // until an approved action-specific qualification is implemented.
   throw new Error("CONTROLLED_EVIDENCE_POLICY_UNCONFIRMED");
+}
+
+async function assertNoClosedServicePeriodAwaitingConsumptionPosting(
+  tx: TransactionClient,
+  session: SessionContext,
+  inventoryLocationId: string,
+  cutoffAt: Date,
+) {
+  const pending = await tx.servingDeclaration.findFirst({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      configuration: { defaultIssueInventoryLocationId: inventoryLocationId },
+      coverageEndAt: { lte: cutoffAt },
+      status: {
+        in: [
+          "DRAFT",
+          "SUBMITTED",
+          "RETURNED",
+          "DERIVATION_BLOCKED",
+          "READY_TO_POST",
+          "POSTING",
+        ],
+      },
+    },
+    orderBy: { coverageEndAt: "asc" },
+    select: { id: true },
+  });
+  if (pending) {
+    throw new Error("STOCK_COUNT_PENDING_SERVING_CONSUMPTION");
+  }
 }
 
 export async function startStockCount(formData: FormData) {
@@ -1653,13 +1741,19 @@ export async function startStockCount(formData: FormData) {
     await lockInventoryLocationForPosting(
       tx,
       session,
-      target.inventoryLocationId
+      target.inventoryLocationId,
     );
     const count = await lockScopedStockCount(
       tx,
       session,
       target.id,
-      target.inventoryLocationId
+      target.inventoryLocationId,
+    );
+    await assertNoClosedServicePeriodAwaitingConsumptionPosting(
+      tx,
+      session,
+      count.inventoryLocationId,
+      count.databaseNow,
     );
     await requirePermission(session, permissions.stockCountEnter);
     if (count.status === "RECOUNT_REQUESTED") {
@@ -1668,18 +1762,20 @@ export async function startStockCount(formData: FormData) {
       }
       assertStockCountAssignedActor({
         assignedToUserId: count.assignedToUserId,
-        actorUserId: session.user.id
+        actorUserId: session.user.id,
       });
       if (!count.currentAttemptId || count.currentAttemptVersion === null) {
         throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
       }
-      const attempts = await tx.$queryRaw<Array<{
-        id: string;
-        attemptNumber: number;
-        status: string;
-        version: number;
-        assignedToUserId: string | null;
-      }>>(Prisma.sql`
+      const attempts = await tx.$queryRaw<
+        Array<{
+          id: string;
+          attemptNumber: number;
+          status: string;
+          version: number;
+          assignedToUserId: string | null;
+        }>
+      >(Prisma.sql`
         SELECT id, "attemptNumber", status, version, "assignedToUserId"
           FROM "StockCountAttempt"
          WHERE id = ${count.currentAttemptId}::uuid
@@ -1703,29 +1799,31 @@ export async function startStockCount(formData: FormData) {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           stockCountAttemptId: attempt.id,
-          inventoryLocationId: count.inventoryLocationId
-        }
+          inventoryLocationId: count.inventoryLocationId,
+        },
       });
       if (existingAttemptLineCount !== 0) {
         throw new Error("STOCK_COUNT_RECOUNT_DRAFT_HAS_EXISTING_LINES");
       }
-      const recountTransition = await tx.stockCountRecountTransition.findUnique({
-        where: { successorAttemptId: attempt.id },
-        select: {
-          tenantId: true,
-          companyId: true,
-          inventoryLocationId: true,
-          stockCountSessionId: true,
-          successorAttemptId: true,
-          reviewConfigurationRevisionId: true,
-          reviewConfigurationRevisionNumber: true,
-          reviewConfigurationDigest: true,
-          reviewActivationEventId: true,
-          reviewActivationFamily: true,
-          reviewActivationStatus: true,
-          reviewActivationGeneration: true
-        }
-      });
+      const recountTransition = await tx.stockCountRecountTransition.findUnique(
+        {
+          where: { successorAttemptId: attempt.id },
+          select: {
+            tenantId: true,
+            companyId: true,
+            inventoryLocationId: true,
+            stockCountSessionId: true,
+            successorAttemptId: true,
+            reviewConfigurationRevisionId: true,
+            reviewConfigurationRevisionNumber: true,
+            reviewConfigurationDigest: true,
+            reviewActivationEventId: true,
+            reviewActivationFamily: true,
+            reviewActivationStatus: true,
+            reviewActivationGeneration: true,
+          },
+        },
+      );
       if (
         !recountTransition ||
         recountTransition.tenantId !== session.context.tenantId ||
@@ -1733,7 +1831,8 @@ export async function startStockCount(formData: FormData) {
         recountTransition.inventoryLocationId !== count.inventoryLocationId ||
         recountTransition.stockCountSessionId !== count.id ||
         recountTransition.successorAttemptId !== attempt.id ||
-        recountTransition.reviewActivationFamily !== "StockCountAttemptReview" ||
+        recountTransition.reviewActivationFamily !==
+          "StockCountAttemptReview" ||
         recountTransition.reviewActivationStatus !== "ACTIVE"
       ) {
         throw new Error("STOCK_COUNT_RECOUNT_REVIEW_AUTHORITY_STALE");
@@ -1742,10 +1841,10 @@ export async function startStockCount(formData: FormData) {
         where: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          inventoryLocationId: count.inventoryLocationId
+          inventoryLocationId: count.inventoryLocationId,
         },
         include: { item: true },
-        orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }]
+        orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }],
       });
       if (balances.length === 0) throw new Error("STOCK_COUNT_HAS_NO_BALANCES");
       const recountAuthority = await attestStockCountRecountReviewAuthority(
@@ -1762,9 +1861,9 @@ export async function startStockCount(formData: FormData) {
             tenantId: balance.tenantId,
             companyId: balance.companyId,
             inventoryLocationId: balance.inventoryLocationId,
-            itemId: balance.itemId
-          }))
-        }
+            itemId: balance.itemId,
+          })),
+        },
       );
       if (
         recountAuthority.configurationRevisionId !==
@@ -1793,8 +1892,8 @@ export async function startStockCount(formData: FormData) {
           lotNumber: balance.lotNumber,
           expiryDate: balance.expiryDate,
           systemQuantityBaseUom: balance.qtyOnHand,
-          legacyStockCountLineId: null
-        }))
+          legacyStockCountLineId: null,
+        })),
       });
       const attemptStarted = await tx.stockCountAttempt.updateMany({
         where: {
@@ -1804,14 +1903,14 @@ export async function startStockCount(formData: FormData) {
           companyId: session.context.companyId,
           inventoryLocationId: count.inventoryLocationId,
           status: "DRAFT",
-          version: attempt.version
+          version: attempt.version,
         },
         data: {
           status: "IN_PROGRESS",
           cutoffAt: count.databaseNow,
           startedAt: count.databaseNow,
-          version: { increment: 1 }
-        }
+          version: { increment: 1 },
+        },
       });
       if (attemptStarted.count !== 1) {
         throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -1824,7 +1923,7 @@ export async function startStockCount(formData: FormData) {
           inventoryLocationId: count.inventoryLocationId,
           status: "RECOUNT_REQUESTED",
           currentAttemptId: attempt.id,
-          version: count.version
+          version: count.version,
         },
         data: {
           status: "IN_PROGRESS",
@@ -1834,8 +1933,8 @@ export async function startStockCount(formData: FormData) {
           reviewedAt: null,
           reviewedByUserId: null,
           reviewNotes: null,
-          version: { increment: 1 }
-        }
+          version: { increment: 1 },
+        },
       });
       if (sessionStarted.count !== 1) {
         throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -1853,18 +1952,23 @@ export async function startStockCount(formData: FormData) {
           metadata: {
             attemptNumber: attempt.attemptNumber,
             cutoffAt: count.databaseNow.toISOString(),
-            snapshotLineCount: balances.length
-          }
-        }
+            snapshotLineCount: balances.length,
+          },
+        },
       });
       return;
     }
     assertStockCountCanStart(count.status);
     assertStockCountAssignedActor({
       assignedToUserId: count.assignedToUserId,
-      actorUserId: session.user.id
+      actorUserId: session.user.id,
     });
-    if (!isStockCountScheduledStartEligible(count.scheduledDate, count.databaseNow)) {
+    if (
+      !isStockCountScheduledStartEligible(
+        count.scheduledDate,
+        count.databaseNow,
+      )
+    ) {
       throw new Error("STOCK_COUNT_SCHEDULED_DATE_IN_FUTURE");
     }
 
@@ -1873,8 +1977,8 @@ export async function startStockCount(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         stockCountSessionId: count.id,
-        inventoryLocationId: count.inventoryLocationId
-      }
+        inventoryLocationId: count.inventoryLocationId,
+      },
     });
     if (existingLineCount !== 0) {
       throw new Error("STOCK_COUNT_DRAFT_HAS_EXISTING_LINES");
@@ -1883,10 +1987,10 @@ export async function startStockCount(formData: FormData) {
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        inventoryLocationId: count.inventoryLocationId
+        inventoryLocationId: count.inventoryLocationId,
       },
       include: { item: true },
-      orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }]
+      orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }],
     });
     if (balances.length === 0) {
       throw new Error("STOCK_COUNT_HAS_NO_BALANCES");
@@ -1903,7 +2007,7 @@ export async function startStockCount(formData: FormData) {
         status: "DRAFT",
         updatedAt: count.updatedAt,
         version: count.version,
-        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
+        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {}),
       },
       data: {
         status: "IN_PROGRESS",
@@ -1912,8 +2016,8 @@ export async function startStockCount(formData: FormData) {
         ...(ensuredAttempt.needsSessionLink
           ? { currentAttemptId: ensuredAttempt.id }
           : {}),
-        version: { increment: 1 }
-      }
+        version: { increment: 1 },
+      },
     });
     if (started.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -1931,8 +2035,8 @@ export async function startStockCount(formData: FormData) {
         lotKey: balance.lotKey,
         lotNumber: balance.lotNumber,
         expiryDate: balance.expiryDate,
-        systemQuantityBaseUom: balance.qtyOnHand
-      }))
+        systemQuantityBaseUom: balance.qtyOnHand,
+      })),
     });
 
     const attemptUpdated = await tx.$executeRaw(Prisma.sql`
@@ -1957,7 +2061,7 @@ export async function startStockCount(formData: FormData) {
       session,
       ensuredAttempt.id,
       count.id,
-      count.inventoryLocationId
+      count.inventoryLocationId,
     );
 
     await tx.auditEvent.create({
@@ -1972,9 +2076,9 @@ export async function startStockCount(formData: FormData) {
         afterData: { status: "IN_PROGRESS" },
         metadata: {
           cutoffAt: count.databaseNow.toISOString(),
-          snapshotLineCount: balances.length
-        }
-      }
+          snapshotLineCount: balances.length,
+        },
+      },
     });
   });
 }
@@ -1984,7 +2088,10 @@ export async function saveStockCountEntries(rawValues: unknown) {
   await requirePermission(session, permissions.stockCountEnter);
   const values = saveStockCountSchema.parse(rawValues);
 
-  if (new Set(values.lines.map((line) => line.lineId)).size !== values.lines.length) {
+  if (
+    new Set(values.lines.map((line) => line.lineId)).size !==
+    values.lines.length
+  ) {
     throw new Error("STOCK_COUNT_LINE_DUPLICATE");
   }
   const target = await findScopedStockCountLocation(session, values.id);
@@ -1993,19 +2100,19 @@ export async function saveStockCountEntries(rawValues: unknown) {
     await lockInventoryLocationForPosting(
       tx,
       session,
-      target.inventoryLocationId
+      target.inventoryLocationId,
     );
     const count = await lockScopedStockCount(
       tx,
       session,
       target.id,
-      target.inventoryLocationId
+      target.inventoryLocationId,
     );
     await requirePermission(session, permissions.stockCountEnter);
     assertStockCountCanEnter(count.status);
     assertStockCountAssignedActor({
       assignedToUserId: count.assignedToUserId,
-      actorUserId: session.user.id
+      actorUserId: session.user.id,
     });
     if (count.currentAttemptId) {
       const currentAttempts = await tx.stockCountAttempt.findMany({
@@ -2015,9 +2122,9 @@ export async function saveStockCountEntries(rawValues: unknown) {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           inventoryLocationId: count.inventoryLocationId,
-          status: "IN_PROGRESS"
+          status: "IN_PROGRESS",
         },
-        select: { id: true, attemptNumber: true, version: true }
+        select: { id: true, attemptNumber: true, version: true },
       });
       const currentAttempt = currentAttempts[0];
       if (currentAttempt?.attemptNumber && currentAttempt.attemptNumber > 1) {
@@ -2028,8 +2135,8 @@ export async function saveStockCountEntries(rawValues: unknown) {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             inventoryLocationId: count.inventoryLocationId,
-            legacyStockCountLineId: null
-          }
+            legacyStockCountLineId: null,
+          },
         });
         if (attemptLines.length !== values.lines.length) {
           throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
@@ -2040,7 +2147,7 @@ export async function saveStockCountEntries(rawValues: unknown) {
           if (!line) throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
           const variance = calculateCountVariance(
             entry.countedQuantityBaseUom,
-            Number(line.systemQuantityBaseUom)
+            Number(line.systemQuantityBaseUom),
           );
           const updated = await tx.stockCountAttemptLine.updateMany({
             where: {
@@ -2050,15 +2157,15 @@ export async function saveStockCountEntries(rawValues: unknown) {
               companyId: session.context.companyId,
               inventoryLocationId: count.inventoryLocationId,
               legacyStockCountLineId: null,
-              updatedAt: line.updatedAt
+              updatedAt: line.updatedAt,
             },
             data: {
               countedQuantityBaseUom: entry.countedQuantityBaseUom,
               varianceQuantityBaseUom: variance,
               notes: entry.notes || null,
               countedByUserId: session.user.id,
-              countedAt: count.databaseNow
-            }
+              countedAt: count.databaseNow,
+            },
           });
           if (updated.count !== 1) {
             throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
@@ -2069,9 +2176,9 @@ export async function saveStockCountEntries(rawValues: unknown) {
             id: currentAttempt.id,
             stockCountSessionId: count.id,
             status: "IN_PROGRESS",
-            version: currentAttempt.version
+            version: currentAttempt.version,
           },
-          data: { version: { increment: 1 } }
+          data: { version: { increment: 1 } },
         });
         const sessionTouched = await tx.stockCountSession.updateMany({
           where: {
@@ -2082,9 +2189,9 @@ export async function saveStockCountEntries(rawValues: unknown) {
             currentAttemptId: currentAttempt.id,
             assignedToUserId: session.user.id,
             status: "IN_PROGRESS",
-            version: count.version
+            version: count.version,
           },
-          data: { updatedAt: count.databaseNow, version: { increment: 1 } }
+          data: { updatedAt: count.databaseNow, version: { increment: 1 } },
         });
         if (attemptTouched.count !== 1 || sessionTouched.count !== 1) {
           throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -2099,9 +2206,9 @@ export async function saveStockCountEntries(rawValues: unknown) {
             entityId: count.id,
             metadata: {
               attemptNumber: currentAttempt.attemptNumber,
-              lineCount: values.lines.length
-            }
-          }
+              lineCount: values.lines.length,
+            },
+          },
         });
         return;
       }
@@ -2112,8 +2219,8 @@ export async function saveStockCountEntries(rawValues: unknown) {
         stockCountSessionId: count.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        inventoryLocationId: count.inventoryLocationId
-      }
+        inventoryLocationId: count.inventoryLocationId,
+      },
     });
     if (lines.length !== values.lines.length) {
       throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
@@ -2126,7 +2233,7 @@ export async function saveStockCountEntries(rawValues: unknown) {
         session,
         ensuredAttempt.id,
         count.id,
-        count.inventoryLocationId
+        count.inventoryLocationId,
       );
     }
     for (const entry of values.lines) {
@@ -2136,7 +2243,7 @@ export async function saveStockCountEntries(rawValues: unknown) {
       }
       const variance = calculateCountVariance(
         entry.countedQuantityBaseUom,
-        Number(line.systemQuantityBaseUom)
+        Number(line.systemQuantityBaseUom),
       );
       const updated = await tx.stockCountLine.updateMany({
         where: {
@@ -2145,15 +2252,15 @@ export async function saveStockCountEntries(rawValues: unknown) {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           inventoryLocationId: count.inventoryLocationId,
-          updatedAt: line.updatedAt
+          updatedAt: line.updatedAt,
         },
         data: {
           countedQuantityBaseUom: entry.countedQuantityBaseUom,
           varianceQuantityBaseUom: variance,
           notes: entry.notes || null,
           countedByUserId: session.user.id,
-          countedAt: count.databaseNow
-        }
+          countedAt: count.databaseNow,
+        },
       });
       if (updated.count !== 1) {
         throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -2200,15 +2307,15 @@ export async function saveStockCountEntries(rawValues: unknown) {
         status: "IN_PROGRESS",
         updatedAt: count.updatedAt,
         version: count.version,
-        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
+        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {}),
       },
       data: {
         updatedAt: count.databaseNow,
         ...(ensuredAttempt.needsSessionLink
           ? { currentAttemptId: ensuredAttempt.id }
           : {}),
-        version: { increment: 1 }
-      }
+        version: { increment: 1 },
+      },
     });
     if (touched.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -2222,8 +2329,8 @@ export async function saveStockCountEntries(rawValues: unknown) {
         eventType: "stock_count.entries_saved",
         entityType: "StockCountSession",
         entityId: count.id,
-        metadata: { lineCount: values.lines.length }
-      }
+        metadata: { lineCount: values.lines.length },
+      },
     });
   });
 }
@@ -2256,12 +2363,14 @@ type LockedStockCountApprovalLine = {
 async function lockCurrentStockCountAttemptForApproval(
   tx: TransactionClient,
   session: SessionContext,
-  count: LockedStockCount
+  count: LockedStockCount,
 ) {
   if (!count.currentAttemptId) {
     throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
   }
-  const attempts = await tx.$queryRaw<LockedStockCountApprovalAttempt[]>(Prisma.sql`
+  const attempts = await tx.$queryRaw<
+    LockedStockCountApprovalAttempt[]
+  >(Prisma.sql`
     SELECT a.id, a."stockCountSessionId", a."tenantId", a."companyId",
            a."inventoryLocationId", a.status, a."attemptNumber", a.version, a."createdByUserId",
            a."assignedToUserId", a."evidenceReference"
@@ -2295,7 +2404,7 @@ async function lockCurrentStockCountAttemptForApproval(
       (line) =>
         line.countedQuantityBaseUom === null ||
         !line.countedByUserId ||
-        !line.countedAt
+        !line.countedAt,
     )
   ) {
     throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
@@ -2315,11 +2424,11 @@ function stockCountReviewRequest(input: {
     schemaVersion: 1,
     stockCountAttemptId: input.stockCountAttemptId,
     stockCountSessionId: input.stockCountSessionId,
-    submitterUserId: input.submitterUserId
+    submitterUserId: input.submitterUserId,
   };
   return {
     canonicalJson: inventoryPilotCanonicalJson(request),
-    hash: inventoryPilotDigest(request)
+    hash: inventoryPilotDigest(request),
   };
 }
 
@@ -2327,7 +2436,7 @@ async function allStockCountApprovalProhibitedActors(
   tx: TransactionClient,
   session: SessionContext,
   count: LockedStockCount,
-  attempt: LockedStockCountApprovalAttempt
+  attempt: LockedStockCountApprovalAttempt,
 ) {
   const counters = await tx.$queryRaw<Array<{ userId: string }>>(Prisma.sql`
     SELECT al."countedByUserId" AS "userId"
@@ -2349,7 +2458,7 @@ async function allStockCountApprovalProhibitedActors(
     sessionAssignedToUserId: count.assignedToUserId,
     attemptCreatedByUserId: attempt.createdByUserId,
     attemptAssignedToUserId: attempt.assignedToUserId,
-    countedByUserIds: counters.map(({ userId }) => userId)
+    countedByUserIds: counters.map(({ userId }) => userId),
   });
 }
 
@@ -2377,7 +2486,7 @@ async function assertLegacyStockCountReviewIsAllowed(
   tx: TransactionClient,
   session: SessionContext,
   count: LockedStockCount,
-  stage: "SUBMIT" | "REVALIDATE"
+  stage: "SUBMIT" | "REVALIDATE",
 ) {
   // The environment switch may deny use of the pilot producer, but it must
   // never downgrade a database-active family to the legacy direct path.
@@ -2388,13 +2497,17 @@ async function assertLegacyStockCountReviewIsAllowed(
       tenantId_companyId_family: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        family: "StockCountAttemptReview"
-      }
+        family: "StockCountAttemptReview",
+      },
     },
-    select: { status: true }
+    select: { status: true },
   });
   if (activation?.status === "ACTIVE") {
-    const locked = await lockCurrentStockCountAttemptForApproval(tx, session, count);
+    const locked = await lockCurrentStockCountAttemptForApproval(
+      tx,
+      session,
+      count,
+    );
     try {
       await classifyStockCountAttemptForPilotApproval({
         tx,
@@ -2402,7 +2515,7 @@ async function assertLegacyStockCountReviewIsAllowed(
         // is used solely to classify an already-active sealed database cohort;
         // it never creates activation or grants an approval path.
         environment: {
-          STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED: "true"
+          STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED: "true",
         },
         stage,
         count: {
@@ -2414,7 +2527,7 @@ async function assertLegacyStockCountReviewIsAllowed(
             status: count.status,
             inventoryLocationId: count.inventoryLocationId,
             locationId: session.context.locationId,
-            currentAttemptId: count.currentAttemptId
+            currentAttemptId: count.currentAttemptId,
           },
           attempt: {
             id: locked.attempt.id,
@@ -2429,10 +2542,10 @@ async function assertLegacyStockCountReviewIsAllowed(
               tenantId: line.tenantId,
               companyId: line.companyId,
               inventoryLocationId: line.inventoryLocationId,
-              itemId: line.itemId
-            }))
-          }
-        }
+              itemId: line.itemId,
+            })),
+          },
+        },
       });
     } catch (error) {
       // A cohort with neither matching endpoint nor item membership remains on
@@ -2460,311 +2573,336 @@ export async function submitStockCount(formData: FormData) {
   const target = await findScopedStockCountLocation(session, values.id);
   const pilotEnabled =
     process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
-  await withApprovalProducerTransaction({
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    documentType: "StockCountAttemptReview"
-  }, async (tx) => {
-    await lockInventoryLocationForPosting(
-      tx,
-      session,
-      target.inventoryLocationId
-    );
-    const count = await lockScopedStockCount(
-      tx,
-      session,
-      target.id,
-      target.inventoryLocationId
-    );
-    await requirePermission(session, permissions.stockCountSubmit);
-    assertStockCountAssignedActor({
-      assignedToUserId: count.assignedToUserId,
-      actorUserId: session.user.id
-    });
-    const currentAttemptIdentity = count.currentAttemptId
-      ? await tx.stockCountAttempt.findFirst({
-          where: {
-            id: count.currentAttemptId,
-            stockCountSessionId: count.id,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            inventoryLocationId: count.inventoryLocationId
-          },
-          select: { attemptNumber: true }
-        })
-      : null;
-    if ((currentAttemptIdentity?.attemptNumber ?? 1) > 1 && !pilotEnabled) {
-      throw new Error("STOCK_COUNT_RECOUNT_REVIEW_APPROVAL_REQUIRED");
-    }
-    if (!pilotEnabled) {
-      await assertLegacyStockCountReviewIsAllowed(tx, session, count, "SUBMIT");
-    }
-
-    let pilotApprovalContext: {
-      locked: Awaited<ReturnType<typeof lockCurrentStockCountAttemptForApproval>>;
-      request: ReturnType<typeof stockCountReviewRequest>;
-    } | null = null;
-    if (pilotEnabled) {
-      if (!values.idempotencyKey) {
-        assertStockCountCanSubmit(count.status);
-        throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
-      }
-      const locked = await lockCurrentStockCountAttemptForApproval(tx, session, count);
-      const request = stockCountReviewRequest({
-        stockCountSessionId: count.id,
-        stockCountAttemptId: locked.attempt.id,
-        submitterUserId: session.user.id,
-        idempotencyKey: values.idempotencyKey
+  await withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "StockCountAttemptReview",
+    },
+    async (tx) => {
+      await lockInventoryLocationForPosting(
+        tx,
+        session,
+        target.inventoryLocationId,
+      );
+      const count = await lockScopedStockCount(
+        tx,
+        session,
+        target.id,
+        target.inventoryLocationId,
+      );
+      await requirePermission(session, permissions.stockCountSubmit);
+      assertStockCountAssignedActor({
+        assignedToUserId: count.assignedToUserId,
+        actorUserId: session.user.id,
       });
-      const replay = await tx.stockCountReviewSubmissionIntent.findFirst({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          idempotencyKey: values.idempotencyKey
-        }
-      });
-      if (replay) {
-        const replayApproval = await tx.approvalInstance.findFirst({
-          where: {
-            id: replay.approvalInstanceId,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId
-          },
-          select: { documentType: true, documentId: true }
-        });
-        const currentActivation = await tx.inventoryPilotFamilyActivation.findUnique({
-          where: {
-            tenantId_companyId_family: {
-              tenantId: session.context.tenantId,
-              companyId: session.context.companyId,
-              family: "StockCountAttemptReview"
-            }
-          }
-        });
-        if (
-          replay.stockCountAttemptId !== locked.attempt.id ||
-          replay.stockCountSessionId !== count.id ||
-          replay.submitterUserId !== session.user.id ||
-          replay.requestCanonicalJson !== request.canonicalJson ||
-          replay.requestHash !== request.hash ||
-          replay.attemptVersionBefore + 1 !== replay.attemptVersionAfter ||
-          replay.sessionVersionBefore + 1 !== replay.sessionVersionAfter ||
-          replay.approvalDocumentType !== "StockCountAttemptReview" ||
-          replay.activationFamily !== "StockCountAttemptReview" ||
-          replay.activationStatus !== "ACTIVE" ||
-          !replayApproval ||
-          replayApproval.documentType !== "StockCountAttemptReview" ||
-          replayApproval.documentId !== locked.attempt.id ||
-          count.currentAttemptId !== locked.attempt.id ||
-          !currentActivation ||
-          currentActivation.status !== "ACTIVE" ||
-          currentActivation.currentActivationEventId !== replay.activationEventId ||
-          currentActivation.configurationRevisionId !== replay.configurationRevisionId ||
-          currentActivation.configurationRevisionNumber !== replay.configurationRevisionNumber ||
-          currentActivation.configurationDigest !== replay.configurationDigest ||
-          currentActivation.generation !== replay.activationGeneration
-        ) {
-          throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_CONFLICT");
-        }
-        return;
-      }
-      pilotApprovalContext = { locked, request };
-    }
-
-    assertStockCountCanSubmit(count.status);
-    const lines =
-      pilotApprovalContext?.locked.attempt.attemptNumber &&
-      pilotApprovalContext.locked.attempt.attemptNumber > 1
-        ? pilotApprovalContext.locked.lines
-        : await tx.stockCountLine.findMany({
+      const currentAttemptIdentity = count.currentAttemptId
+        ? await tx.stockCountAttempt.findFirst({
             where: {
+              id: count.currentAttemptId,
               stockCountSessionId: count.id,
               tenantId: session.context.tenantId,
               companyId: session.context.companyId,
-              inventoryLocationId: count.inventoryLocationId
+              inventoryLocationId: count.inventoryLocationId,
             },
-            select: {
-              countedQuantityBaseUom: true,
-              countedByUserId: true,
-              countedAt: true
-            }
-          });
-    if (lines.length === 0) {
-      throw new Error("STOCK_COUNT_HAS_NO_LINES");
-    }
-    if (lines.some((line) => line.countedQuantityBaseUom === null)) {
-      throw new Error("STOCK_COUNT_HAS_UNCOUNTED_LINES");
-    }
-    if (lines.some((line) => !line.countedByUserId || !line.countedAt)) {
-      throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
-    }
-
-    // The ordinary review graph is deliberately default-off. A disabled
-    // family is the only non-admitted result that can use the legacy path;
-    // an enabled family with missing, mixed, or stale authority fails closed.
-    if (pilotEnabled) {
-      if (!pilotApprovalContext || !values.idempotencyKey) {
-        throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
+            select: { attemptNumber: true },
+          })
+        : null;
+      if ((currentAttemptIdentity?.attemptNumber ?? 1) > 1 && !pilotEnabled) {
+        throw new Error("STOCK_COUNT_RECOUNT_REVIEW_APPROVAL_REQUIRED");
       }
-      const { locked, request } = pilotApprovalContext;
+      if (!pilotEnabled) {
+        await assertLegacyStockCountReviewIsAllowed(
+          tx,
+          session,
+          count,
+          "SUBMIT",
+        );
+      }
 
-      const attestation = await classifyStockCountAttemptForPilotApproval({
-        tx,
-        stage: "SUBMIT",
-        count: {
-          session: {
+      let pilotApprovalContext: {
+        locked: Awaited<
+          ReturnType<typeof lockCurrentStockCountAttemptForApproval>
+        >;
+        request: ReturnType<typeof stockCountReviewRequest>;
+      } | null = null;
+      if (pilotEnabled) {
+        if (!values.idempotencyKey) {
+          assertStockCountCanSubmit(count.status);
+          throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
+        }
+        const locked = await lockCurrentStockCountAttemptForApproval(
+          tx,
+          session,
+          count,
+        );
+        const request = stockCountReviewRequest({
+          stockCountSessionId: count.id,
+          stockCountAttemptId: locked.attempt.id,
+          submitterUserId: session.user.id,
+          idempotencyKey: values.idempotencyKey,
+        });
+        const replay = await tx.stockCountReviewSubmissionIntent.findFirst({
+          where: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            idempotencyKey: values.idempotencyKey,
+          },
+        });
+        if (replay) {
+          const replayApproval = await tx.approvalInstance.findFirst({
+            where: {
+              id: replay.approvalInstanceId,
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+            },
+            select: { documentType: true, documentId: true },
+          });
+          const currentActivation =
+            await tx.inventoryPilotFamilyActivation.findUnique({
+              where: {
+                tenantId_companyId_family: {
+                  tenantId: session.context.tenantId,
+                  companyId: session.context.companyId,
+                  family: "StockCountAttemptReview",
+                },
+              },
+            });
+          if (
+            replay.stockCountAttemptId !== locked.attempt.id ||
+            replay.stockCountSessionId !== count.id ||
+            replay.submitterUserId !== session.user.id ||
+            replay.requestCanonicalJson !== request.canonicalJson ||
+            replay.requestHash !== request.hash ||
+            replay.attemptVersionBefore + 1 !== replay.attemptVersionAfter ||
+            replay.sessionVersionBefore + 1 !== replay.sessionVersionAfter ||
+            replay.approvalDocumentType !== "StockCountAttemptReview" ||
+            replay.activationFamily !== "StockCountAttemptReview" ||
+            replay.activationStatus !== "ACTIVE" ||
+            !replayApproval ||
+            replayApproval.documentType !== "StockCountAttemptReview" ||
+            replayApproval.documentId !== locked.attempt.id ||
+            count.currentAttemptId !== locked.attempt.id ||
+            !currentActivation ||
+            currentActivation.status !== "ACTIVE" ||
+            currentActivation.currentActivationEventId !==
+              replay.activationEventId ||
+            currentActivation.configurationRevisionId !==
+              replay.configurationRevisionId ||
+            currentActivation.configurationRevisionNumber !==
+              replay.configurationRevisionNumber ||
+            currentActivation.configurationDigest !==
+              replay.configurationDigest ||
+            currentActivation.generation !== replay.activationGeneration
+          ) {
+            throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_CONFLICT");
+          }
+          return;
+        }
+        pilotApprovalContext = { locked, request };
+      }
+
+      assertStockCountCanSubmit(count.status);
+      const lines =
+        pilotApprovalContext?.locked.attempt.attemptNumber &&
+        pilotApprovalContext.locked.attempt.attemptNumber > 1
+          ? pilotApprovalContext.locked.lines
+          : await tx.stockCountLine.findMany({
+              where: {
+                stockCountSessionId: count.id,
+                tenantId: session.context.tenantId,
+                companyId: session.context.companyId,
+                inventoryLocationId: count.inventoryLocationId,
+              },
+              select: {
+                countedQuantityBaseUom: true,
+                countedByUserId: true,
+                countedAt: true,
+              },
+            });
+      if (lines.length === 0) {
+        throw new Error("STOCK_COUNT_HAS_NO_LINES");
+      }
+      if (lines.some((line) => line.countedQuantityBaseUom === null)) {
+        throw new Error("STOCK_COUNT_HAS_UNCOUNTED_LINES");
+      }
+      if (lines.some((line) => !line.countedByUserId || !line.countedAt)) {
+        throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
+      }
+
+      // The ordinary review graph is deliberately default-off. A disabled
+      // family is the only non-admitted result that can use the legacy path;
+      // an enabled family with missing, mixed, or stale authority fails closed.
+      if (pilotEnabled) {
+        if (!pilotApprovalContext || !values.idempotencyKey) {
+          throw new Error("STOCK_COUNT_APPROVAL_IDEMPOTENCY_KEY_REQUIRED");
+        }
+        const { locked, request } = pilotApprovalContext;
+
+        const attestation = await classifyStockCountAttemptForPilotApproval({
+          tx,
+          stage: "SUBMIT",
+          count: {
+            session: {
+              id: count.id,
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              version: count.version,
+              status: count.status,
+              inventoryLocationId: count.inventoryLocationId,
+              locationId: session.context.locationId,
+              currentAttemptId: count.currentAttemptId,
+            },
+            attempt: {
+              id: locked.attempt.id,
+              stockCountSessionId: locked.attempt.stockCountSessionId,
+              tenantId: locked.attempt.tenantId,
+              companyId: locked.attempt.companyId,
+              version: locked.attempt.version,
+              status: locked.attempt.status,
+              inventoryLocationId: locked.attempt.inventoryLocationId,
+              lines: locked.lines.map((line) => ({
+                id: line.id,
+                tenantId: line.tenantId,
+                companyId: line.companyId,
+                inventoryLocationId: line.inventoryLocationId,
+                itemId: line.itemId,
+              })),
+            },
+          },
+        });
+        const approvalRule = await tx.approvalRule.findFirst({
+          where: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            transactionType: "StockCountAttemptReview",
+            isActive: true,
+            definitionSealed: true,
+          },
+          include: { steps: { orderBy: { stepOrder: "asc" } } },
+          orderBy: { priority: "asc" },
+        });
+        if (!approvalRule || approvalRule.steps.length === 0) {
+          throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+        }
+        const firstStep = approvalRule.steps[0];
+        if (!firstStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+        const prohibitedActors = await allStockCountApprovalProhibitedActors(
+          tx,
+          session,
+          count,
+          locked.attempt,
+        );
+        const routedSteps = approvalRule.steps.map((step, index) => ({
+          ...step,
+          approvalInstanceStepId: randomUUID(),
+          activationStatus:
+            index === 0 ? ("PENDING" as const) : ("WAITING" as const),
+        }));
+        const firstRoutedStep = routedSteps[0];
+        if (!firstRoutedStep)
+          throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+
+        const approval = await tx.approvalInstance.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            documentType: "StockCountAttemptReview",
+            documentId: locked.attempt.id,
+            approvalRuleId: approvalRule.id,
+            status: "PENDING",
+            currentStepOrder: firstStep.stepOrder,
+            steps: {
+              create: routedSteps.map((step) => ({
+                id: step.approvalInstanceStepId,
+                stepOrder: step.stepOrder,
+                assignedUserId: step.userId,
+                assignedRoleId: step.roleId,
+                status: step.activationStatus,
+              })),
+            },
+          },
+        });
+        for (const step of routedSteps) {
+          await configureApprovalStepRouting(tx, {
+            approvalInstanceStepId: step.approvalInstanceStepId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            routingPolicy: getApprovalRoutingPolicy("StockCountAttemptReview"),
+            requiredPermissionCode: permissions.stockCountReview,
+            dueAt: null,
+            activationAudit: {
+              actorUserId: session.user.id,
+              source: "stock-count-attempt-review-submission",
+            },
+            scopeGroups: [
+              {
+                groupOrder: 1,
+                targetMatchMode: "ANY",
+                targets: [
+                  {
+                    scopeType: "LOCATION",
+                    companyId: session.context.companyId,
+                    locationId: session.context.locationId,
+                  },
+                ],
+              },
+            ],
+            prohibitedActors,
+          });
+        }
+        await assertAnyEligibleApprovalActorForStep(tx, {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+        });
+        const sessionDigest = inventoryPilotDigest({
+          schemaVersion: 1,
+          id: count.id,
+          currentAttemptId: count.currentAttemptId,
+          status: count.status,
+          version: count.version,
+        });
+        const attemptDigest = inventoryPilotDigest({
+          schemaVersion: 1,
+          id: locked.attempt.id,
+          stockCountSessionId: locked.attempt.stockCountSessionId,
+          status: locked.attempt.status,
+          version: locked.attempt.version,
+        });
+        const evidenceDigest = inventoryPilotDigest({
+          schemaVersion: 1,
+          evidenceReference: locked.attempt.evidenceReference,
+          lines: locked.lines.map((line) => ({
+            id: line.id,
+            itemId: line.itemId,
+            countedByUserId: line.countedByUserId,
+            countedAt: line.countedAt?.toISOString() ?? null,
+            countedQuantityBaseUom: String(line.countedQuantityBaseUom),
+          })),
+        });
+
+        const submitted = await tx.stockCountSession.updateMany({
+          where: {
             id: count.id,
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            version: count.version,
-            status: count.status,
             inventoryLocationId: count.inventoryLocationId,
-            locationId: session.context.locationId,
-            currentAttemptId: count.currentAttemptId
+            assignedToUserId: session.user.id,
+            currentAttemptId: locked.attempt.id,
+            status: "IN_PROGRESS",
+            updatedAt: count.updatedAt,
+            version: count.version,
           },
-          attempt: {
-            id: locked.attempt.id,
-            stockCountSessionId: locked.attempt.stockCountSessionId,
-            tenantId: locked.attempt.tenantId,
-            companyId: locked.attempt.companyId,
-            version: locked.attempt.version,
-            status: locked.attempt.status,
-            inventoryLocationId: locked.attempt.inventoryLocationId,
-            lines: locked.lines.map((line) => ({
-              id: line.id,
-              tenantId: line.tenantId,
-              companyId: line.companyId,
-              inventoryLocationId: line.inventoryLocationId,
-              itemId: line.itemId
-            }))
-          }
-        }
-      });
-      const approvalRule = await tx.approvalRule.findFirst({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          transactionType: "StockCountAttemptReview",
-          isActive: true,
-          definitionSealed: true
-        },
-        include: { steps: { orderBy: { stepOrder: "asc" } } },
-        orderBy: { priority: "asc" }
-      });
-      if (!approvalRule || approvalRule.steps.length === 0) {
-        throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
-      }
-      const firstStep = approvalRule.steps[0];
-      if (!firstStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
-      const prohibitedActors = await allStockCountApprovalProhibitedActors(
-        tx,
-        session,
-        count,
-        locked.attempt
-      );
-      const routedSteps = approvalRule.steps.map((step, index) => ({
-        ...step,
-        approvalInstanceStepId: randomUUID(),
-        activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
-      }));
-      const firstRoutedStep = routedSteps[0];
-      if (!firstRoutedStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
-
-      const approval = await tx.approvalInstance.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          documentType: "StockCountAttemptReview",
-          documentId: locked.attempt.id,
-          approvalRuleId: approvalRule.id,
-          status: "PENDING",
-          currentStepOrder: firstStep.stepOrder,
-          steps: {
-            create: routedSteps.map((step) => ({
-              id: step.approvalInstanceStepId,
-              stepOrder: step.stepOrder,
-              assignedUserId: step.userId,
-              assignedRoleId: step.roleId,
-              status: step.activationStatus
-            }))
-          }
-        }
-      });
-      for (const step of routedSteps) {
-        await configureApprovalStepRouting(tx, {
-          approvalInstanceStepId: step.approvalInstanceStepId,
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          routingPolicy: getApprovalRoutingPolicy("StockCountAttemptReview"),
-          requiredPermissionCode: permissions.stockCountReview,
-          dueAt: null,
-          activationAudit: {
-            actorUserId: session.user.id,
-            source: "stock-count-attempt-review-submission"
+          data: {
+            status: "SUBMITTED",
+            submittedAt: count.databaseNow,
+            version: { increment: 1 },
           },
-          scopeGroups: [{
-            groupOrder: 1,
-            targetMatchMode: "ANY",
-            targets: [{
-              scopeType: "LOCATION",
-              companyId: session.context.companyId,
-              locationId: session.context.locationId
-            }]
-          }],
-          prohibitedActors
         });
-      }
-      await assertAnyEligibleApprovalActorForStep(tx, {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
-      });
-      const sessionDigest = inventoryPilotDigest({
-        schemaVersion: 1,
-        id: count.id,
-        currentAttemptId: count.currentAttemptId,
-        status: count.status,
-        version: count.version
-      });
-      const attemptDigest = inventoryPilotDigest({
-        schemaVersion: 1,
-        id: locked.attempt.id,
-        stockCountSessionId: locked.attempt.stockCountSessionId,
-        status: locked.attempt.status,
-        version: locked.attempt.version
-      });
-      const evidenceDigest = inventoryPilotDigest({
-        schemaVersion: 1,
-        evidenceReference: locked.attempt.evidenceReference,
-        lines: locked.lines.map((line) => ({
-          id: line.id,
-          itemId: line.itemId,
-          countedByUserId: line.countedByUserId,
-          countedAt: line.countedAt?.toISOString() ?? null,
-          countedQuantityBaseUom: String(line.countedQuantityBaseUom)
-        }))
-      });
-
-      const submitted = await tx.stockCountSession.updateMany({
-        where: {
-          id: count.id,
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          inventoryLocationId: count.inventoryLocationId,
-          assignedToUserId: session.user.id,
-          currentAttemptId: locked.attempt.id,
-          status: "IN_PROGRESS",
-          updatedAt: count.updatedAt,
-          version: count.version
-        },
-        data: {
-          status: "SUBMITTED",
-          submittedAt: count.databaseNow,
-          version: { increment: 1 }
-        }
-      });
-      if (submitted.count !== 1) throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
-      const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
+        if (submitted.count !== 1)
+          throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+        const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
         UPDATE "StockCountAttempt"
            SET status = 'SUBMITTED', "submittedAt" = ${count.databaseNow},
                "updatedAt" = ${count.databaseNow}, version = version + 1
@@ -2774,106 +2912,119 @@ export async function submitStockCount(formData: FormData) {
            AND "companyId" = ${session.context.companyId}::uuid
            AND status = 'IN_PROGRESS' AND version = ${locked.attempt.version}
       `);
-      if (attemptSubmitted !== 1) throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
-      const evidenceCanonicalHash = inventoryPilotDigest({
-        schemaVersion: 1,
-        sessionDigest,
-        attemptDigest,
-        evidenceDigest
-      });
-      await tx.stockCountReviewSubmissionIntent.create({
-        data: {
+        if (attemptSubmitted !== 1)
+          throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+        const evidenceCanonicalHash = inventoryPilotDigest({
+          schemaVersion: 1,
+          sessionDigest,
+          attemptDigest,
+          evidenceDigest,
+        });
+        await tx.stockCountReviewSubmissionIntent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            stockCountAttemptId: locked.attempt.id,
+            stockCountSessionId: count.id,
+            attemptVersionBefore: locked.attempt.version,
+            attemptVersionAfter: locked.attempt.version + 1,
+            sessionVersionBefore: count.version,
+            sessionVersionAfter: count.version + 1,
+            evidenceCanonicalHash,
+            configurationRevisionId: attestation.configurationRevisionId,
+            configurationRevisionNumber:
+              attestation.configurationRevisionNumber,
+            configurationDigest: attestation.configurationDigest,
+            activationEventId: attestation.activationEventId,
+            activationFamily: "StockCountAttemptReview",
+            activationStatus: "ACTIVE",
+            activationGeneration: attestation.activationGeneration,
+            idempotencyKey: values.idempotencyKey,
+            requestCanonicalJson: request.canonicalJson,
+            requestHash: request.hash,
+            submitterUserId: session.user.id,
+            approvalInstanceId: approval.id,
+            approvalDocumentType: "StockCountAttemptReview",
+          },
+        });
+        const auditEvent = await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "stock_count.submitted",
+            entityType: "StockCountAttempt",
+            entityId: locked.attempt.id,
+            beforeData: {
+              sessionStatus: "IN_PROGRESS",
+              attemptStatus: "IN_PROGRESS",
+            },
+            afterData: {
+              sessionStatus: "SUBMITTED",
+              attemptStatus: "SUBMITTED",
+            },
+            metadata: {
+              approvalInstanceId: approval.id,
+              approvalRuleId: approvalRule.id,
+              configurationRevisionId: attestation.configurationRevisionId,
+              activationEventId: attestation.activationEventId,
+              sessionDigest,
+              attemptDigest,
+              evidenceDigest,
+              evidenceCanonicalHash,
+            },
+          },
+        });
+        await recordWorkflowNotifications(tx, {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          stockCountAttemptId: locked.attempt.id,
-          stockCountSessionId: count.id,
-          attemptVersionBefore: locked.attempt.version,
-          attemptVersionAfter: locked.attempt.version + 1,
-          sessionVersionBefore: count.version,
-          sessionVersionAfter: count.version + 1,
-          evidenceCanonicalHash,
-          configurationRevisionId: attestation.configurationRevisionId,
-          configurationRevisionNumber: attestation.configurationRevisionNumber,
-          configurationDigest: attestation.configurationDigest,
-          activationEventId: attestation.activationEventId,
-          activationFamily: "StockCountAttemptReview",
-          activationStatus: "ACTIVE",
-          activationGeneration: attestation.activationGeneration,
-          idempotencyKey: values.idempotencyKey,
-          requestCanonicalJson: request.canonicalJson,
-          requestHash: request.hash,
-          submitterUserId: session.user.id,
-          approvalInstanceId: approval.id,
-          approvalDocumentType: "StockCountAttemptReview"
-        }
-      });
-      const auditEvent = await tx.auditEvent.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          actorUserId: session.user.id,
-          eventType: "stock_count.submitted",
+          locationId: session.context.locationId,
+          recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
+          notificationType: "APPROVE_STOCK_COUNT_REVIEW",
+          priority: "NORMAL",
+          title: `Review Stock Count ${count.id}`,
+          body: `${session.user.displayName} submitted a stock count for independent review.`,
+          deepLink: `/approvals/${approval.id}`,
           entityType: "StockCountAttempt",
           entityId: locked.attempt.id,
-          beforeData: { sessionStatus: "IN_PROGRESS", attemptStatus: "IN_PROGRESS" },
-          afterData: { sessionStatus: "SUBMITTED", attemptStatus: "SUBMITTED" },
+          sourceEventKey: auditEvent.id,
+          recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
           metadata: {
             approvalInstanceId: approval.id,
-            approvalRuleId: approvalRule.id,
-            configurationRevisionId: attestation.configurationRevisionId,
-            activationEventId: attestation.activationEventId,
-            sessionDigest,
-            attemptDigest,
-            evidenceDigest,
-            evidenceCanonicalHash
-          }
-        }
-      });
-      await recordWorkflowNotifications(tx, {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        locationId: session.context.locationId,
-        recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
-        notificationType: "APPROVE_STOCK_COUNT_REVIEW",
-        priority: "NORMAL",
-        title: `Review Stock Count ${count.id}`,
-        body: `${session.user.displayName} submitted a stock count for independent review.`,
-        deepLink: `/approvals/${approval.id}`,
-        entityType: "StockCountAttempt",
-        entityId: locked.attempt.id,
-        sourceEventKey: auditEvent.id,
-        recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
-        metadata: { approvalInstanceId: approval.id, approvalStepOrder: firstStep.stepOrder }
-      });
-      return;
-    }
-
-    const ensuredAttempt = await ensureStockCountAttempt1(tx, session, count);
-    const submitted = await tx.stockCountSession.updateMany({
-      where: {
-        id: count.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocationId: count.inventoryLocationId,
-        assignedToUserId: session.user.id,
-        status: "IN_PROGRESS",
-        updatedAt: count.updatedAt,
-        version: count.version,
-        ...(ensuredAttempt.needsSessionLink ? { currentAttemptId: null } : {})
-      },
-      data: {
-        status: "SUBMITTED",
-        submittedAt: count.databaseNow,
-        ...(ensuredAttempt.needsSessionLink
-          ? { currentAttemptId: ensuredAttempt.id }
-          : {}),
-        version: { increment: 1 }
+            approvalStepOrder: firstStep.stepOrder,
+          },
+        });
+        return;
       }
-    });
-    if (submitted.count !== 1) {
-      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
-    }
-    const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
+
+      const ensuredAttempt = await ensureStockCountAttempt1(tx, session, count);
+      const submitted = await tx.stockCountSession.updateMany({
+        where: {
+          id: count.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: count.inventoryLocationId,
+          assignedToUserId: session.user.id,
+          status: "IN_PROGRESS",
+          updatedAt: count.updatedAt,
+          version: count.version,
+          ...(ensuredAttempt.needsSessionLink
+            ? { currentAttemptId: null }
+            : {}),
+        },
+        data: {
+          status: "SUBMITTED",
+          submittedAt: count.databaseNow,
+          ...(ensuredAttempt.needsSessionLink
+            ? { currentAttemptId: ensuredAttempt.id }
+            : {}),
+          version: { increment: 1 },
+        },
+      });
+      if (submitted.count !== 1) {
+        throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+      }
+      const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
          SET status = 'SUBMITTED',
              "submittedAt" = ${count.databaseNow},
@@ -2886,22 +3037,23 @@ export async function submitStockCount(formData: FormData) {
          AND status = 'IN_PROGRESS'
          AND version = ${ensuredAttempt.version}
     `);
-    if (attemptSubmitted !== 1) {
-      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
-    }
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "stock_count.submitted",
-        entityType: "StockCountSession",
-        entityId: count.id,
-        beforeData: { status: "IN_PROGRESS" },
-        afterData: { status: "SUBMITTED" }
+      if (attemptSubmitted !== 1) {
+        throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
       }
-    });
-  });
+      await tx.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "stock_count.submitted",
+          entityType: "StockCountSession",
+          entityId: count.id,
+          beforeData: { status: "IN_PROGRESS" },
+          afterData: { status: "SUBMITTED" },
+        },
+      });
+    },
+  );
 }
 
 export async function reviewStockCount(formData: FormData) {
@@ -2917,125 +3069,127 @@ export async function reviewStockCount(formData: FormData) {
   const nextStatus = "REVIEWED";
   const pilotEnabled =
     process.env.STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_V1_ENABLED === "true";
-  await withApprovalProducerTransaction({
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    documentType: "StockCountAttemptReview"
-  }, async (tx) => {
-    await lockInventoryLocationForPosting(
-      tx,
-      session,
-      target.inventoryLocationId
-    );
-    const count = await lockScopedStockCount(
-      tx,
-      session,
-      target.id,
-      target.inventoryLocationId
-    );
-    await requirePermission(session, permissions.stockCountReview);
-
-    // Once the sealed ordinary-count approval family is enabled, direct review
-    // is not an alternate terminal path. Revalidate the locked current attempt
-    // against the relational activation authority before rejecting it. This
-    // deliberately propagates missing, stale, mixed, or malformed pilot
-    // authority instead of falling through to the legacy mutation path.
-    if (pilotEnabled) {
-      const locked = await lockCurrentStockCountAttemptForApproval(
+  await withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "StockCountAttemptReview",
+    },
+    async (tx) => {
+      await lockInventoryLocationForPosting(
         tx,
         session,
-        count
+        target.inventoryLocationId,
       );
-      await classifyStockCountAttemptForPilotApproval({
+      const count = await lockScopedStockCount(
         tx,
-        stage: "REVALIDATE",
-        count: {
-          session: {
-            id: count.id,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            version: count.version,
-            status: count.status,
-            inventoryLocationId: count.inventoryLocationId,
-            locationId: session.context.locationId,
-            currentAttemptId: count.currentAttemptId
-          },
-          attempt: {
-            id: locked.attempt.id,
-            stockCountSessionId: locked.attempt.stockCountSessionId,
-            tenantId: locked.attempt.tenantId,
-            companyId: locked.attempt.companyId,
-            version: locked.attempt.version,
-            status: locked.attempt.status,
-            inventoryLocationId: locked.attempt.inventoryLocationId,
-            lines: locked.lines.map((line) => ({
-              id: line.id,
-              tenantId: line.tenantId,
-              companyId: line.companyId,
-              inventoryLocationId: line.inventoryLocationId,
-              itemId: line.itemId
-            }))
-          }
-        }
-      });
-      throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_REQUIRED");
-    }
-    await assertLegacyStockCountReviewIsAllowed(
-      tx,
-      session,
-      count,
-      "REVALIDATE"
-    );
+        session,
+        target.id,
+        target.inventoryLocationId,
+      );
+      await requirePermission(session, permissions.stockCountReview);
 
-    assertStockCountCanReview(count.status);
-    const lines = await tx.stockCountLine.findMany({
-      where: {
-        stockCountSessionId: count.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocationId: count.inventoryLocationId
-      },
-      select: {
-        countedQuantityBaseUom: true,
-        countedByUserId: true,
-        countedAt: true
+      // Once the sealed ordinary-count approval family is enabled, direct review
+      // is not an alternate terminal path. Revalidate the locked current attempt
+      // against the relational activation authority before rejecting it. This
+      // deliberately propagates missing, stale, mixed, or malformed pilot
+      // authority instead of falling through to the legacy mutation path.
+      if (pilotEnabled) {
+        const locked = await lockCurrentStockCountAttemptForApproval(
+          tx,
+          session,
+          count,
+        );
+        await classifyStockCountAttemptForPilotApproval({
+          tx,
+          stage: "REVALIDATE",
+          count: {
+            session: {
+              id: count.id,
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              version: count.version,
+              status: count.status,
+              inventoryLocationId: count.inventoryLocationId,
+              locationId: session.context.locationId,
+              currentAttemptId: count.currentAttemptId,
+            },
+            attempt: {
+              id: locked.attempt.id,
+              stockCountSessionId: locked.attempt.stockCountSessionId,
+              tenantId: locked.attempt.tenantId,
+              companyId: locked.attempt.companyId,
+              version: locked.attempt.version,
+              status: locked.attempt.status,
+              inventoryLocationId: locked.attempt.inventoryLocationId,
+              lines: locked.lines.map((line) => ({
+                id: line.id,
+                tenantId: line.tenantId,
+                companyId: line.companyId,
+                inventoryLocationId: line.inventoryLocationId,
+                itemId: line.itemId,
+              })),
+            },
+          },
+        });
+        throw new Error("STOCK_COUNT_ATTEMPT_REVIEW_APPROVAL_REQUIRED");
       }
-    });
-    assertStockCountReviewLineage({ lines });
-    assertStockCountReviewerSegregation({
-      reviewerUserId: session.user.id,
-      createdByUserId: count.createdByUserId,
-      countedByUserIds: lines.map((line) => line.countedByUserId)
-    });
-    const reviewed = await tx.stockCountSession.updateMany({
-      where: {
-        id: count.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocationId: count.inventoryLocationId,
-        status: "SUBMITTED",
-        updatedAt: count.updatedAt,
-        version: count.version
-      },
-      data: {
-        status: nextStatus,
-        reviewedAt: count.databaseNow,
-        reviewedByUserId: session.user.id,
-        reviewNotes: values.reviewNotes,
-        version: { increment: 1 }
+      await assertLegacyStockCountReviewIsAllowed(
+        tx,
+        session,
+        count,
+        "REVALIDATE",
+      );
+
+      assertStockCountCanReview(count.status);
+      const lines = await tx.stockCountLine.findMany({
+        where: {
+          stockCountSessionId: count.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: count.inventoryLocationId,
+        },
+        select: {
+          countedQuantityBaseUom: true,
+          countedByUserId: true,
+          countedAt: true,
+        },
+      });
+      assertStockCountReviewLineage({ lines });
+      assertStockCountReviewerSegregation({
+        reviewerUserId: session.user.id,
+        createdByUserId: count.createdByUserId,
+        countedByUserIds: lines.map((line) => line.countedByUserId),
+      });
+      const reviewed = await tx.stockCountSession.updateMany({
+        where: {
+          id: count.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: count.inventoryLocationId,
+          status: "SUBMITTED",
+          updatedAt: count.updatedAt,
+          version: count.version,
+        },
+        data: {
+          status: nextStatus,
+          reviewedAt: count.databaseNow,
+          reviewedByUserId: session.user.id,
+          reviewNotes: values.reviewNotes,
+          version: { increment: 1 },
+        },
+      });
+      if (reviewed.count !== 1) {
+        throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
       }
-    });
-    if (reviewed.count !== 1) {
-      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
-    }
-    const attemptId = count.currentAttemptId;
-    if (!attemptId) {
-      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
-    }
-    if (count.currentAttemptVersion === null) {
-      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
-    }
-    const attemptReviewed = await tx.$executeRaw(Prisma.sql`
+      const attemptId = count.currentAttemptId;
+      if (!attemptId) {
+        throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+      }
+      if (count.currentAttemptVersion === null) {
+        throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+      }
+      const attemptReviewed = await tx.$executeRaw(Prisma.sql`
       UPDATE "StockCountAttempt"
          SET status = ${nextStatus},
              "reviewedAt" = ${count.databaseNow},
@@ -3050,23 +3204,24 @@ export async function reviewStockCount(formData: FormData) {
          AND status = 'SUBMITTED'
          AND version = ${count.currentAttemptVersion}
     `);
-    if (attemptReviewed !== 1) {
-      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
-    }
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "stock_count.reviewed",
-        entityType: "StockCountSession",
-        entityId: count.id,
-        beforeData: { status: "SUBMITTED" },
-        afterData: { status: nextStatus },
-        metadata: { reviewNotes: values.reviewNotes }
+      if (attemptReviewed !== 1) {
+        throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
       }
-    });
-  });
+      await tx.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "stock_count.reviewed",
+          entityType: "StockCountSession",
+          entityId: count.id,
+          beforeData: { status: "SUBMITTED" },
+          afterData: { status: nextStatus },
+          metadata: { reviewNotes: values.reviewNotes },
+        },
+      });
+    },
+  );
 }
 
 async function assertLiveStockCountRecoveryAuthority(
@@ -3076,7 +3231,7 @@ async function assertLiveStockCountRecoveryAuthority(
     inventoryLocationId: string;
     assignedToUserId: string;
     prohibitedActorIds: ReadonlySet<string>;
-  }
+  },
 ) {
   const now = new Date();
   const inventoryLocation = await tx.inventoryLocation.findFirst({
@@ -3084,20 +3239,24 @@ async function assertLiveStockCountRecoveryAuthority(
       id: input.inventoryLocationId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      locationId: session.context.locationId
+      locationId: session.context.locationId,
     },
-    select: { locationId: true }
+    select: { locationId: true },
   });
   if (!inventoryLocation) throw new Error("STOCK_COUNT_NOT_FOUND");
 
   const assertActor = async (
     userId: string,
     requiredPermissionCodes: string[],
-    errorCode: string
+    errorCode: string,
   ) => {
     const user = await tx.user.findFirst({
-      where: { id: userId, tenantId: session.context.tenantId, status: "ACTIVE" },
-      select: { privilegeEpoch: true }
+      where: {
+        id: userId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE",
+      },
+      select: { privilegeEpoch: true },
     });
     if (!user) throw new Error(errorCode);
     const assignments = await tx.userRoleAssignment.findMany({
@@ -3108,21 +3267,21 @@ async function assertLiveStockCountRecoveryAuthority(
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
         role: {
           status: "ACTIVE",
-          OR: [{ tenantId: null }, { tenantId: session.context.tenantId }]
-        }
+          OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+        },
       },
       select: {
         role: {
           select: {
-            permissions: { select: { permission: { select: { code: true } } } }
-          }
-        }
-      }
+            permissions: { select: { permission: { select: { code: true } } } },
+          },
+        },
+      },
     });
     const codes = new Set(
       assignments.flatMap((assignment) =>
-        assignment.role.permissions.map(({ permission }) => permission.code)
-      )
+        assignment.role.permissions.map(({ permission }) => permission.code),
+      ),
     );
     if (requiredPermissionCodes.some((code) => !codes.has(code))) {
       throw new Error(errorCode);
@@ -3137,13 +3296,13 @@ async function assertLiveStockCountRecoveryAuthority(
           {
             OR: [
               { scopeType: "LOCATION", scopeId: inventoryLocation.locationId },
-              { scopeType: "COMPANY", scopeId: session.context.companyId }
-            ]
-          }
+              { scopeType: "COMPANY", scopeId: session.context.companyId },
+            ],
+          },
         ],
-        accessLevel: { in: ["OPERATE", "APPROVE", "MANAGE"] }
+        accessLevel: { in: ["OPERATE", "APPROVE", "MANAGE"] },
       },
-      select: { id: true }
+      select: { id: true },
     });
     if (!scope) throw new Error(errorCode);
     return user;
@@ -3152,12 +3311,12 @@ async function assertLiveStockCountRecoveryAuthority(
   const actor = await assertActor(
     session.user.id,
     [permissions.stockCountRecovery],
-    "STOCK_COUNT_RECOVERY_AUTHORITY_STALE"
+    "STOCK_COUNT_RECOVERY_AUTHORITY_STALE",
   );
   await assertActor(
     input.assignedToUserId,
     [permissions.stockCountEnter, permissions.stockCountSubmit],
-    "STOCK_COUNT_RECOUNT_ASSIGNEE_NOT_ELIGIBLE"
+    "STOCK_COUNT_RECOUNT_ASSIGNEE_NOT_ELIGIBLE",
   );
   if (input.prohibitedActorIds.has(input.assignedToUserId)) {
     throw new Error("STOCK_COUNT_RECOUNT_ASSIGNEE_SEGREGATION_REQUIRED");
@@ -3176,9 +3335,9 @@ async function assertLiveStockCountRecoveryAuthority(
       mfaAuthenticatedAt: { not: null },
       idleExpiresAt: { gt: now },
       absoluteExpiresAt: { gt: now },
-      revokedAt: null
+      revokedAt: null,
     },
-    select: { id: true, mfaAuthenticatedAt: true }
+    select: { id: true, mfaAuthenticatedAt: true },
   });
   if (!authSession?.mfaAuthenticatedAt) {
     throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
@@ -3188,7 +3347,7 @@ async function assertLiveStockCountRecoveryAuthority(
 
 export async function requestStockCountRecount(
   rawInput: unknown,
-  providedSession?: SessionContext
+  providedSession?: SessionContext,
 ) {
   const session = providedSession ?? (await requireSessionContext());
   await requirePermission(session, permissions.stockCountRecovery);
@@ -3204,8 +3363,8 @@ export async function requestStockCountRecount(
     assertLiveStockCountRecoveryAuthority(tx, session, {
       inventoryLocationId: target.inventoryLocationId,
       assignedToUserId: input.assignedToUserId,
-      prohibitedActorIds: new Set()
-    })
+      prohibitedActorIds: new Set(),
+    }),
   );
   const buildRequest = (source: {
     stockCountSessionId: string;
@@ -3223,15 +3382,15 @@ export async function requestStockCountRecount(
     reason: input.reason,
     evidenceReference: input.evidenceReference,
     idempotencyKey: input.idempotencyKey,
-    cutoffDisposition: "NEW_CUTOFF"
+    cutoffDisposition: "NEW_CUTOFF",
   });
   const existing = await prisma.stockCountRecountTransition.findUnique({
     where: {
       tenantId_companyId_idempotencyKey: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        idempotencyKey: input.idempotencyKey
-      }
+        idempotencyKey: input.idempotencyKey,
+      },
     },
     select: {
       id: true,
@@ -3246,8 +3405,8 @@ export async function requestStockCountRecount(
       reviewConfigurationDigest: true,
       reviewActivationEventId: true,
       reviewActivationGeneration: true,
-      sourceAttempt: { select: { attemptNumber: true } }
-    }
+      sourceAttempt: { select: { attemptNumber: true } },
+    },
   });
   if (existing) {
     if (
@@ -3260,7 +3419,7 @@ export async function requestStockCountRecount(
     const replayRequest = buildRequest({
       stockCountSessionId: existing.stockCountSessionId,
       sourceAttemptId: existing.sourceAttemptId,
-      sourceAttemptNumber: existing.sourceAttempt.attemptNumber
+      sourceAttemptNumber: existing.sourceAttempt.attemptNumber,
     });
     if (existing.requestHash.trim() !== inventoryPilotDigest(replayRequest)) {
       throw new Error("STOCK_COUNT_RECOUNT_IDEMPOTENCY_CONFLICT");
@@ -3269,7 +3428,7 @@ export async function requestStockCountRecount(
       await assertLiveStockCountRecoveryAuthority(tx, session, {
         inventoryLocationId: target.inventoryLocationId,
         assignedToUserId: input.assignedToUserId,
-        prohibitedActorIds: new Set()
+        prohibitedActorIds: new Set(),
       });
       await assertPrivilegedMfaForAction(
         session,
@@ -3279,19 +3438,20 @@ export async function requestStockCountRecount(
           permissionCode: permissions.stockCountRecovery,
           entityType: "StockCountSession",
           entityId: input.id,
-          reason: input.reason
+          reason: input.reason,
         },
-        { transaction: tx, forceEnforcement: true }
+        { transaction: tx, forceEnforcement: true },
       );
-      const currentActivation = await tx.inventoryPilotFamilyActivation.findUnique({
-        where: {
-          tenantId_companyId_family: {
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            family: "StockCountAttemptReview"
-          }
-        }
-      });
+      const currentActivation =
+        await tx.inventoryPilotFamilyActivation.findUnique({
+          where: {
+            tenantId_companyId_family: {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              family: "StockCountAttemptReview",
+            },
+          },
+        });
       if (
         !currentActivation ||
         currentActivation.status !== "ACTIVE" ||
@@ -3311,7 +3471,7 @@ export async function requestStockCountRecount(
     return {
       transitionId: existing.id,
       successorAttemptId: existing.successorAttemptId,
-      replayed: true
+      replayed: true,
     };
   }
   const preflight = await prisma.stockCountSession.findFirst({
@@ -3319,7 +3479,7 @@ export async function requestStockCountRecount(
       ...scopedStockCountWhere(session, input.id),
       inventoryLocationId: target.inventoryLocationId,
       status: "REVIEWED",
-      currentAttemptId: { not: null }
+      currentAttemptId: { not: null },
     },
     select: {
       id: true,
@@ -3332,18 +3492,18 @@ export async function requestStockCountRecount(
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { id: true }
-          }
-        }
-      }
-    }
+            select: { id: true },
+          },
+        },
+      },
+    },
   });
   if (!preflight?.currentAttempt) throw new Error("STOCK_COUNT_NOT_FOUND");
   const sourcePreflight = preflight.currentAttempt;
   const request = buildRequest({
     stockCountSessionId: preflight.id,
     sourceAttemptId: sourcePreflight.id,
-    sourceAttemptNumber: sourcePreflight.attemptNumber
+    sourceAttemptNumber: sourcePreflight.attemptNumber,
   });
   const requestCanonicalJson = inventoryPilotCanonicalJson(request);
   const requestHash = inventoryPilotDigest(request);
@@ -3352,7 +3512,7 @@ export async function requestStockCountRecount(
     {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      documentType: "StockAdjustment"
+      documentType: "StockAdjustment",
     },
     async (tx) => {
       type LockedAdjustment = {
@@ -3391,9 +3551,12 @@ export async function requestStockCountRecount(
           `)
         : [];
       const adjustment = adjustmentRows[0] ?? null;
-      if (adjustmentId && !adjustment) throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_NOT_AVAILABLE");
+      if (adjustmentId && !adjustment)
+        throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_NOT_AVAILABLE");
 
-      const locationScopeRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      const locationScopeRows = await tx.$queryRaw<
+        Array<{ id: string }>
+      >(Prisma.sql`
         SELECT il.id
           FROM "InventoryLocation" il
           JOIN "Location" l
@@ -3406,7 +3569,8 @@ export async function requestStockCountRecount(
            AND l.id = ${session.context.locationId}::uuid
          FOR SHARE OF il, l
       `);
-      if (locationScopeRows.length !== 1) throw new Error("STOCK_COUNT_NOT_FOUND");
+      if (locationScopeRows.length !== 1)
+        throw new Error("STOCK_COUNT_NOT_FOUND");
       const lockedAdjustmentLines = adjustment
         ? await tx.$queryRaw<LockedAdjustmentLine[]>(Prisma.sql`
             SELECT id, "postedMovementId"
@@ -3458,8 +3622,17 @@ export async function requestStockCountRecount(
           `)
         : [];
 
-      await lockInventoryLocationForPosting(tx, session, target.inventoryLocationId);
-      const count = await lockScopedStockCount(tx, session, target.id, target.inventoryLocationId);
+      await lockInventoryLocationForPosting(
+        tx,
+        session,
+        target.inventoryLocationId,
+      );
+      const count = await lockScopedStockCount(
+        tx,
+        session,
+        target.id,
+        target.inventoryLocationId,
+      );
       if (
         count.status !== "REVIEWED" ||
         count.version !== input.expectedSessionVersion ||
@@ -3468,17 +3641,19 @@ export async function requestStockCountRecount(
       ) {
         throw new Error("STOCK_COUNT_RECOUNT_STALE_VERSION");
       }
-      const attempts = await tx.$queryRaw<Array<{
-        id: string;
-        attemptNumber: number;
-        status: string;
-        version: number;
-        blindCount: boolean;
-        freezeMovements: boolean;
-        createdByUserId: string;
-        assignedToUserId: string | null;
-        reviewedByUserId: string | null;
-      }>>(Prisma.sql`
+      const attempts = await tx.$queryRaw<
+        Array<{
+          id: string;
+          attemptNumber: number;
+          status: string;
+          version: number;
+          blindCount: boolean;
+          freezeMovements: boolean;
+          createdByUserId: string;
+          assignedToUserId: string | null;
+          reviewedByUserId: string | null;
+        }>
+      >(Prisma.sql`
         SELECT id, "attemptNumber", status, version, "blindCount",
                "freezeMovements", "createdByUserId", "assignedToUserId",
                "reviewedByUserId"
@@ -3494,9 +3669,13 @@ export async function requestStockCountRecount(
       if (!sourceAttempt || sourceAttempt.status !== "REVIEWED") {
         throw new Error("STOCK_COUNT_RECOUNT_SOURCE_NOT_REVIEWED");
       }
-      const custodyRows = await tx.$queryRaw<Array<StockCountRecountAuthorityLine & {
-        userId: string | null;
-      }>>(Prisma.sql`
+      const custodyRows = await tx.$queryRaw<
+        Array<
+          StockCountRecountAuthorityLine & {
+            userId: string | null;
+          }
+        >
+      >(Prisma.sql`
         SELECT id, "tenantId", "companyId", "inventoryLocationId", "itemId",
                "countedByUserId" AS "userId"
           FROM "StockCountAttemptLine"
@@ -3521,9 +3700,9 @@ export async function requestStockCountRecount(
             tenantId: line.tenantId,
             companyId: line.companyId,
             inventoryLocationId: line.inventoryLocationId,
-            itemId: line.itemId
-          }))
-        }
+            itemId: line.itemId,
+          })),
+        },
       );
       const adjustmentOutcomeRecipientIds = new Set<string>([session.user.id]);
       const recoveryActorConflicts = new Set(
@@ -3532,15 +3711,17 @@ export async function requestStockCountRecount(
           count.assignedToUserId,
           sourceAttempt.createdByUserId,
           sourceAttempt.assignedToUserId,
-          ...custodyRows.map(({ userId }) => userId)
-        ].filter((value): value is string => Boolean(value))
+          ...custodyRows.map(({ userId }) => userId),
+        ].filter((value): value is string => Boolean(value)),
       );
       if (adjustment) {
         recoveryActorConflicts.add(adjustment.requestedByUserId);
         adjustmentOutcomeRecipientIds.add(adjustment.requestedByUserId);
         for (const step of lockedAdjustmentApprovalSteps) {
-          if (step.actedByUserId) recoveryActorConflicts.add(step.actedByUserId);
-          if (step.actedByUserId) adjustmentOutcomeRecipientIds.add(step.actedByUserId);
+          if (step.actedByUserId)
+            recoveryActorConflicts.add(step.actedByUserId);
+          if (step.actedByUserId)
+            adjustmentOutcomeRecipientIds.add(step.actedByUserId);
           if (step.assignedUserId) {
             adjustmentOutcomeRecipientIds.add(step.assignedUserId);
           }
@@ -3555,13 +3736,17 @@ export async function requestStockCountRecount(
         ...(count.reviewedByUserId ? [count.reviewedByUserId] : []),
         ...(sourceAttempt.reviewedByUserId
           ? [sourceAttempt.reviewedByUserId]
-          : [])
+          : []),
       ]);
-      const authSession = await assertLiveStockCountRecoveryAuthority(tx, session, {
-        inventoryLocationId: count.inventoryLocationId,
-        assignedToUserId: input.assignedToUserId,
-        prohibitedActorIds: assigneeProhibitedActorIds
-      });
+      const authSession = await assertLiveStockCountRecoveryAuthority(
+        tx,
+        session,
+        {
+          inventoryLocationId: count.inventoryLocationId,
+          assignedToUserId: input.assignedToUserId,
+          prohibitedActorIds: assigneeProhibitedActorIds,
+        },
+      );
       await assertPrivilegedMfaForAction(
         session,
         {
@@ -3570,18 +3755,23 @@ export async function requestStockCountRecount(
           permissionCode: permissions.stockCountRecovery,
           entityType: "StockCountSession",
           entityId: count.id,
-          reason: input.reason
+          reason: input.reason,
         },
-        { transaction: tx, forceEnforcement: true }
+        { transaction: tx, forceEnforcement: true },
       );
 
       let adjustmentDisposition = "NONE";
       if (adjustment) {
-        if (adjustment.inventoryLocationId !== count.inventoryLocationId || adjustment.adjustmentType !== "COUNT_VARIANCE") {
+        if (
+          adjustment.inventoryLocationId !== count.inventoryLocationId ||
+          adjustment.adjustmentType !== "COUNT_VARIANCE"
+        ) {
           throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_NOT_AVAILABLE");
         }
-        if (adjustment.status === "CANCELLED") adjustmentDisposition = "CANCELLED_UNPOSTED";
-        else if (adjustment.status === "REVERSED") adjustmentDisposition = "REVERSED_POSTED";
+        if (adjustment.status === "CANCELLED")
+          adjustmentDisposition = "CANCELLED_UNPOSTED";
+        else if (adjustment.status === "REVERSED")
+          adjustmentDisposition = "REVERSED_POSTED";
         else if (adjustment.status === "APPROVED" && !adjustment.postedAt) {
           const approval = lockedAdjustmentApprovals[0];
           if (
@@ -3589,10 +3779,12 @@ export async function requestStockCountRecount(
             approval.status !== "APPROVED" ||
             lockedAdjustmentApprovalSteps.length === 0 ||
             lockedAdjustmentApprovalSteps.some(
-              (step) => !["APPROVED", "SKIPPED"].includes(step.status)
+              (step) => !["APPROVED", "SKIPPED"].includes(step.status),
             )
           ) {
-            throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_APPROVAL_NOT_TERMINAL");
+            throw new Error(
+              "STOCK_COUNT_RECOVERY_ADJUSTMENT_APPROVAL_NOT_TERMINAL",
+            );
           }
           if (
             lockedAdjustmentLines.length === 0 ||
@@ -3606,16 +3798,21 @@ export async function requestStockCountRecount(
           if (actionableAdjustmentNotifications.length > 0) {
             const archivedNotifications = await tx.notification.updateMany({
               where: {
-                id: { in: actionableAdjustmentNotifications.map(({ id }) => id) },
+                id: {
+                  in: actionableAdjustmentNotifications.map(({ id }) => id),
+                },
                 tenantId: session.context.tenantId,
                 companyId: session.context.companyId,
                 entityType: "StockAdjustment",
                 entityId: adjustment.id,
-                archivedAt: null
+                archivedAt: null,
               },
-              data: { status: "ARCHIVED", archivedAt: count.databaseNow }
+              data: { status: "ARCHIVED", archivedAt: count.databaseNow },
             });
-            if (archivedNotifications.count !== actionableAdjustmentNotifications.length) {
+            if (
+              archivedNotifications.count !==
+              actionableAdjustmentNotifications.length
+            ) {
               throw new Error("STOCK_COUNT_RECOVERY_NOTIFICATION_CONFLICT");
             }
           }
@@ -3627,19 +3824,24 @@ export async function requestStockCountRecount(
               inventoryLocationId: count.inventoryLocationId,
               status: "APPROVED",
               postedAt: null,
-              postedByUserId: null
+              postedByUserId: null,
             },
             data: {
               status: "VOIDED_FOR_RECOUNT",
               voidedForRecountByUserId: session.user.id,
               voidedForRecountAt: count.databaseNow,
               voidedForRecountReason: input.reason,
-              voidedForRecountEvidenceReference: input.evidenceReference
-            }
+              voidedForRecountEvidenceReference: input.evidenceReference,
+            },
           });
-          if (voided.count !== 1) throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_CONFLICT");
+          if (voided.count !== 1)
+            throw new Error("STOCK_COUNT_RECOVERY_ADJUSTMENT_CONFLICT");
           adjustmentDisposition = "VOIDED_APPROVED_UNPOSTED";
-        } else if (["DRAFT", "SUBMITTED", "RETURNED", "PENDING_APPROVAL"].includes(adjustment.status)) {
+        } else if (
+          ["DRAFT", "SUBMITTED", "RETURNED", "PENDING_APPROVAL"].includes(
+            adjustment.status,
+          )
+        ) {
           throw new Error("STOCK_COUNT_RECOVERY_CANCEL_ADJUSTMENT_FIRST");
         } else if (adjustment.status === "POSTED") {
           throw new Error("STOCK_COUNT_RECOVERY_REVERSE_ADJUSTMENT_FIRST");
@@ -3661,9 +3863,9 @@ export async function requestStockCountRecount(
           reason: input.reason,
           evidenceReference: input.evidenceReference,
           createdByUserId: session.user.id,
-          assignedToUserId: input.assignedToUserId
+          assignedToUserId: input.assignedToUserId,
         },
-        select: { id: true }
+        select: { id: true },
       });
       const transition = await tx.stockCountRecountTransition.create({
         data: {
@@ -3694,9 +3896,9 @@ export async function requestStockCountRecount(
           reviewActivationEventId: reviewAuthority.activationEventId,
           reviewActivationFamily: reviewAuthority.family,
           reviewActivationStatus: "ACTIVE",
-          reviewActivationGeneration: reviewAuthority.activationGeneration
+          reviewActivationGeneration: reviewAuthority.activationGeneration,
         },
-        select: { id: true }
+        select: { id: true },
       });
       const moved = await tx.stockCountSession.updateMany({
         where: {
@@ -3706,16 +3908,17 @@ export async function requestStockCountRecount(
           inventoryLocationId: count.inventoryLocationId,
           status: "REVIEWED",
           currentAttemptId: sourceAttempt.id,
-          version: input.expectedSessionVersion
+          version: input.expectedSessionVersion,
         },
         data: {
           status: "RECOUNT_REQUESTED",
           currentAttemptId: successor.id,
           assignedToUserId: input.assignedToUserId,
-          version: { increment: 1 }
-        }
+          version: { increment: 1 },
+        },
       });
-      if (moved.count !== 1) throw new Error("STOCK_COUNT_RECOUNT_STALE_VERSION");
+      if (moved.count !== 1)
+        throw new Error("STOCK_COUNT_RECOUNT_STALE_VERSION");
       await tx.auditEvent.create({
         data: {
           tenantId: session.context.tenantId,
@@ -3724,14 +3927,20 @@ export async function requestStockCountRecount(
           eventType: "stock_count.recount_requested",
           entityType: "StockCountSession",
           entityId: count.id,
-          beforeData: { status: "REVIEWED", currentAttemptId: sourceAttempt.id },
-          afterData: { status: "RECOUNT_REQUESTED", currentAttemptId: successor.id },
+          beforeData: {
+            status: "REVIEWED",
+            currentAttemptId: sourceAttempt.id,
+          },
+          afterData: {
+            status: "RECOUNT_REQUESTED",
+            currentAttemptId: successor.id,
+          },
           metadata: {
             transitionId: transition.id,
             adjustmentDisposition,
-            cutoffDisposition: "NEW_CUTOFF"
-          }
-        }
+            cutoffDisposition: "NEW_CUTOFF",
+          },
+        },
       });
       await recordWorkflowNotifications(tx, {
         tenantId: session.context.tenantId,
@@ -3746,7 +3955,7 @@ export async function requestStockCountRecount(
         entityType: "StockCountSession",
         entityId: count.id,
         sourceEventKey: `stock-count-recount:${transition.id}:assigned`,
-        recipientBasis: "ASSIGNED_RECOUNT_COUNTER"
+        recipientBasis: "ASSIGNED_RECOUNT_COUNTER",
       });
       if (adjustment && adjustmentDisposition !== "NONE") {
         await recordWorkflowNotifications(tx, {
@@ -3757,8 +3966,7 @@ export async function requestStockCountRecount(
           notificationType: "STOCK_COUNT_RECOUNT_RECOVERY_OUTCOME",
           priority: "HIGH",
           title: "Stock-count recovery recorded",
-          body:
-            "A linked count-variance adjustment reached a protected terminal disposition before a recount was assigned.",
+          body: "A linked count-variance adjustment reached a protected terminal disposition before a recount was assigned.",
           deepLink: `/counts/${count.id}`,
           entityType: "StockAdjustment",
           entityId: adjustment.id,
@@ -3767,12 +3975,16 @@ export async function requestStockCountRecount(
           metadata: {
             stockCountSessionId: count.id,
             transitionId: transition.id,
-            adjustmentDisposition
-          }
+            adjustmentDisposition,
+          },
         });
       }
-      return { transitionId: transition.id, successorAttemptId: successor.id, replayed: false };
-    }
+      return {
+        transitionId: transition.id,
+        successorAttemptId: successor.id,
+        replayed: false,
+      };
+    },
   );
 }
 
@@ -3787,13 +3999,13 @@ export async function cancelStockCount(formData: FormData) {
     await lockInventoryLocationForPosting(
       tx,
       session,
-      target.inventoryLocationId
+      target.inventoryLocationId,
     );
     const count = await lockScopedStockCount(
       tx,
       session,
       target.id,
-      target.inventoryLocationId
+      target.inventoryLocationId,
     );
     await requirePermission(session, permissions.stockCountCancel);
     assertStockCountCanCancel(count.status);
@@ -3806,20 +4018,23 @@ export async function cancelStockCount(formData: FormData) {
     // coherently even after the default-off switch is restored. Keep the lock
     // order source -> intent -> graph: terminal approval paths take the same
     // source lock before changing either graph or source state.
-    const pendingIntent = count.status === "SUBMITTED"
-      ? await tx.$queryRaw<Array<{
-          id: string;
-          approvalInstanceId: string;
-          stockCountAttemptId: string;
-          stockCountSessionId: string;
-          attemptVersionBefore: number;
-          attemptVersionAfter: number;
-          sessionVersionBefore: number;
-          sessionVersionAfter: number;
-          approvalDocumentType: string;
-          activationFamily: string;
-          activationStatus: string;
-        }>>(Prisma.sql`
+    const pendingIntent =
+      count.status === "SUBMITTED"
+        ? await tx.$queryRaw<
+            Array<{
+              id: string;
+              approvalInstanceId: string;
+              stockCountAttemptId: string;
+              stockCountSessionId: string;
+              attemptVersionBefore: number;
+              attemptVersionAfter: number;
+              sessionVersionBefore: number;
+              sessionVersionAfter: number;
+              approvalDocumentType: string;
+              activationFamily: string;
+              activationStatus: string;
+            }>
+          >(Prisma.sql`
           SELECT i.id, i."approvalInstanceId", i."stockCountAttemptId",
                  i."stockCountSessionId", i."attemptVersionBefore",
                  i."attemptVersionAfter", i."sessionVersionBefore",
@@ -3832,9 +4047,10 @@ export async function cancelStockCount(formData: FormData) {
              AND i."stockCountSessionId" = ${count.id}::uuid
            ORDER BY i."createdAt" ASC, i.id ASC
         `)
-      : [];
-    const pendingGraphs = count.status === "SUBMITTED"
-      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        : [];
+    const pendingGraphs =
+      count.status === "SUBMITTED"
+        ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
           SELECT ai.id
             FROM "ApprovalInstance" ai
            WHERE ai."tenantId" = ${session.context.tenantId}::uuid
@@ -3845,8 +4061,11 @@ export async function cancelStockCount(formData: FormData) {
            ORDER BY ai.id ASC
            FOR UPDATE OF ai
         `)
-      : [];
-    if (pendingIntent.length !== pendingGraphs.length || pendingIntent.length > 1) {
+        : [];
+    if (
+      pendingIntent.length !== pendingGraphs.length ||
+      pendingIntent.length > 1
+    ) {
       throw new Error("STOCK_COUNT_CANCELLATION_APPROVAL_LINEAGE_CONFLICT");
     }
     const intent = pendingIntent[0];
@@ -3876,7 +4095,7 @@ export async function cancelStockCount(formData: FormData) {
           policy: "APPROVAL_REQUIRED",
           // Admission is durable evidence. A later flag disable cannot strand
           // an in-flight normalized graph.
-          forceWhenDisabled: true
+          forceWhenDisabled: true,
         })
       : null;
     if (
@@ -3894,14 +4113,14 @@ export async function cancelStockCount(formData: FormData) {
         inventoryLocationId: count.inventoryLocationId,
         status: count.status,
         updatedAt: count.updatedAt,
-        version: count.version
+        version: count.version,
       },
       data: {
         status: "CANCELLED",
         cancelledAt: count.databaseNow,
         cancellationReason: values.cancellationReason,
-        version: { increment: 1 }
-      }
+        version: { increment: 1 },
+      },
     });
     if (cancelled.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
@@ -3937,9 +4156,9 @@ export async function cancelStockCount(formData: FormData) {
         afterData: { status: "CANCELLED" },
         metadata: {
           reason: values.cancellationReason,
-          approvalInstanceId: intent?.approvalInstanceId ?? null
-        }
-      }
+          approvalInstanceId: intent?.approvalInstanceId ?? null,
+        },
+      },
     });
   });
 }
@@ -3960,13 +4179,13 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
         await lockInventoryLocationForPosting(
           tx,
           session,
-          target.inventoryLocationId
+          target.inventoryLocationId,
         );
         const locked = await lockScopedStockCount(
           tx,
           session,
           target.id,
-          target.inventoryLocationId
+          target.inventoryLocationId,
         );
         await requirePermission(session, permissions.stockAdjustmentCreate);
         assertStockCountCanGenerateAdjustment(locked.status);
@@ -3975,9 +4194,9 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
           where: {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            sourceStockCountSessionId: locked.id
+            sourceStockCountSessionId: locked.id,
           },
-          select: { id: true }
+          select: { id: true },
         });
         if (existing) {
           return existing;
@@ -3989,7 +4208,7 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             inventoryLocationId: locked.inventoryLocationId,
-            status: "REVIEWED"
+            status: "REVIEWED",
           },
           select: {
             id: true,
@@ -4010,11 +4229,11 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
                 notes: true,
                 uom: { select: { uomCode: true } },
                 attemptLineMigration: {
-                  select: { id: true, stockCountAttemptId: true }
-                }
-              }
-            }
-          }
+                  select: { id: true, stockCountAttemptId: true },
+                },
+              },
+            },
+          },
         });
         if (!count) {
           throw new Error("STOCK_COUNT_NOT_REVIEWED_FOR_ADJUSTMENT");
@@ -4026,10 +4245,13 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
         if (!count.currentAttemptId) {
           throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
         }
-        if (varianceLines.some(
-          (line) =>
-            line.attemptLineMigration?.stockCountAttemptId !== count.currentAttemptId
-        )) {
+        if (
+          varianceLines.some(
+            (line) =>
+              line.attemptLineMigration?.stockCountAttemptId !==
+              count.currentAttemptId,
+          )
+        ) {
           throw new Error("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
         }
 
@@ -4039,7 +4261,7 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             companyId: session.context.companyId,
             inventoryLocationId: count.inventoryLocationId,
             publicReference: await nextStockAdjustmentReference(
-              session.context.companyId
+              session.context.companyId,
             ),
             requestedByUserId: session.user.id,
             adjustmentType: "COUNT_VARIANCE",
@@ -4049,8 +4271,8 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             sourceDocumentId: count.id,
             sourceStockCountSessionId: count.id,
             sourceStockCountAttemptId: count.currentAttemptId,
-            totalEstimatedValueImpact: 0
-          }
+            totalEstimatedValueImpact: 0,
+          },
         });
 
         await tx.stockAdjustmentLine.createMany({
@@ -4058,7 +4280,7 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             const quantityDeltaBaseUom = Number(line.varianceQuantityBaseUom);
             const lotKey = normalizeInventoryLotKey(
               line.lotNumber,
-              line.expiryDate
+              line.expiryDate,
             );
 
             return {
@@ -4081,9 +4303,10 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
                 line.notes ??
                 `Counted ${Number(line.countedQuantityBaseUom)} ${line.uom.uomCode}`,
               sourceStockCountLineId: line.id,
-              sourceStockCountAttemptLineId: line.attemptLineMigration?.id ?? null
+              sourceStockCountAttemptLineId:
+                line.attemptLineMigration?.id ?? null,
             };
-          })
+          }),
         });
 
         await tx.auditEvent.create({
@@ -4097,9 +4320,9 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             metadata: {
               adjustmentId: created.id,
               lineCount: varianceLines.length,
-              nonPostingAdjustment: true
-            }
-          }
+              nonPostingAdjustment: true,
+            },
+          },
         });
 
         await tx.auditEvent.create({
@@ -4115,9 +4338,9 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
               stockCountSessionId: count.id,
               stockCountReference: count.publicReference,
               lineCount: varianceLines.length,
-              approvalAndPostingRequired: true
-            }
-          }
+              approvalAndPostingRequired: true,
+            },
+          },
         });
 
         return created;

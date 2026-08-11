@@ -66,6 +66,10 @@ const workspacePolicies = {
   quotes: ["purchasing.quote.manage", ["TENANT", "COMPANY", "LOCATION", "DEPARTMENT"]],
   receiving: ["inventory.receiving.view", ["TENANT", "COMPANY", "LOCATION"]],
   recipes: ["restaurant.recipe.view", ["TENANT", "COMPANY", "BRAND", "LOCATION"]],
+  servings: [
+    "restaurant.consumption.view",
+    ["TENANT", "COMPANY", "BRAND", "LOCATION"],
+  ],
   reports: ["SERVICE_ENFORCED", ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"]],
   suppliers: ["SERVICE_ENFORCED", ["TENANT", "COMPANY"]],
   transfers: ["inventory.transfer.view", ["TENANT", "COMPANY", "LOCATION"]],
@@ -102,7 +106,10 @@ const highRiskActionPattern =
   /^(activate|add|apply|approve|archive|assign|attest|begin|cancel|close|complete|create|deactivate|decide|delete|dispatch|end|execute|finalize|fulfill|grant|import|initiate|issue|link|lock|log|manage|mark|notify|post|publish|reassign|receive|record|reject|release|remove|reopen|request|resolve|retry|return|review|revoke|reverse|save|send|set|submit|transition|unlink|update|upload|upsert|verify|void|waive)/i;
 const highRiskDisclosurePattern =
   /^(build.*export|download|export|getApprovalRuleVersionForComposer|getInventoryBalanceDashboardRead|getUnreadNotificationCount|listApprovalRuleComposerOptions|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
-const standardServiceEntrypointNames = new Set(["verifyPassword"]);
+const standardServiceEntrypointNames = new Set([
+  "assertLocalUatDatabaseAdmission",
+  "verifyPassword",
+]);
 const reviewedHighRiskServiceEntrypointNames = new Set([
   "getPurchaseRequestDraftOptions",
 ]);
@@ -110,6 +117,10 @@ const reviewedNonCallableServiceReexports = new Set([
   "server/services/expansionProjects.ts|./expansionProjectTypes|expansionProjectTypes|expansionProjectTypes",
 ]);
 const reviewedServicePermissionOverrides = new Map([
+  [
+    "server/services/authentication.ts#getConfiguredLoginOrganization",
+    "authentication.server_configured_tenant",
+  ],
   ["server/services/myTasks.ts#getMyTasksPage", "SERVICE_ENFORCED"],
   ["server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
   ["server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
@@ -120,6 +131,19 @@ const reviewedServicePermissionOverrides = new Map([
 ]);
 
 const reviewedServiceAuthorizationMetadataOverrides = new Map([
+  [
+    "server/services/authentication.ts#getConfiguredLoginOrganization",
+    {
+      dimensions: ["TENANT"],
+      guardChain: [
+        "server-owned-login-tenant-configuration",
+        "active-tenant-lookup",
+        "minimal-public-organization-projection",
+      ],
+      denialContract: "GENERIC_LOGIN_CONFIGURATION_ERROR_NO_TENANT_DIRECTORY",
+      permissionSource: "REVIEWED_SERVICE_COMPOSITION",
+    },
+  ],
   ...[
     "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
     "server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill",
@@ -822,7 +846,9 @@ export function analyzeExportedServiceEntrypoints(
   return discoverExportedAsyncServiceEntrypoints(source, filename).map(
     (entrypoint) => ({
       ...entrypoint,
-      highRisk: localAuthorization.highRisk.has(entrypoint.localName),
+      highRisk:
+        !standardServiceEntrypointNames.has(entrypoint.name) &&
+        localAuthorization.highRisk.has(entrypoint.localName),
       liveGuard: localAuthorization.liveGuard.has(entrypoint.localName),
       permissionNames: [
         ...(localAuthorization.permissionNamesByFunction.get(
@@ -1363,6 +1389,28 @@ export function buildAuthorizationSurfaceManifest() {
     ],
   ]);
   const controlledMutationRoutes = new Map([
+    [
+      "app/api/admin/roles/create/route.ts",
+      {
+        permission: "core.administer AND core.tenant_role_administer",
+        dimensions: ["TENANT", "COMPANY"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "service-session",
+          "live-core-admin-permission",
+          "live-tenant-role-admin-permission",
+          "company-manage-scope",
+          "validated-input",
+          "transactional-write",
+          "audit-event",
+        ],
+        denialContract: "403_ORIGIN_DENIED_OR_SAFE_400_SERVICE_ERROR",
+        method: "POST",
+        testIds: ["AUTHZ-SHORT-MUTATION-ROUTES-ORIGIN-DENIAL-NO-MUTATION"],
+        delegatedServiceIds: ["server/services/coreAdmin.ts#createCoreAdminRole"],
+        noMutationControls: ["Role", "AuditEvent"],
+      },
+    ],
     [
       "app/api/admin/organization/[entity]/route.ts",
       {

@@ -190,6 +190,38 @@ Acceptance evidence:
 - Restaurant-operations notification reminders do not review branch checklists or food-safety logs automatically.
 - Food Cost values do not contribute to Overview attention, exception, clear, or source-availability states while `DEC-0062` is open.
 
+### Servings and Controlled Consumption (`DEC-0279`)
+
+1. Configure an exact branch, issue inventory location, service periods, sentinel
+   ingredients, and effective published recipe assignments; activate the reviewed
+   default-off configuration.
+2. As Branch Staff or Branch Supervisor, create and edit a closed-period draft with
+   paid and authorized complimentary lines, then submit it.
+3. As a different scoped Branch Manager, verify the facts and confirm that
+   verification creates no inventory movement.
+4. With the separate posting permission and current MFA, post the verified
+   declaration and confirm deterministic FEFO `CONSUMPTION_OUT` allocations.
+5. Replay posting, reverse the document, and create a corrected revision.
+6. Exercise self-verification, missing scope/permission/MFA, missing recipe/UOM,
+   insufficient stock, count-freeze/cutoff, and duplicate-source denials.
+7. Compare the filtered register/export, immutable activity, ledger movements,
+   balances, and count evidence on desktop and mobile.
+
+Acceptance evidence:
+
+- Restaurant Ops owns serving capture and factual verification; Inventory owns
+  the controlled ledger post. The encoder cannot verify or post their own record.
+- Paid and complimentary issued menu items post expected consumption once;
+  complimentary service requires reason and operational reference. Staff meals
+  remain outside the menu-serving workflow.
+- Verification freezes an immutable recipe/UOM derivation and changes no stock.
+- Posting is all-or-zero, FEFO, idempotent, scope/MFA protected, and never permits
+  negative stock or partial ingredient movement.
+- Reversal creates exact linked counter-movements; correction creates a successor
+  revision without rewriting the original facts or ledger.
+- Reports say `Expected/Book Consumption`. Physical counts remain the independent
+  source for observed on-hand and unexplained variance.
+
 ## Exit Rule
 
 Critical defects must be resolved. High-severity defects require an approved workaround and explicit release acceptance. No unresolved defect may compromise data integrity, location/project scope, approvals, inventory, payment, legal documents, or employee privacy.

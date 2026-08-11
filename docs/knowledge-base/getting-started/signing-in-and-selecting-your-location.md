@@ -16,7 +16,7 @@ Many ERP screens use the active location in the header. Selecting the wrong loca
 
 ## Prerequisites
 
-- Your organization code, email, and password.
+- Your email and password. The deployment selects the ERP organization automatically.
 - Privileged users also need their enrolled authenticator or one unused recovery code.
 - Your administrator must assign at least one authorized location.
 
@@ -27,7 +27,7 @@ Open the ERP sign-in page. After sign-in, use the location selector in the page 
 ## Steps
 
 1. Open the ERP sign-in page.
-2. Enter your `Organization code`, `Email`, and `Password`.
+2. Confirm the read-only `Organization`, then enter your `Email` and `Password`.
 3. Select `Sign in`.
 4. If `Verify authenticator` appears, enter the current six-digit authenticator code or one unused recovery code, then select `Verify and continue`.
 5. If authenticator setup is required, follow the on-screen setup under `Account security` before continuing.
@@ -59,9 +59,9 @@ Open the ERP sign-in page. After sign-in, use the location selector in the page 
 - Do not share passwords, authenticator codes, recovery codes, or activation links.
 - Passwords are protected using Argon2id. Administrators cannot retrieve an existing password; use controlled recovery when replacement is required.
 - Sensitive actions require MFA assurance refreshed within the current 15-minute step-up window. If prompted, open `Security`, select `Refresh MFA assurance`, complete the challenge, and retry the action.
-- An organization code identifies the ERP organization; it is not a company, brand, or location selection.
+- The organization shown on the sign-in page is selected by the deployment. It is not a company, brand, or location selection and cannot be changed from the form.
 - Repeated invalid sign-in attempts may temporarily block further attempts. Wait for the message’s stated period or contact support.
-- During unusually heavy sign-in traffic, the ERP may reject an attempt before checking the password. This protects account availability and does not confirm whether the organization code or email exists. Wait briefly and retry once; if the safe message continues, contact support instead of repeatedly submitting.
+- During unusually heavy sign-in traffic, the ERP may reject an attempt before checking the password. This protects account availability and does not confirm whether the email or account exists. Wait briefly and retry once; if the safe message continues, contact support instead of repeatedly submitting.
 - If you cannot see an expected location, ask an administrator to review your role and scope assignment.
 
 ## What Happens Next

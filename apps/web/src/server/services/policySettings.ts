@@ -16,6 +16,12 @@ export const policySettingCategories = [
     description: "Stock counts, lot/expiry discipline, and controlled stock posting."
   },
   {
+    id: "restaurant",
+    label: "Restaurant operations",
+    description:
+      "Service periods, consumption capture, and branch operating defaults.",
+  },
+  {
     id: "reporting",
     label: "Reporting trust gates",
     description: "Source-record, export, reconciliation, and dashboard confidence rules."
@@ -73,6 +79,7 @@ const policySettingKeys = [
   "inventory.stock_count.high_risk_frequency_days",
   "inventory.lot_expiry.required_categories",
   "inventory.adjustment.opening_balance_evidence_required",
+  "restaurant.consumption.default_service_periods",
   "finance.payment_release.evidence_requirements_by_method",
   "finance.payment_release.settlement_policy",
   "finance.budget.source_hook_policy",
@@ -149,6 +156,23 @@ export type ExpenseRequestHandoffPolicy = {
 };
 
 export const defaultPolicySettings: readonly PolicySettingDefinition[] = [
+  {
+    key: "restaurant.consumption.default_service_periods",
+    category: "restaurant",
+    label: "Default serving-entry schedule",
+    description:
+      "Company default timezone and non-overlapping service periods copied into new branch consumption configurations. Branch versions remain explicit and audited.",
+    valueType: "JSON",
+    defaultValue: {
+      mode: "SHIFT",
+      timezone: "Asia/Manila",
+      periods: [
+        { code: "OPEN", label: "Opening shift", start: "06:00", end: "14:00" },
+        { code: "MID", label: "Mid shift", start: "14:00", end: "22:00" },
+        { code: "LATE", label: "Late shift", start: "22:00", end: "06:00" },
+      ],
+    },
+  },
   {
     key: "purchasing.approval.standard_threshold_php",
     category: "purchasing",

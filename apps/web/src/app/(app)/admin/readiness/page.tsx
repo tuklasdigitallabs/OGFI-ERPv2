@@ -11,6 +11,10 @@ import {
 import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
+import {
+  SingleOpenSummaryList,
+  type SingleOpenSummarySection
+} from "@/components/SingleOpenSummaryList";
 import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
@@ -448,6 +452,136 @@ export default async function AdminReadinessPage({
         }
       ]
     : [];
+  const readinessCategoryHref = (
+    categoryId: (typeof releaseReadinessCategories)[number]["id"]
+  ) =>
+    `/admin/readiness?${new URLSearchParams({
+      category: categoryId,
+      ...(query ? { q: query } : {}),
+      ...(selectedStatus ? { status: selectedStatus } : {}),
+    }).toString()}`;
+  const readinessCategorySections =
+    releaseReadinessCategories.map<SingleOpenSummarySection>((item) => {
+      const categoryGates = gates.filter((gate) => gate.category === item.id);
+      const categorySummary = summarizeReleaseReadiness(categoryGates);
+      const blockerCount = categorySummary.blocking + categorySummary.hold;
+      const statusPriority: Record<ReleaseReadinessGate["status"], number> = {
+        HOLD: 0,
+        PENDING: 1,
+        IN_PROGRESS: 2,
+        CONDITIONAL_GO: 3,
+        READY: 4,
+        WAIVED: 5,
+      };
+      const previewGates = [...categoryGates]
+        .sort(
+          (left, right) =>
+            statusPriority[left.status] - statusPriority[right.status],
+        )
+        .slice(0, 3);
+      const visual =
+        item.id === "uat"
+          ? {
+              accent: "blue" as const,
+              icon: <ClipboardCheck className="h-5 w-5" />,
+            }
+          : item.id === "deployment"
+            ? {
+                accent: "violet" as const,
+                icon: <FileCheck2 className="h-5 w-5" />,
+              }
+            : item.id === "enablement"
+              ? {
+                  accent: "emerald" as const,
+                  icon: <CalendarDays className="h-5 w-5" />,
+                }
+              : item.id === "security"
+                ? {
+                    accent: "amber" as const,
+                    icon: <ShieldCheck className="h-5 w-5" />,
+                  }
+                : {
+                    accent: "rose" as const,
+                    icon: <BadgeCheck className="h-5 w-5" />,
+                  };
+
+      return {
+        id: item.id,
+        title: item.label,
+        supportingText: item.description,
+        accent: visual.accent,
+        icon: visual.icon,
+        snapshots: [
+          {
+            label: "Ready outcomes",
+            value: String(categorySummary.ready),
+            tone: categorySummary.ready > 0 ? "success" : "neutral",
+          },
+          {
+            label: "Blocking",
+            value: String(blockerCount),
+            tone:
+              categorySummary.hold > 0
+                ? "destructive"
+                : blockerCount > 0
+                  ? "warning"
+                  : "success",
+          },
+          {
+            label: "Required gates",
+            value: `${categorySummary.required} of ${categorySummary.total}`,
+            tone: "info",
+          },
+        ],
+        body: (
+          <div className="p-4 lg:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="font-bold text-slate-950">
+                  Bounded gate preview
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Read-only summary of up to three authorized gates. Use the
+                  category register below for filters, evidence, and controlled
+                  updates.
+                </p>
+              </div>
+              <a
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                href={readinessCategoryHref(item.id)}
+              >
+                Open {item.label} register
+              </a>
+            </div>
+            <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              {previewGates.map((gate) => (
+                <div
+                  className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  key={gate.gateKey}
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">{gate.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {gate.ownerRole} · {gate.requiredByPolicy ? "Required" : "Optional"}
+                    </p>
+                  </div>
+                  <Badge tone={readinessTone(gate.status)} size="sm">
+                    {statusLabel(gate.status)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            {categoryGates.length > previewGates.length ? (
+              <p className="mt-3 text-xs font-semibold text-slate-500">
+                {categoryGates.length - previewGates.length} more gate
+                {categoryGates.length - previewGates.length === 1 ? "" : "s"}{" "}
+                in the authoritative category register.
+              </p>
+            ) : null}
+          </div>
+        ),
+      };
+    });
 
   return (
     <AppShell
@@ -510,27 +644,26 @@ export default async function AdminReadinessPage({
         </div>
       </section>
 
-      <section className="mb-5 grid gap-4 md:grid-cols-5">
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Total gates</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{summary.total}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Required</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{summary.required}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Ready / waived</p>
-          <p className="mt-2 text-3xl font-bold text-emerald-700">{summary.ready}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Still blocking</p>
-          <p className="mt-2 text-3xl font-bold text-amber-700">{summary.blocking}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Hold gates</p>
-          <p className="mt-2 text-3xl font-bold text-rose-700">{summary.hold}</p>
-        </Panel>
+      <section className="mb-5" aria-labelledby="readiness-category-overview-heading">
+        <div className="mb-3">
+          <h2
+            className="text-lg font-bold text-slate-950"
+            id="readiness-category-overview-heading"
+          >
+            Readiness by category
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Compare ready and blocking required gates before opening a category
+            register.
+          </p>
+        </div>
+        <SingleOpenSummaryList
+          ariaLabel="Release readiness category summaries"
+          headingLevel={3}
+          idPrefix="release-readiness"
+          key={`${session.context.companyId}:release-readiness-categories`}
+          sections={readinessCategorySections}
+        />
       </section>
 
       <section
@@ -574,11 +707,7 @@ export default async function AdminReadinessPage({
                     ? "rounded-xl bg-blue-50 px-4 py-3 text-blue-700 ring-1 ring-blue-100"
                     : "rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }
-                href={`/admin/readiness?${new URLSearchParams({
-                  category: item.id,
-                  ...(query ? { q: query } : {}),
-                  ...(selectedStatus ? { status: selectedStatus } : {}),
-                }).toString()}`}
+                href={readinessCategoryHref(item.id)}
               >
                 <span className="block text-sm font-bold">{item.label}</span>
                 <span className="mt-1 block text-xs text-slate-500">

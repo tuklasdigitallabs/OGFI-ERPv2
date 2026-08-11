@@ -42,6 +42,7 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `APP_ENCRYPTION_PREVIOUS_KEY` | During a reviewed key rotation only | Immediately previous 32-byte base64 key retained only until protected values are re-encrypted.                |
 | `APP_ENCRYPTION_PREVIOUS_KEY_VERSION` | During a reviewed key rotation only | Version paired with the previous key; it must differ from the current version.                         |
 | `AUTH_MODE`            |                                     Yes | `local` in production/staging; `demo` is allowed only in isolated development/test or explicit controlled UAT. |
+| `AUTH_LOGIN_TENANT_CODE` |                                  Yes for local authentication | Server-owned `Tenant.loginCode` for this deployment's sign-in page. Hardened environments fail closed when it is absent; browsers cannot select or override it. Local development may fall back to `DEMO_TENANT_LOGIN_CODE`. |
 | `AUTH_TRUSTED_PROXY_MODE` |                                  Yes | `caddy_single_hop` or the reviewed `nginx_single_hop` in hosted environments; local development uses `untrusted` and never trusts client-supplied forwarding headers. |
 | `AUTH_SESSION_IDLE_MINUTES` |                              Yes | Inactivity expiry for database-backed sessions; current default `30`.                                        |
 | `AUTH_SESSION_ABSOLUTE_HOURS` |                            Yes | Maximum database-session lifetime; current default `12`.                                                     |

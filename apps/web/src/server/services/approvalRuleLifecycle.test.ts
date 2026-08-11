@@ -84,7 +84,7 @@ describe("DEC-0225 approval-rule lifecycle", () => {
     );
     expect(emergencySeed).toContain('routeKey: "PR_EMERGENCY"');
     const approvalSeedSection = seedSource.slice(
-      seedSource.indexOf("await prisma.$transaction(async (approvalSeedTx)"),
+      seedSource.indexOf("async (approvalSeedTx) => {"),
       seedSource.indexOf("await prisma.wastagePolicy.upsert"),
     );
     expect(approvalSeedSection).not.toMatch(/update: \{\s+[^}]/);

@@ -9,8 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { ClipboardCheck } from "lucide-react";
 import { Badge, ButtonLink, PaginationBar } from "@ogfi/ui";
 import { EntryModal, useEntryModalFeedback } from "@/components/EntryModal";
+import {
+  SingleOpenSummaryList,
+  type SingleOpenSummarySection,
+} from "@/components/SingleOpenSummaryList";
 import { useActionToast } from "@/components/ActionToastProvider";
 import { inventoryPilotPendingSelectionParams } from "@/components/opening-inventory/InventoryPilotSetupState";
 import type { ActionFeedback } from "@/server/services/actionFeedback";
@@ -1579,6 +1584,72 @@ export function Readiness({
   const purchaseRequestEvidence = record.routes.find(
     (route) => route.family === "PurchaseRequest",
   )?.resolverEvidence;
+  const readinessSections: SingleOpenSummarySection[] = record.readiness.map(
+    (result) => {
+      const status =
+        result.ready === null
+          ? "Not retained"
+          : result.ready
+            ? "Ready"
+            : "Blocked";
+      const statusTone =
+        result.ready === null
+          ? ("neutral" as const)
+          : result.ready
+            ? ("success" as const)
+            : ("destructive" as const);
+      const accent =
+        result.ready === null
+          ? ("slate" as const)
+          : result.ready
+            ? ("emerald" as const)
+            : ("rose" as const);
+
+      return {
+        id: result.family,
+        title: result.label,
+        supportingText:
+          record.status === "SEALED"
+            ? "Immutable point-in-time seal evidence; live controls still recheck authority."
+            : "Draft point-in-time evidence; validate again after configuration changes.",
+        snapshots: [
+          { label: "Status", value: status, tone: statusTone },
+          {
+            label: "Blockers",
+            value: String(result.blockers.length),
+            tone:
+              result.blockers.length > 0
+                ? ("destructive" as const)
+                : ("success" as const),
+          },
+          {
+            label: "Evidence cutoff",
+            value: formatDate(result.checkedAt),
+            tone: result.checkedAt ? "info" : "neutral",
+          },
+        ],
+        accent,
+        icon: <ClipboardCheck aria-hidden="true" className="h-5 w-5" />,
+        body: (
+          <div className="p-4 sm:p-5">
+            {result.blockers.length > 0 ? (
+              <ul className="list-disc space-y-1 pl-5 text-sm text-rose-800">
+                {result.blockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-600">
+                {result.ready === null
+                  ? "This abandoned draft has no immutable readiness result. Its activity and selections remain available for audit context."
+                  : "No readiness blockers were found at this cutoff. Live checks still apply when work occurs."}
+              </p>
+            )}
+          </div>
+        ),
+      };
+    },
+  );
   return (
     <section className="ogfi-data-surface overflow-hidden">
       <div className="ogfi-section-header">
@@ -1612,53 +1683,16 @@ export function Readiness({
       <PurchaseRequestResolverEvidencePanel
         evidence={purchaseRequestEvidence}
       />
-      <div className="divide-y divide-slate-100">
-        {record.readiness.map((result) => (
-          <article key={result.family} className="ogfi-list-row">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="font-bold text-slate-950">{result.label}</p>
-                <p className="text-xs text-slate-500">
-                  {record.status === "SEALED"
-                    ? "Seal-time evidence cutoff"
-                    : "Last route evidence capture"}{" "}
-                  {formatDate(result.checkedAt)}
-                </p>
-              </div>
-              <Badge
-                tone={
-                  result.ready === null
-                    ? "neutral"
-                    : result.ready
-                      ? "success"
-                      : "destructive"
-                }
-              >
-                {result.ready === null
-                  ? "Not retained"
-                  : result.ready
-                    ? record.status === "SEALED"
-                      ? "Ready at cutoff"
-                      : "Ready now; live recheck required"
-                    : "Blocked"}
-              </Badge>
-            </div>
-            {result.blockers.length > 0 ? (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-rose-800">
-                {result.blockers.map((blocker) => (
-                  <li key={blocker}>{blocker}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm text-slate-600">
-                {result.ready === null
-                  ? "This abandoned draft has no immutable readiness result. Its activity and selections remain available for audit context."
-                  : "No readiness blockers were found at this cutoff. Live checks still apply when work occurs."}
-              </p>
-            )}
-          </article>
-        ))}
-      </div>
+      {readinessSections.length > 0 ? (
+        <div className="p-4 sm:p-5">
+          <SingleOpenSummaryList
+            ariaLabel="Seal-time readiness families"
+            headingLevel={4}
+            idPrefix={`inventory-pilot-readiness-${record.id}`}
+            sections={readinessSections}
+          />
+        </div>
+      ) : null}
       {record.readiness.length === 0 ? (
         <div className="p-5 text-sm text-slate-600">
           <p className="font-semibold text-slate-950">

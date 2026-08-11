@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { headers as nextHeaders } from "next/headers";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTHENTICATION_DENIAL_AUDIT_WINDOW_MINUTES,
   assertProductionAuthConfiguration,
@@ -13,6 +13,7 @@ import {
   decryptSensitiveValue,
   encryptSensitiveValue,
   getAuthMode,
+  getConfiguredLoginTenantCode,
   getTrustedRequestFingerprint,
   hashPassword,
   isMfaAssuranceFresh,
@@ -26,6 +27,10 @@ import {
 
 vi.mock("next/headers", () => ({ cookies: vi.fn(), headers: vi.fn() }));
 
+beforeEach(() => {
+  vi.stubEnv("AUTH_LOGIN_TENANT_CODE", "ogfi");
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
@@ -35,6 +40,7 @@ function stubCompleteProductionAuthEnvironment() {
   vi.stubEnv("APP_ENV", "production");
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("AUTH_MODE", "local");
+  vi.stubEnv("AUTH_LOGIN_TENANT_CODE", "ogfi");
   vi.stubEnv("AUTH_TRUSTED_PROXY_MODE", "caddy_single_hop");
   vi.stubEnv("AUTH_ARGON2_MAX_CONCURRENCY", "2");
   vi.stubEnv("AUTH_SECRET", "a".repeat(32));
@@ -51,6 +57,25 @@ function stubCompleteProductionAuthEnvironment() {
 }
 
 describe("production authentication primitives", () => {
+  it("binds local sign-in to a server-owned tenant code", () => {
+    vi.stubEnv("APP_ENV", "production");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_LOGIN_TENANT_CODE", " OGFI ");
+    expect(getConfiguredLoginTenantCode()).toBe("ogfi");
+
+    vi.stubEnv("AUTH_LOGIN_TENANT_CODE", "");
+    expect(() => getConfiguredLoginTenantCode()).toThrow(
+      "AUTH_LOGIN_TENANT_CONFIGURATION_INVALID",
+    );
+  });
+
+  it("uses the existing OGFI development tenant without exposing a selector", () => {
+    vi.stubEnv("APP_ENV", "development");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AUTH_LOGIN_TENANT_CODE", "");
+    vi.stubEnv("DEMO_TENANT_LOGIN_CODE", " OGFI-LOCAL ");
+    expect(getConfiguredLoginTenantCode()).toBe("ogfi-local");
+  });
   it("signs internal values with a domain-separated tamper check", () => {
     vi.stubEnv("AUTH_SECRET", "a".repeat(32));
     const signature = signInternalServerValue("my-tasks", "cursor-payload");

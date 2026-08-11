@@ -12,6 +12,14 @@ Use Release Readiness to record whether a module or pilot package has enough evi
 
 `Admin` → `Release Readiness`
 
+The page begins with one closed summary row for each readiness category. Each
+row shows ready outcomes, blocking or hold gates, and required-gate coverage
+without opening it. Select a category row to view a bounded read-only gate
+preview, select it again to close it, or select another row to switch the
+preview. Use **Open … register** or the category tabs for the authoritative
+filtered register, evidence, and controlled updates. The summary itself never
+changes a gate or records a release decision.
+
 ## Exporting The Readiness Register
 
 Use **Export Readiness Register** when the release pack needs a CSV summary of the ERP readiness state. The export includes:

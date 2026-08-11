@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "cluster": "restaurant-consumption",
+  "testFiles": [
+    "apps/web/tests/restaurantConsumption.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE",
+      "file": "apps/web/tests/restaurantConsumption.integration.test.ts",
+      "testName": "verifies facts without stock mutation, posts FEFO exactly once, reverses, and creates a correction",
+      "kind": "REAL_POSTGRESQL_POSITIVE_AND_NEGATIVE",
+      "coveredControls": [
+        "exact tenant company brand and location scope",
+        "separate fact verification and inventory posting",
+        "verification creates zero inventory movements",
+        "deterministic FEFO allocation",
+        "idempotent posting and reversal",
+        "full-document reversal balance neutrality",
+        "immutable corrected-revision lineage"
+      ]
+    },
+    {
+      "id": "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK",
+      "file": "apps/web/tests/restaurantConsumption.integration.test.ts",
+      "testName": "denies self-verification and rolls an insufficient-stock post back completely",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live permission and exact location scope",
+        "encoder verifier segregation",
+        "no negative stock",
+        "whole-document posting",
+        "insufficient-stock rollback",
+        "zero posting header movement and balance mutation on denial"
+      ]
+    },
+    {
+      "id": "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS",
+      "file": "apps/web/tests/restaurantConsumption.integration.test.ts",
+      "testName": "updates, returns, and cancels declarations without inventory mutation",
+      "kind": "REAL_POSTGRESQL_POSITIVE_AND_NEGATIVE",
+      "coveredControls": [
+        "draft optimistic version check",
+        "manager return without inventory effect",
+        "encoder correction after return",
+        "draft cancellation without inventory effect",
+        "verified cancellation before posting",
+        "audit-preserving terminal state transitions"
+      ]
+    },
+    {
+      "id": "RESTAURANT_MENU_POLICY_COMMAND_CONTROLS",
+      "file": "apps/web/tests/restaurantConsumption.integration.test.ts",
+      "testName": "enforces menu-policy authority, MFA, idempotency, recovery, rollout, and zero inventory mutation",
+      "kind": "REAL_POSTGRESQL_POSITIVE_AND_NEGATIVE",
+      "coveredControls": [
+        "granular menu-policy permissions",
+        "live brand and location MANAGE scope",
+        "fresh privileged MFA",
+        "scoped idempotency key and canonical request hash",
+        "brand default and branch exception recovery",
+        "reviewed successor rollout at a service boundary",
+        "menu-policy commands create zero inventory movements"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#adoptSharedRecipeForBrand",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live adopt permission", "fresh privileged MFA", "exact company and brand adoption transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["shared recipe adoption and audit remain unchanged on permission, MFA, scope, or cross-brand denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#activateRestaurantConsumptionConfiguration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live configuration permission", "exact location configuration transaction"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"],
+      "noMutationControls": ["configuration state and audit remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#assignBrandMenuRecipeDefault",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live adopt permission", "fresh privileged MFA", "exact company and brand default transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["brand default, audit, inventory movement, and inventory balance remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#assignLocationMenuRecipeOverride",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live branch-exception and adopt permissions", "fresh privileged MFA", "exact branch and parent-manage override transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["location override, audit, inventory movement, and inventory balance remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#assignMenuRecipe",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live configuration permission", "scoped published-recipe assignment"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"],
+      "noMutationControls": ["recipe assignment and audit remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#cancelServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live create permission", "scoped mutable-state transition"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "posted facts"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#cancelVerifiedServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live verify permission", "MFA", "non-encoder exact-scope transition"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "posted facts"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#configureRestaurantConsumption",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live configuration permission", "versioned exact-scope configuration"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"],
+      "noMutationControls": ["active configuration and audit remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#createServingCorrection",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live create permission", "idempotent immutable supersession"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"],
+      "noMutationControls": ["source declaration", "inventory movement", "inventory balance"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#createServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live create permission", "exact branch configuration and catalog scope"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE", "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "other tenant data"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#getRestaurantConsumptionSettings",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live settings permission", "exact tenant company brand and location read scope"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["settings read exposes no cross-scope policy or configuration data and creates no mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#listRestaurantConsumptionCatalog",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live consumption-create permission", "exact branch menu and availability read scope"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["catalog read exposes no cross-brand menu item and creates no mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#endLocationMenuRecipeOverride",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live branch-exception and adopt permissions", "fresh privileged MFA", "exact branch and parent-manage recovery transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["override end, audit, inventory movement, and inventory balance remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#postServingConsumption",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live post permission", "MFA", "stable inventory-location lock", "FEFO ledger writer"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE", "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK"],
+      "noMutationControls": ["partial posting", "negative stock", "duplicate movement", "direct balance mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#returnServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live verify permission", "scoped review-state transition"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "submitted fact history"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#cancelFutureRestaurantMenuPolicy",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["target-specific live menu-policy permissions", "fresh privileged MFA", "future-only exact-scope cancellation transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["future policy, audit, inventory movement, and inventory balance remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#reverseServingConsumption",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live reverse permission", "MFA", "exact original allocation reversal"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE"],
+      "noMutationControls": ["original movement", "duplicate reversal", "unrelated balance"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#setMenuItemLocationAvailability",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live branch-exception permission", "fresh privileged MFA", "exact branch or parent-manage availability transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["branch availability, audit, inventory movement, and inventory balance remain unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#submitServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live create permission", "exact location and closed-period declaration"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE", "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "other tenant facts"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#updateServingDeclarationDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live create permission", "scoped optimistic-version draft update"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["submitted or posted facts", "inventory movement", "inventory balance"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/restaurantConsumption.ts#verifyServingDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live verify permission", "MFA", "non-encoder exact-scope verification"],
+      "caseIds": ["RESTAURANT_CONSUMPTION_LEDGER_LIFECYCLE", "RESTAURANT_CONSUMPTION_SOD_AND_ROLLBACK", "RESTAURANT_CONSUMPTION_MUTABLE_STATE_CONTROLS"],
+      "noMutationControls": ["inventory movement", "inventory balance", "self-verified fact"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#rolloutPublishedRecipeSuccessor",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live rollout and recipe-publish permissions", "fresh privileged MFA", "reviewed preview hash", "serializable brand successor transaction"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["brand defaults, audit, inventory movement, and inventory balance remain unchanged on denied or stale rollout"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#previewRecipePublicationConsumptionImpact",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["recipe access permission", "exact company and brand impact projection", "immutable preview snapshot hash"],
+      "caseIds": ["RESTAURANT_MENU_POLICY_COMMAND_CONTROLS"],
+      "noMutationControls": ["preview reads current branch readiness and creates no assignment, audit, or inventory mutation"],
+      "status": "COVERED"
+    }
+  ]
+}

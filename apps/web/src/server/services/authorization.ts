@@ -97,12 +97,21 @@ export const permissions = {
   recipeApprove: "restaurant.recipe.approve",
   recipePublish: "restaurant.recipe.publish",
   recipeArchive: "restaurant.recipe.archive",
+  menuRecipeAdopt: "restaurant.menu_recipe.adopt",
+  menuRecipeBranchException: "restaurant.menu_recipe.branch_exception",
+  menuRecipeRollout: "restaurant.menu_recipe.rollout",
   menuCostView: "restaurant.menu_cost.view",
   menuPriceDecide: "restaurant.menu_price.decide",
   branchOperationsView: "restaurant.branch_operations.view",
   branchOperationsCreate: "restaurant.branch_operations.create",
   branchOperationsReview: "restaurant.branch_operations.review",
   branchOperationsCorrect: "restaurant.branch_operations.correct",
+  consumptionView: "restaurant.consumption.view",
+  consumptionCreate: "restaurant.consumption.create",
+  consumptionVerify: "restaurant.consumption.verify",
+  consumptionPost: "restaurant.consumption.post",
+  consumptionReverse: "restaurant.consumption.reverse",
+  consumptionConfigure: "restaurant.consumption.configure",
   foodSafetyView: "restaurant.food_safety.view",
   foodSafetyCreate: "restaurant.food_safety.create",
   foodSafetyReview: "restaurant.food_safety.review",
@@ -324,11 +333,44 @@ export function canUseRecipesAndCosting(permissionCodes: string[]) {
   );
 }
 
+export function canAdoptBrandMenuRecipe(permissionCodes: string[]) {
+  return permissionCodes.includes(permissions.menuRecipeAdopt);
+}
+
+export function canManageBranchMenuAvailability(permissionCodes: string[]) {
+  return permissionCodes.includes(permissions.menuRecipeBranchException);
+}
+
+export function canOverrideBranchMenuRecipe(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.menuRecipeBranchException) &&
+    permissionCodes.includes(permissions.menuRecipeAdopt)
+  );
+}
+
+export function canRolloutMenuRecipeSuccessor(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.menuRecipeRollout) &&
+    permissionCodes.includes(permissions.recipePublish)
+  );
+}
+
 export function canUseBranchOperations(permissionCodes: string[]) {
   return (
     permissionCodes.includes(permissions.branchOperationsView) ||
     permissionCodes.includes(permissions.branchOperationsCreate) ||
     permissionCodes.includes(permissions.branchOperationsReview)
+  );
+}
+
+export function canUseRestaurantConsumption(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.consumptionView) ||
+    permissionCodes.includes(permissions.consumptionCreate) ||
+    permissionCodes.includes(permissions.consumptionVerify) ||
+    permissionCodes.includes(permissions.consumptionPost) ||
+    permissionCodes.includes(permissions.consumptionReverse) ||
+    permissionCodes.includes(permissions.consumptionConfigure)
   );
 }
 

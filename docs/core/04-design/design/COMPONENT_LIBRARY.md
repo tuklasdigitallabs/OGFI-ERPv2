@@ -211,6 +211,30 @@ Rules:
 - Provide row validation summaries and mobile row-card entry.
 - Do not trap long transaction entry inside a centered modal with internal scrolling.
 
+### 5.8 Single-open summary list
+
+Used for a small, stable set of dashboard-like categories or read-only readiness
+families where the closed row must still provide a useful operational snapshot.
+
+Rules:
+
+- Every row starts closed. Selecting a row opens its bounded detail immediately
+  below it; selecting it again closes it; opening another row closes the previous
+  row.
+- The closed row shows no more than three source-backed values, including any
+  blocking, partial, or unavailable state needed to interpret the summary.
+- Expanded content is a bounded read-only preview with an authoritative
+  destination when more detail exists. It is not a substitute for pagination,
+  selected-record detail, or a transaction workspace.
+- Do not use one summary row per PR, PO, receipt, transfer, count, wastage,
+  adjustment, approval, supplier, item, or other potentially large register.
+- Approval decisions, posting, dispatch, receiving, reversal, multiline entry,
+  evidence-heavy review, and privileged administration remain in their focused
+  detail, drawer, or task surface.
+- Use semantic heading buttons, `aria-expanded`, `aria-controls`, a labelled
+  region, visible keyboard focus, and at least 44px targets. Preserve heading
+  hierarchy when the list is nested inside another section.
+
 ---
 
 ## 6. Action components

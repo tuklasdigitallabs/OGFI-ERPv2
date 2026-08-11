@@ -186,6 +186,31 @@ export function getAuthMode(): AuthMode {
   return configured as AuthMode;
 }
 
+export function getConfiguredLoginTenantCode() {
+  const configured = process.env.AUTH_LOGIN_TENANT_CODE?.trim();
+  const developmentFallback =
+    !isHardenedAuthenticationRuntime()
+      ? process.env.DEMO_TENANT_LOGIN_CODE?.trim() || "ogfi"
+      : "";
+  const loginCode = normalizeTenantCode(configured || developmentFallback);
+  if (!loginCode) {
+    throw new Error("AUTH_LOGIN_TENANT_CONFIGURATION_INVALID");
+  }
+  return loginCode;
+}
+
+export async function getConfiguredLoginOrganization() {
+  const loginCode = getConfiguredLoginTenantCode();
+  const tenant = await prisma.tenant.findFirst({
+    where: { loginCode, status: "ACTIVE" },
+    select: { name: true, loginCode: true },
+  });
+  if (!tenant) {
+    throw new Error("AUTH_LOGIN_TENANT_CONFIGURATION_INVALID");
+  }
+  return tenant;
+}
+
 function requireAuthSecret() {
   const value = process.env.AUTH_SECRET ?? "";
   if (isHardenedAuthenticationRuntime() && value.length < 32) {
@@ -265,7 +290,10 @@ function encryptionKeyForVersion(version: number) {
 }
 
 export function assertProductionAuthRuntimeConfiguration() {
-  getAuthMode();
+  const authMode = getAuthMode();
+  if (authMode === "local") {
+    getConfiguredLoginTenantCode();
+  }
   requireAuthSecret();
   Object.values(authIntegerSettings).forEach(readBoundedAuthInteger);
   assertProductionArgon2WorkGateConfiguration();
