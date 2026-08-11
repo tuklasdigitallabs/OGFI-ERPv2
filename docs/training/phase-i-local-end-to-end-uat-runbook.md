@@ -274,8 +274,9 @@ Execute configuration and cohort preparation only when the release owner has exp
 8. The assigned submitter selects **Submit for Operations & Accounting**. Confirm the location batch becomes `PENDING APPROVAL` and inventory remains unchanged.
 9. Complete Operations review first and Accounting review second using independent eligible users.
 10. Only when separately authorized for the gated local exercise, request cohort Freeze, Location Stage, and cohort Activate from the displayed current action in that order. A request creates an immutable command and does not itself perform the operation.
-11. Review **Activity** for the command lifecycle. Do not submit a duplicate request while a matching command is pending, claimed, or retrying.
-12. Verify the Movement Ledger only after successful controlled activation. Freeze, Stage, drafting, sealing, and approval must not post stock.
+11. The isolated local-UAT worker discovers only pending or retryable command IDs with the restricted runtime credential, then invokes the single reviewed execution routine with the separate opening-stock executor credential. It cannot supply quantities, scope, actors, statuses, or alternate database actions.
+12. Review **Activity** for the command lifecycle. Do not submit a duplicate request while a matching command is pending, claimed, or retrying. If the worker is unavailable, the command remains durable and unexecuted; do not bypass it with a direct database command.
+13. Verify the Movement Ledger only after successful controlled activation. Freeze, Stage, drafting, sealing, and approval must not post stock.
 
 **Pass criteria:** The cohort is pinned to one immutable sealed revision and digest; all approvals are independent; only controlled activation can create the eligible opening movements exactly once.
 

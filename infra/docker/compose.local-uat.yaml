@@ -78,6 +78,42 @@ services:
     networks:
       - uat_private
 
+  worker:
+    image: ${OGFI_LOCAL_UAT_WEB_IMAGE_ID:?Set an exact existing local sha256 image ID}
+    pull_policy: never
+    env_file:
+      - path: ${OGFI_LOCAL_UAT_RUNTIME_ENV_FILE:?Set OGFI_LOCAL_UAT_RUNTIME_ENV_FILE}
+        required: true
+      - path: ${OGFI_LOCAL_UAT_EXECUTOR_ENV_FILE:?Set OGFI_LOCAL_UAT_EXECUTOR_ENV_FILE}
+        required: true
+    environment:
+      DATABASE_URL: ${OGFI_LOCAL_UAT_RUNTIME_DATABASE_URL:?Set OGFI_LOCAL_UAT_RUNTIME_DATABASE_URL}
+      DIRECT_DATABASE_URL: ""
+      OPENING_INVENTORY_EXECUTOR_ENABLED: "true"
+      OPENING_INVENTORY_EXECUTOR_POLL_INTERVAL_MS: "2000"
+      OPENING_INVENTORY_EXECUTOR_BATCH_SIZE: "5"
+    command:
+      - sh
+      - -ec
+      - cd /app/apps/worker && exec node dist/index.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - kill -0 1
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - uat_private
+
   edge:
     image: ${OGFI_LOCAL_UAT_EDGE_IMAGE_ID:?Set an exact existing local sha256 edge image ID}
     pull_policy: never

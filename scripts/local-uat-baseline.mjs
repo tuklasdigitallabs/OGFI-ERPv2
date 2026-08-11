@@ -602,6 +602,7 @@ async function createBaseline(raw) {
   const artifactDir = path.join(repositoryRoot, "backups/local-uat", options.targetDatabase);
   const composeEnv = path.join(artifactDir, "compose.env");
   const operatorEnv = path.join(artifactDir, "operator.env");
+  const executorEnv = path.join(artifactDir, "executor.env");
   const runtimeEnv = path.join(artifactDir, "runtime.env");
   const manifestFile = path.join(artifactDir, "manifest.json");
   const sourceEnvironmentFile = path.join(repositoryRoot, ".env");
@@ -610,6 +611,7 @@ async function createBaseline(raw) {
     OGFI_LOCAL_UAT_POSTGRES_ADMIN_PASSWORD: passwords.admin,
     OGFI_LOCAL_UAT_RUNTIME_DATABASE_URL: targetUrl(options.targetDatabase, identity.runtimeRole, passwords.runtime),
     OGFI_LOCAL_UAT_RUNTIME_ENV_FILE: runtimeEnv.replaceAll("\\", "/"),
+    OGFI_LOCAL_UAT_EXECUTOR_ENV_FILE: executorEnv.replaceAll("\\", "/"),
     OGFI_LOCAL_UAT_WEB_IMAGE_ID: options.webImageId,
     OGFI_LOCAL_UAT_EDGE_IMAGE_ID: options.edgeImageId,
     OGFI_LOCAL_UAT_WEB_PORT: options.webPort,
@@ -626,10 +628,12 @@ async function createBaseline(raw) {
     writeSecure(composeEnv, initialComposeEnvironment);
     writeSecure(operatorEnv, environmentText({
       OGFI_LOCAL_UAT_MIGRATOR_DATABASE_URL: targetUrl(options.targetDatabase, identity.migratorRole, passwords.migrator),
+    }));
+    writeSecure(executorEnv, environmentText({
       OGFI_LOCAL_UAT_OPENING_STOCK_EXECUTOR_DATABASE_URL: targetUrl(options.targetDatabase, `${prefix}_opening_stock_executor`, passwords.opening),
     }));
   } catch (error) {
-    for (const file of [composeEnv, operatorEnv, runtimeEnv, manifestFile]) rmSync(file, { force: true });
+    for (const file of [composeEnv, operatorEnv, executorEnv, runtimeEnv, manifestFile]) rmSync(file, { force: true });
     throw error;
   }
 
@@ -663,23 +667,32 @@ async function createBaseline(raw) {
   const sourceDigestAfter = createHash("sha256").update(psqlReadOnly(options.sourceContainer, source.user, options.sourceDatabase, sourceSnapshotSql(false))).digest("hex");
   if (sourceDigestAfter !== digest) throw new Error("LOCAL_UAT_SOURCE_CHANGED_DURING_CONSTRUCTION");
     const webContainer = `${options.project}-web-1`;
+    const workerContainer = `${options.project}-worker-1`;
     const edgeContainer = `${options.project}-edge-1`;
-    compose(composeEnv, ["up", "-d", "edge"]);
+    compose(composeEnv, ["up", "-d", "worker", "edge"]);
     waitForHealthy(webContainer);
+    waitForHealthy(workerContainer);
     waitForHealthy(edgeContainer);
     let targetWeb = inspectContainer(webContainer);
+    let targetWorker = inspectContainer(workerContainer);
     let targetEdge = inspectContainer(edgeContainer);
     if (targetWeb.Image !== exactWebImage.inspected.Id) throw new Error("LOCAL_UAT_WEB_IMAGE_ID_MISMATCH");
+    if (targetWorker.Image !== exactWebImage.inspected.Id) throw new Error("LOCAL_UAT_WORKER_IMAGE_ID_MISMATCH");
     if (targetEdge.Image !== exactEdgeImage.inspected.Id) throw new Error("LOCAL_UAT_EDGE_IMAGE_ID_MISMATCH");
     if (networkIds(targetWeb).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_WEB_SOURCE_NETWORK_OVERLAP");
+    if (networkIds(targetWorker).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_WORKER_SOURCE_NETWORK_OVERLAP");
     if (networkIds(targetEdge).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_EDGE_SOURCE_NETWORK_OVERLAP");
     assertExactNetworks(targetPostgres, [`${options.project}_uat_private`], "LOCAL_UAT_POSTGRES_NETWORKS_INVALID");
     assertExactNetworks(targetWeb, [`${options.project}_uat_private`], "LOCAL_UAT_WEB_NETWORKS_INVALID");
+    assertExactNetworks(targetWorker, [`${options.project}_uat_private`], "LOCAL_UAT_WORKER_NETWORKS_INVALID");
     assertNoPublishedPorts(targetPostgres, "LOCAL_UAT_POSTGRES_PORT_PUBLISHED");
     assertNoPublishedPorts(targetWeb, "LOCAL_UAT_WEB_PORT_PUBLISHED");
+    assertNoPublishedPorts(targetWorker, "LOCAL_UAT_WORKER_PORT_PUBLISHED");
     assertEdgeRuntime(targetEdge, options);
     assertHostnameIsolation(webContainer, options.sourceContainer);
+    assertHostnameIsolation(workerContainer, options.sourceContainer);
     assertSourceDatabaseUnreachable(webContainer, source);
+    assertSourceDatabaseUnreachable(workerContainer, source);
     await waitForLoopbackHealth(options.webPort);
 
     psql(targetContainer, "postgres", options.targetDatabase, constructionFunctionDropSql(), passwords.admin);
@@ -687,30 +700,38 @@ async function createBaseline(raw) {
     if (!construction.split(/\r?\n/).includes("CONSTRUCTED")) throw new Error("LOCAL_UAT_MARKER_FINALIZATION_FAILED");
     psqlFile(targetContainer, identity.runtimeRole, options.targetDatabase, path.join(roleSqlDir, "verify-role-contract.sql"), { ...roleVariables(identity), verification_mode: "runtime" }, passwords.runtime);
     replaceSecure(composeEnv, environmentText(composeEnvironment(false)));
-    compose(composeEnv, ["up", "-d", "--force-recreate", "web", "edge"]);
+    compose(composeEnv, ["up", "-d", "--force-recreate", "web", "worker", "edge"]);
     waitForHealthy(webContainer);
+    waitForHealthy(workerContainer);
     waitForHealthy(edgeContainer);
     targetWeb = inspectContainer(webContainer);
+    targetWorker = inspectContainer(workerContainer);
     targetEdge = inspectContainer(edgeContainer);
     if (targetWeb.Image !== exactWebImage.inspected.Id) throw new Error("LOCAL_UAT_WEB_IMAGE_ID_MISMATCH");
+    if (targetWorker.Image !== exactWebImage.inspected.Id) throw new Error("LOCAL_UAT_WORKER_IMAGE_ID_MISMATCH");
     if (targetEdge.Image !== exactEdgeImage.inspected.Id) throw new Error("LOCAL_UAT_EDGE_IMAGE_ID_MISMATCH");
     if (networkIds(targetWeb).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_WEB_SOURCE_NETWORK_OVERLAP");
+    if (networkIds(targetWorker).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_WORKER_SOURCE_NETWORK_OVERLAP");
     if (networkIds(targetEdge).some((id) => networkIds(source.inspected).includes(id))) throw new Error("LOCAL_UAT_EDGE_SOURCE_NETWORK_OVERLAP");
     assertExactNetworks(targetWeb, [`${options.project}_uat_private`], "LOCAL_UAT_WEB_NETWORKS_INVALID");
+    assertExactNetworks(targetWorker, [`${options.project}_uat_private`], "LOCAL_UAT_WORKER_NETWORKS_INVALID");
     assertNoPublishedPorts(targetWeb, "LOCAL_UAT_WEB_PORT_PUBLISHED");
+    assertNoPublishedPorts(targetWorker, "LOCAL_UAT_WORKER_PORT_PUBLISHED");
     assertEdgeRuntime(targetEdge, options);
     assertHostnameIsolation(webContainer, options.sourceContainer);
+    assertHostnameIsolation(workerContainer, options.sourceContainer);
     assertSourceDatabaseUnreachable(webContainer, source);
+    assertSourceDatabaseUnreachable(workerContainer, source);
     await waitForLoopbackHealth(options.webPort);
 
-    const manifest = { schemaVersion: 1, constructionComplete: true, uatAdmitted: false, localOnly: true, dockerContext: "desktop-linux", isolatedComposeProject: options.project, sourceDatabase: options.sourceDatabase, targetDatabase: options.targetDatabase, loopbackUrl: `http://127.0.0.1:${options.webPort}`, allowlistDigestSha256: digest, sourceDigestReverifiedSha256: sourceDigestAfter, allowedTableCounts: Object.fromEntries(LOCAL_UAT_ALLOWED_TABLES.map((table) => [table, payload.tables[table].length])), deniedTablesVerifiedZero: true, runtimeRoleRestricted: true, sourceConnectivityDeniedFromWeb: true, credentialsIncluded: false, limitations: ["BUDGET_DEPENDENT_PR_UAT_REQUIRES_CLEAN_TARGET_CONFIGURATION", "FINANCE_BUDGET_CONFIGURATION_NOT_COPIED", "CONTROLLED_EVIDENCE_CONFIGURATION_NOT_COPIED"], source: { containerId: source.inspected.Id, imageId: source.inspected.Image, networkIds: networkIds(source.inspected) }, target: { postgresContainerId: targetPostgres.Id, postgresImageId: targetPostgres.Image, postgresNetworkIds: networkIds(targetPostgres), webContainerId: targetWeb.Id, webImageId: targetWeb.Image, requiredWebImageId: exactWebImage.inspected.Id, webNetworkIds: networkIds(targetWeb), edgeContainerId: targetEdge.Id, edgeImageId: targetEdge.Image, requiredEdgeImageId: exactEdgeImage.inspected.Id, edgeNetworkIds: networkIds(targetEdge), edgeLoopbackBinding: `127.0.0.1:${options.webPort}:8080` }, imageProvenance: { commitSha: exactWebImage.revision, releaseArtifactSha256: exactWebImage.artifactSha256, schemaSha256: exactWebImage.hostSchemaSha256, migrationsSha256: exactWebImage.hostMigrationsSha256, edgeCommitSha: exactEdgeImage.revision, edgeConfigSha256: exactEdgeImage.configSha256 }, artifacts: { builderSha256: sha256File(path.join(repositoryRoot, "scripts/local-uat-baseline.mjs")), composeSha256: sha256File(composeFile), edgeConfigSha256: sha256File(edgeConfigFile), schemaSha256: sha256File(path.join(repositoryRoot, "packages/database/prisma/schema.prisma")), migrationsSha256: sha256Tree(path.join(repositoryRoot, "packages/database/prisma/migrations")) }, createdAt: new Date().toISOString() };
+    const manifest = { schemaVersion: 1, constructionComplete: true, uatAdmitted: false, localOnly: true, dockerContext: "desktop-linux", isolatedComposeProject: options.project, sourceDatabase: options.sourceDatabase, targetDatabase: options.targetDatabase, loopbackUrl: `http://127.0.0.1:${options.webPort}`, allowlistDigestSha256: digest, sourceDigestReverifiedSha256: sourceDigestAfter, allowedTableCounts: Object.fromEntries(LOCAL_UAT_ALLOWED_TABLES.map((table) => [table, payload.tables[table].length])), deniedTablesVerifiedZero: true, runtimeRoleRestricted: true, sourceConnectivityDeniedFromWeb: true, sourceConnectivityDeniedFromWorker: true, credentialsIncluded: false, limitations: ["BUDGET_DEPENDENT_PR_UAT_REQUIRES_CLEAN_TARGET_CONFIGURATION", "FINANCE_BUDGET_CONFIGURATION_NOT_COPIED", "CONTROLLED_EVIDENCE_CONFIGURATION_NOT_COPIED"], source: { containerId: source.inspected.Id, imageId: source.inspected.Image, networkIds: networkIds(source.inspected) }, target: { postgresContainerId: targetPostgres.Id, postgresImageId: targetPostgres.Image, postgresNetworkIds: networkIds(targetPostgres), webContainerId: targetWeb.Id, webImageId: targetWeb.Image, requiredWebImageId: exactWebImage.inspected.Id, webNetworkIds: networkIds(targetWeb), workerContainerId: targetWorker.Id, workerImageId: targetWorker.Image, requiredWorkerImageId: exactWebImage.inspected.Id, workerNetworkIds: networkIds(targetWorker), edgeContainerId: targetEdge.Id, edgeImageId: targetEdge.Image, requiredEdgeImageId: exactEdgeImage.inspected.Id, edgeNetworkIds: networkIds(targetEdge), edgeLoopbackBinding: `127.0.0.1:${options.webPort}:8080` }, imageProvenance: { commitSha: exactWebImage.revision, releaseArtifactSha256: exactWebImage.artifactSha256, schemaSha256: exactWebImage.hostSchemaSha256, migrationsSha256: exactWebImage.hostMigrationsSha256, edgeCommitSha: exactEdgeImage.revision, edgeConfigSha256: exactEdgeImage.configSha256 }, artifacts: { builderSha256: sha256File(path.join(repositoryRoot, "scripts/local-uat-baseline.mjs")), composeSha256: sha256File(composeFile), edgeConfigSha256: sha256File(edgeConfigFile), schemaSha256: sha256File(path.join(repositoryRoot, "packages/database/prisma/schema.prisma")), migrationsSha256: sha256Tree(path.join(repositoryRoot, "packages/database/prisma/migrations")) }, createdAt: new Date().toISOString() };
     writeSecure(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     console.log(`LOCAL_UAT_BASELINE_CONSTRUCTED ${options.targetDatabase}`);
     console.log(`Evidence: ${path.relative(repositoryRoot, manifestFile)}`);
   } catch (error) {
     cleanupFailedCandidate({
       project: options.project,
-      secretFiles: [composeEnv, operatorEnv, runtimeEnv, manifestFile],
+      secretFiles: [composeEnv, operatorEnv, executorEnv, runtimeEnv, manifestFile],
     });
     throw error;
   }

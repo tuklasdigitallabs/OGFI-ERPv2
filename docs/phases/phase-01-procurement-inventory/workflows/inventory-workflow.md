@@ -215,8 +215,13 @@ concurrent change produces no partial revision.
 Named actors and route bindings are immutable, digest-covered evidence at the
 seal cutoff; they do not grant live permission, scope, approval, routing,
 command, executor, or posting authority. The Opening executor remains
-deployment-controlled. Schema-v1 revisions remain historic for already pinned
-records. A new Opening cohort may select only the latest unsuperseded schema-v2
+deployment-controlled. In the isolated local-UAT stack, a restricted worker
+uses the ordinary runtime role only to discover bounded pending/retryable
+command IDs and a separate opening-stock executor credential only to invoke the
+single reviewed command routine. It cannot supply alternate scope, quantities,
+actors, statuses, or arbitrary database operations; if it stops, the durable
+command remains pending and stock remains unchanged. Schema-v1 revisions remain
+historic for already pinned records. A new Opening cohort may select only the latest unsuperseded schema-v2
 revision after canonical/digest verification and current participant and route
 readiness revalidation. A successor revision governs only future cohorts through
 that controlled selection; existing cohorts remain pinned to their original

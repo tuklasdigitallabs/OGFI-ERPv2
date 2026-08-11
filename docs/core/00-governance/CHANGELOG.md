@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-08-11 — Restricted Local-UAT Opening Inventory Executor
+
+- Added a default-off worker adapter that discovers only bounded pending or retryable Opening Inventory execution-command IDs with the restricted runtime role and invokes only the reviewed PostgreSQL execution routine with a separate opening-stock executor credential.
+- The isolated local-UAT stack now runs that worker on the private database network with no published ports, no source-database connectivity, no migrator credential, and exact candidate-image provenance. A stopped or failed worker leaves the immutable command pending and stock unchanged.
+- This closes the missing local execution consumer only. Production activation, a named independent roster, approved cohort/configuration, recovery rehearsal, browser UAT, and owner authorization remain blocking.
+
 ## 2026-07-28 — Served-Identity Provenance and Public-Probe Contract
 
 - Added confirmed `DEC-0249`: provenance is immutable and build-baked; the public identity response is dynamic, `no-store`, and request-nonce-bound; Caddy strips upstream/controller fence headers and re-stamps the canonical edge fence; and every configured public HTTPS address requires an external candidate/nonce/fence probe before smoke receives credit.

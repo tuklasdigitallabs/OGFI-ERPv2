@@ -6,9 +6,11 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/worker/package.json apps/worker/package.json
 COPY packages/database/package.json packages/database/package.json
 RUN pnpm install --frozen-lockfile
-COPY . .
+COPY packages/database/prisma packages/database/prisma
 RUN pnpm --filter @ogfi/database generate
-RUN pnpm --filter @ogfi/worker build
+COPY . .
+ARG WORKER_BUILD_NODE_OPTIONS=--max-old-space-size=4096
+RUN NODE_OPTIONS="${WORKER_BUILD_NODE_OPTIONS}" pnpm --filter @ogfi/worker build
 RUN addgroup -S ogfi && adduser -S ogfi -G ogfi && chown -R ogfi:ogfi /app
 USER ogfi
 CMD ["pnpm", "--filter", "@ogfi/worker", "start"]

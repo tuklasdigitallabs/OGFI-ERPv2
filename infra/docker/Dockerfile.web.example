@@ -6,6 +6,7 @@ RUN corepack enable
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
@@ -23,6 +24,7 @@ ARG RELEASE_ARTIFACT_SHA256
 ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096
 RUN test -n "${RELEASE_COMMIT_SHA}" && test -n "${RELEASE_ARTIFACT_SHA256}" && RELEASE_COMMIT_SHA="${RELEASE_COMMIT_SHA}" RELEASE_ARTIFACT_SHA256="${RELEASE_ARTIFACT_SHA256}" node scripts/generate-release-identity.mjs
 RUN pnpm --filter @ogfi/database generate
+RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" pnpm --filter @ogfi/worker build
 RUN NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" pnpm --filter @ogfi/web build
 
 FROM base AS runner
