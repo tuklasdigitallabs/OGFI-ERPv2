@@ -1,10 +1,10 @@
 import { Queue } from "bullmq";
-import { getWorkerHealth } from "./health";
+import { getWorkerHealth } from "./health.js";
 import {
   createOpeningInventoryExecutorAdapter,
   openingInventoryExecutorConfiguration,
   startOpeningInventoryExecutor,
-} from "./openingInventoryExecutor";
+} from "./openingInventoryExecutor.js";
 
 const redisUrl = process.env.REDIS_URL;
 

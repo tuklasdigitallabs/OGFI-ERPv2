@@ -511,7 +511,7 @@ function assertHostnameIsolation(webContainer, sourceHostname) {
   }
 }
 
-function waitForHealthy(container, attempts = 30) {
+function waitForHealthy(container, errorCode, attempts = 30) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const result = spawnSync(process.env.OGFI_DOCKER_COMMAND ?? "docker", [
       "inspect", "--format", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}", container,
@@ -519,7 +519,7 @@ function waitForHealthy(container, attempts = 30) {
     if (result.status === 0 && result.stdout.trim() === "running|healthy") return;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
   }
-  throw new Error("LOCAL_UAT_WEB_NOT_HEALTHY");
+  throw new Error(errorCode);
 }
 
 async function waitForLoopbackHealth(port, attempts = 30) {
@@ -640,7 +640,7 @@ async function createBaseline(raw) {
   try {
   const targetContainer = `${options.project}-postgres-1`;
   compose(composeEnv, ["up", "-d", "postgres"]);
-  waitForHealthy(targetContainer);
+  waitForHealthy(targetContainer, "LOCAL_UAT_POSTGRES_NOT_HEALTHY");
   const targetPostgres = inspectContainer(targetContainer);
   if (targetPostgres.Id === source.inspected.Id || networkIds(targetPostgres).some((id) => networkIds(source.inspected).includes(id))) {
     throw new Error("LOCAL_UAT_SOURCE_TARGET_ISOLATION_FAILED");
@@ -670,9 +670,9 @@ async function createBaseline(raw) {
     const workerContainer = `${options.project}-worker-1`;
     const edgeContainer = `${options.project}-edge-1`;
     compose(composeEnv, ["up", "-d", "worker", "edge"]);
-    waitForHealthy(webContainer);
-    waitForHealthy(workerContainer);
-    waitForHealthy(edgeContainer);
+    waitForHealthy(webContainer, "LOCAL_UAT_WEB_NOT_HEALTHY");
+    waitForHealthy(workerContainer, "LOCAL_UAT_WORKER_NOT_HEALTHY");
+    waitForHealthy(edgeContainer, "LOCAL_UAT_EDGE_NOT_HEALTHY");
     let targetWeb = inspectContainer(webContainer);
     let targetWorker = inspectContainer(workerContainer);
     let targetEdge = inspectContainer(edgeContainer);
@@ -701,9 +701,9 @@ async function createBaseline(raw) {
     psqlFile(targetContainer, identity.runtimeRole, options.targetDatabase, path.join(roleSqlDir, "verify-role-contract.sql"), { ...roleVariables(identity), verification_mode: "runtime" }, passwords.runtime);
     replaceSecure(composeEnv, environmentText(composeEnvironment(false)));
     compose(composeEnv, ["up", "-d", "--force-recreate", "web", "worker", "edge"]);
-    waitForHealthy(webContainer);
-    waitForHealthy(workerContainer);
-    waitForHealthy(edgeContainer);
+    waitForHealthy(webContainer, "LOCAL_UAT_WEB_NOT_HEALTHY");
+    waitForHealthy(workerContainer, "LOCAL_UAT_WORKER_NOT_HEALTHY");
+    waitForHealthy(edgeContainer, "LOCAL_UAT_EDGE_NOT_HEALTHY");
     targetWeb = inspectContainer(webContainer);
     targetWorker = inspectContainer(workerContainer);
     targetEdge = inspectContainer(edgeContainer);

@@ -180,7 +180,9 @@ test("standalone compose stays source-isolated behind a pinned credential-free l
   assert.match(builder, /org\.opencontainers\.image\.revision/);
   assert.match(builder, /LOCAL_UAT_REVIEWED_WORKTREE_NOT_CLEAN/);
   assert.match(builder, /OGFI_LOCAL_UAT_CONSTRUCTION_TOKEN/);
-  assert.match(builder, /compose\(composeEnv, \["up", "-d", "postgres"\]\);\s*waitForHealthy\(targetContainer\);/);
+  assert.match(builder, /compose\(composeEnv, \["up", "-d", "postgres"\]\);\s*waitForHealthy\(targetContainer, "LOCAL_UAT_POSTGRES_NOT_HEALTHY"\);/);
+  assert.match(builder, /waitForHealthy\(workerContainer, "LOCAL_UAT_WORKER_NOT_HEALTHY"\)/);
+  assert.match(builder, /waitForHealthy\(edgeContainer, "LOCAL_UAT_EDGE_NOT_HEALTHY"\)/);
   assert.match(builder, /\/app\/packages\/database\/node_modules\/\.bin\/prisma/);
   assert.match(builder, /\/app\/apps\/web\/node_modules\/\.bin\/tsx/);
   assert.doesNotMatch(builder, /\/app\/node_modules\/(?:prisma|tsx)\//);
@@ -195,4 +197,6 @@ test("standalone compose stays source-isolated behind a pinned credential-free l
   const manifestBlock = builder.slice(builder.indexOf("const manifest ="), builder.indexOf("writeSecure(manifestFile"));
   assert.doesNotMatch(manifestBlock, /constructionToken/);
   assert.doesNotMatch(builder, /compose\(composeEnv, \["build", "web"\]\)/);
+  const workerPackage = await readFile(new URL("../apps/worker/package.json", import.meta.url), "utf8");
+  assert.match(workerPackage, /import\('\.\/dist\/index\.js'\)/);
 });

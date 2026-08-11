@@ -1,4 +1,6 @@
-import { Prisma, PrismaClient, prisma } from "@ogfi/database";
+import { Prisma, PrismaClient } from "@prisma/client";
+
+const runtimePrisma = new PrismaClient();
 
 const commandStatuses = ["PENDING", "FAILED_RETRYABLE"] as const;
 const commandResultValues = [
@@ -118,7 +120,7 @@ export function openingInventoryExecutorConfiguration(
 
 export function createOpeningInventoryExecutorAdapter(
   executorDatabaseUrl: string,
-  runtimeClient = prisma,
+  runtimeClient = runtimePrisma,
 ): OpeningInventoryExecutorAdapter {
   const executorClient = new PrismaClient({
     datasourceUrl: executorDatabaseUrl,
