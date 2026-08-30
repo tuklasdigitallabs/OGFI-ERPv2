@@ -1,5 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { prisma } from "@ogfi/database";
 import {
   initializeInventoryPilotConfiguration,
@@ -11,17 +14,28 @@ import type { InventoryPilotBootstrapRequest } from "./inventoryPilotApprovalPgB
 
 const socketPath = process.env.OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET;
 const expectedToken = process.env.OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN;
+const readyPath = process.env.OGFI_INVENTORY_PILOT_BOOTSTRAP_READY_FILE;
 const expectedDatabase = process.env.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME;
 const expectedRunId = process.env.OGFI_DISPOSABLE_DATABASE_RUN_ID;
 const expectedNonceHash = process.env.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256;
 if (
   !socketPath ||
   !expectedToken ||
+  !readyPath ||
   !expectedDatabase ||
   !expectedRunId ||
   !expectedNonceHash
 ) {
   throw new Error("INVENTORY_PILOT_BOOTSTRAP_ENVIRONMENT_INCOMPLETE");
+}
+
+if (
+  path.dirname(readyPath) !== tmpdir() ||
+  !/^ogfi-inventory-bootstrap-[a-f0-9]{24}\.ready$/.test(
+    path.basename(readyPath),
+  )
+) {
+  throw new Error("INVENTORY_PILOT_BOOTSTRAP_READY_FILE_INVALID");
 }
 
 const uuid =
@@ -48,6 +62,7 @@ const validActions = [
   "OPENING_INITIALIZE",
   "OPENING_INSTALL_INVENTORY_MOVEMENT_FAILURE",
   "CONFIGURATION_V2_SEALED",
+  "PROTECTED_COUNT_SNAPSHOT",
 ] as const;
 
 function tokenMatches(actual: unknown) {
@@ -98,7 +113,10 @@ function validateRequest(value: unknown): InventoryPilotBootstrapRequest {
   if (!hasExactKeys(value, expectedKeys)) {
     throw new Error("INVENTORY_PILOT_BOOTSTRAP_REQUEST_KEYS_INVALID");
   }
-  if (request.action === "CONFIGURATION_V2_SEALED") {
+  if (
+    request.action === "CONFIGURATION_V2_SEALED" ||
+    request.action === "PROTECTED_COUNT_SNAPSHOT"
+  ) {
     return request;
   }
   if (request.action === "OPENING_INSTALL_INVENTORY_MOVEMENT_FAILURE") {
@@ -222,15 +240,27 @@ if (
 }
 
 let requestInProgress = false;
-const server = createServer({ allowHalfOpen: true }, (socket) => {
+const server = createServer((socket) => {
+  socket.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") {
+      console.error("INVENTORY_PILOT_BOOTSTRAP_SOCKET_ERROR", {
+        code: error.code ?? "UNKNOWN",
+      });
+    }
+  });
   let body = "";
+  let handled = false;
   socket.setEncoding("utf8");
   socket.on("data", (chunk) => {
     body += chunk;
     if (body.length > 16_384)
       socket.destroy(new Error("INVENTORY_PILOT_BOOTSTRAP_REQUEST_TOO_LARGE"));
+    if (!handled && body.includes("\n")) {
+      handled = true;
+      void handleRequest();
+    }
   });
-  socket.on("end", async () => {
+  const handleRequest = async () => {
     try {
       if (requestInProgress) throw new Error("INVENTORY_PILOT_BOOTSTRAP_BUSY");
       requestInProgress = true;
@@ -257,6 +287,11 @@ const server = createServer({ allowHalfOpen: true }, (socket) => {
         );
       } else if (request.action === "CONFIGURATION_V2_SEALED") {
         result = await createConfigurationV2SealedFixture();
+      } else if (request.action === "PROTECTED_COUNT_SNAPSHOT") {
+        result = {
+          approvalRoutingProducerProvenance:
+            await prisma.approvalRoutingProducerProvenance.count(),
+        };
       } else {
         await rollOverInventoryPilotConfiguration({
           db: prisma,
@@ -274,10 +309,13 @@ const server = createServer({ allowHalfOpen: true }, (socket) => {
     } finally {
       requestInProgress = false;
     }
-  });
+  };
 });
 
-server.listen(socketPath, () => console.log("INVENTORY_PILOT_BOOTSTRAP_READY"));
+server.listen(socketPath, () => {
+  writeFileSync(readyPath, "ready\n", { encoding: "utf8", flag: "wx", mode: 0o600 });
+  console.log("INVENTORY_PILOT_BOOTSTRAP_READY");
+});
 const shutdown = () =>
   server.close(() => prisma.$disconnect().finally(() => process.exit(0)));
 process.on("SIGTERM", shutdown);

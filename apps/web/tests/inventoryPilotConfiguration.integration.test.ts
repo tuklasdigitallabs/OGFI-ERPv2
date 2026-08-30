@@ -14,6 +14,7 @@ import {
   assertDisposableAuthorizationDatabaseMarker,
 } from "./authorizationDatabaseSafety";
 import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
+import { requestInventoryPilotBootstrap } from "./helpers/inventoryPilotApprovalPgBootstrapClient";
 
 const runPg = process.env.RUN_INVENTORY_PILOT_APPROVAL_PG_TESTS === "true";
 const expectedDatabase = runPg
@@ -286,7 +287,9 @@ describe.skipIf(!runPg)("DEC-0273 inventory pilot configuration PostgreSQL contr
       prisma.approvalInstanceStepScopeGroup.count(),
       prisma.approvalInstanceStepScopeTarget.count(),
       prisma.approvalInstanceStepProhibitedActor.count(),
-      prisma.approvalRoutingProducerProvenance.count(),
+      requestInventoryPilotBootstrap({ action: "PROTECTED_COUNT_SNAPSHOT" }).then(
+        (snapshot) => snapshot.approvalRoutingProducerProvenance,
+      ),
       prisma.approvalRule.count(),
       prisma.approvalRuleStep.count(),
       prisma.inventoryPilotConfigurationDraft.count(),
@@ -380,9 +383,11 @@ describe.skipIf(!runPg)("DEC-0273 inventory pilot configuration PostgreSQL contr
           cwd: path.resolve(__dirname, "../../.."),
           encoding: "utf8",
           env: fixtureEnvironment,
+          shell: process.platform === "win32",
           timeout: 30_000,
         },
       );
+      if (result.error) throw result.error;
       const fixtureWasWritten = existsSync(fixtureFile);
       expect(result.status).not.toBe(0);
       expect(fixtureWasWritten).toBe(false);

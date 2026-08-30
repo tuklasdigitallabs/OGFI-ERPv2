@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -587,26 +588,38 @@ function runChildCommand(childCommand, env, ...additionalEnvironments) {
 }
 
 function startInventoryPilotBootstrapBroker(migrationDatabaseUrl, marker) {
-  const socketPath = `/tmp/ogfi-inventory-bootstrap-${marker.nonce.slice(0, 24)}.sock`;
+  const transportId = marker.nonce.slice(0, 24);
+  const socketPath = process.platform === "win32"
+    ? `\\\\.\\pipe\\ogfi-inventory-bootstrap-${transportId}`
+    : `/tmp/ogfi-inventory-bootstrap-${transportId}.sock`;
+  const readyPath = path.join(
+    tmpdir(),
+    `ogfi-inventory-bootstrap-${transportId}.ready`,
+  );
   const token = randomBytes(32).toString("base64url");
-  rmSync(socketPath, { force: true });
+  if (process.platform !== "win32") rmSync(socketPath, { force: true });
+  rmSync(readyPath, { force: true });
   const ownerSwitchUrl = new URL(migrationDatabaseUrl);
   ownerSwitchUrl.searchParams.set("options", `-c role=${marker.ownerRole}`);
-  const invocation = pnpmInvocation([
-    "--dir", "apps/web", "exec", "tsx",
-    "tests/helpers/inventoryPilotApprovalPgBootstrapBroker.ts",
-  ]);
+  const invocation = {
+    executable: process.execPath,
+    args: [
+      path.join(workspaceRoot, "apps", "web", "node_modules", "tsx", "dist", "cli.mjs"),
+      path.join(workspaceRoot, "apps", "web", "tests", "helpers", "inventoryPilotApprovalPgBootstrapBroker.ts"),
+    ],
+  };
   const child = spawn(invocation.executable, invocation.args, {
     cwd: workspaceRoot,
     env: {
       ...controlledSetupEnvironment(ownerSwitchUrl.toString(), marker),
       OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: socketPath,
       OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: token,
+      OGFI_INVENTORY_PILOT_BOOTSTRAP_READY_FILE: readyPath,
     },
     stdio: "inherit",
   });
   const deadline = Date.now() + 20_000;
-  while (!existsSync(socketPath)) {
+  while (!existsSync(readyPath)) {
     if (child.exitCode !== null) {
       throw new Error("INVENTORY_PILOT_BOOTSTRAP_BROKER_EXITED");
     }
@@ -619,6 +632,7 @@ function startInventoryPilotBootstrapBroker(migrationDatabaseUrl, marker) {
   return {
     child,
     socketPath,
+    readyPath,
     runtimeEnvironment: {
       OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET: socketPath,
       OGFI_INVENTORY_PILOT_BOOTSTRAP_TOKEN: token,
@@ -629,7 +643,8 @@ function startInventoryPilotBootstrapBroker(migrationDatabaseUrl, marker) {
 function stopInventoryPilotBootstrapBroker(broker) {
   if (!broker) return;
   broker.child.kill("SIGTERM");
-  rmSync(broker.socketPath, { force: true });
+  if (process.platform !== "win32") rmSync(broker.socketPath, { force: true });
+  rmSync(broker.readyPath, { force: true });
 }
 
 function verifyApprovalShadowObservers(

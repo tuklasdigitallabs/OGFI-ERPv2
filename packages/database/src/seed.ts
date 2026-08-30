@@ -7516,14 +7516,9 @@ async function main() {
     },
   });
 
-  await seedRestaurantDemoCatalog();
-  await seedPhase2RecipeDemoData();
-  await seedPhase2SalesImportDemoData();
-  await seedPhase2BranchOperationsDemoData();
-  await seedPhase2FoodSafetyDemoData();
-  await seedPhase2IncidentDemoData();
-  await seedPhase2MaintenanceDemoData();
-
+  // Phase II demo records carry real actor foreign keys. Seed the three actors
+  // used by those records before creating recipes, sales imports, branch logs,
+  // incidents, or maintenance history on a fresh database.
   await prisma.user.upsert({
     where: { id: ids.userId },
     create: {
@@ -7537,6 +7532,42 @@ async function main() {
       displayName: "Bianca Reyes",
     },
   });
+
+  await prisma.user.upsert({
+    where: { id: ids.adminUserId },
+    create: {
+      id: ids.adminUserId,
+      tenantId: ids.tenantId,
+      email: adminEmail,
+      displayName: "Nico Valdez",
+    },
+    update: {
+      email: adminEmail,
+      displayName: "Nico Valdez",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { id: ids.approverUserId },
+    create: {
+      id: ids.approverUserId,
+      tenantId: ids.tenantId,
+      email: approverEmail,
+      displayName: "Alyssa Tan",
+    },
+    update: {
+      email: approverEmail,
+      displayName: "Alyssa Tan",
+    },
+  });
+
+  await seedRestaurantDemoCatalog();
+  await seedPhase2RecipeDemoData();
+  await seedPhase2SalesImportDemoData();
+  await seedPhase2BranchOperationsDemoData();
+  await seedPhase2FoodSafetyDemoData();
+  await seedPhase2IncidentDemoData();
+  await seedPhase2MaintenanceDemoData();
 
   await prisma.user.upsert({
     where: { id: ids.chromiumScopeCandidateUserId },
@@ -7567,20 +7598,6 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { id: ids.adminUserId },
-    create: {
-      id: ids.adminUserId,
-      tenantId: ids.tenantId,
-      email: adminEmail,
-      displayName: "Nico Valdez",
-    },
-    update: {
-      email: adminEmail,
-      displayName: "Nico Valdez",
-    },
-  });
-
-  await prisma.user.upsert({
     where: { id: ids.secondaryAdminUserId },
     create: {
       id: ids.secondaryAdminUserId,
@@ -7607,20 +7624,6 @@ async function main() {
       email: superEmail,
       displayName: "System Super User",
       status: "ACTIVE",
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { id: ids.approverUserId },
-    create: {
-      id: ids.approverUserId,
-      tenantId: ids.tenantId,
-      email: approverEmail,
-      displayName: "Alyssa Tan",
-    },
-    update: {
-      email: approverEmail,
-      displayName: "Alyssa Tan",
     },
   });
 

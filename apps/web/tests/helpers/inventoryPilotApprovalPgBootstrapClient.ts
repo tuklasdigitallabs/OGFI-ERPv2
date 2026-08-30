@@ -40,6 +40,14 @@ export type ConfigurationV2SealedFixtureResult = {
   digest: string;
 };
 
+export type ProtectedCountSnapshotResult = {
+  approvalRoutingProducerProvenance: number;
+};
+
+type ProtectedCountSnapshotRequest = {
+  action: "PROTECTED_COUNT_SNAPSHOT";
+};
+
 type LegacyInventoryPilotBootstrapResult = {
   id: string;
   revisionNumber: number;
@@ -50,11 +58,15 @@ export type InventoryPilotBootstrapRequest =
   | ApprovalPilotBootstrapRequest
   | OpeningPilotBootstrapRequest
   | OpeningInventoryMovementFailureRequest
-  | ConfigurationV2SealedFixtureRequest;
+  | ConfigurationV2SealedFixtureRequest
+  | ProtectedCountSnapshotRequest;
 
 export function requestInventoryPilotBootstrap(
   request: ConfigurationV2SealedFixtureRequest,
 ): Promise<ConfigurationV2SealedFixtureResult>;
+export function requestInventoryPilotBootstrap(
+  request: ProtectedCountSnapshotRequest,
+): Promise<ProtectedCountSnapshotResult>;
 export function requestInventoryPilotBootstrap(
   request: Exclude<
     InventoryPilotBootstrapRequest,
@@ -67,6 +79,7 @@ export async function requestInventoryPilotBootstrap(
 ): Promise<
   | LegacyInventoryPilotBootstrapResult
   | ConfigurationV2SealedFixtureResult
+  | ProtectedCountSnapshotResult
   | undefined
 > {
   const socketPath = process.env.OGFI_INVENTORY_PILOT_BOOTSTRAP_SOCKET;
@@ -78,16 +91,17 @@ export async function requestInventoryPilotBootstrap(
   return await new Promise<
     | LegacyInventoryPilotBootstrapResult
     | ConfigurationV2SealedFixtureResult
+    | ProtectedCountSnapshotResult
     | undefined
   >((resolve, reject) => {
     const socket = createConnection(socketPath);
     let response = "";
-    socket.setTimeout(10_000, () => {
+    socket.setTimeout(30_000, () => {
       socket.destroy(new Error("INVENTORY_PILOT_BOOTSTRAP_RESPONSE_TIMEOUT"));
     });
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      socket.end(`${JSON.stringify({ token, request })}\n`);
+      socket.write(`${JSON.stringify({ token, request })}\n`);
     });
     socket.on("data", (chunk) => {
       response += chunk;
@@ -99,6 +113,9 @@ export async function requestInventoryPilotBootstrap(
     socket.on("error", reject);
     socket.on("end", () => {
       try {
+        if (!response) {
+          throw new Error("INVENTORY_PILOT_BOOTSTRAP_EMPTY_RESPONSE");
+        }
         const result = JSON.parse(response) as {
           ok?: boolean;
           error?: string;
@@ -133,6 +150,28 @@ export async function requestInventoryPilotBootstrap(
             );
           }
           resolve(fixture as ConfigurationV2SealedFixtureResult);
+          return;
+        }
+        if (request.action === "PROTECTED_COUNT_SNAPSHOT") {
+          const fixture = result.result;
+          if (
+            !fixture ||
+            typeof fixture !== "object" ||
+            Array.isArray(fixture) ||
+            Object.keys(fixture).join(",") !==
+              "approvalRoutingProducerProvenance" ||
+            !Number.isSafeInteger(
+              (fixture as ProtectedCountSnapshotResult)
+                .approvalRoutingProducerProvenance,
+            ) ||
+            (fixture as ProtectedCountSnapshotResult)
+              .approvalRoutingProducerProvenance < 0
+          ) {
+            throw new Error(
+              "INVENTORY_PILOT_BOOTSTRAP_PROTECTED_COUNT_RESPONSE_INVALID",
+            );
+          }
+          resolve(fixture as ProtectedCountSnapshotResult);
           return;
         }
         resolve(
