@@ -48,6 +48,13 @@ export type ProjectRiskCard = {
   canResolve: boolean;
 };
 
+export type ProjectRiskPage = {
+  items: ProjectRiskCard[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+};
+
 const optionalUuidSchema = z
   .string()
   .trim()
@@ -256,6 +263,61 @@ export async function listProjectRisks(session: SessionContext) {
       (access.canMutateByProjectId.get(risk.projectId) ?? false) &&
       session.permissionCodes.includes(permissions.projectRiskResolve)
   }));
+}
+
+export async function listProjectRiskPage(
+  session: SessionContext,
+  input: { page?: number; pageSize?: number } = {},
+): Promise<ProjectRiskPage> {
+  const pageSize = Math.min(Math.max(input.pageSize ?? 10, 1), 100);
+  const requestedPage = Math.max(input.page ?? 1, 1);
+  const access = await listAuthorizedProjectAccess(session);
+  if (access.projectIds.length === 0) {
+    return { items: [], page: 1, pageSize, totalItems: 0 };
+  }
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    projectId: { in: access.projectIds },
+    archivedAt: null
+  } as const;
+  const totalItems = await prisma.projectRisk.count({ where });
+  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const risks = await prisma.projectRisk.findMany({
+    where,
+    include: { project: true, owner: true },
+    orderBy: [{ severity: "desc" }, { targetMitigationDate: "asc" }, { createdAt: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  const canResolve = session.permissionCodes.includes(permissions.projectRiskResolve);
+  return {
+    items: risks.map((risk): ProjectRiskCard => ({
+      id: risk.id,
+      projectId: risk.projectId,
+      projectCode: risk.project.code,
+      projectName: risk.project.name,
+      title: risk.title,
+      description: risk.description,
+      category: risk.category,
+      likelihood: risk.likelihood,
+      impact: risk.impact,
+      severity: risk.severity,
+      status: risk.status,
+      ownerName: risk.owner.displayName,
+      targetMitigationDate: risk.targetMitigationDate?.toISOString().slice(0, 10) ?? null,
+      mitigationPlan: risk.mitigationPlan,
+      resolutionNote: risk.resolutionNote,
+      version: risk.version,
+      createdAt: risk.createdAt.toISOString(),
+      canMutate: access.canMutateByProjectId.get(risk.projectId) ?? false,
+      canResolve: (access.canMutateByProjectId.get(risk.projectId) ?? false) && canResolve
+    })),
+    page,
+    pageSize,
+    totalItems
+  };
 }
 
 export async function createProjectRisk(formData: FormData) {

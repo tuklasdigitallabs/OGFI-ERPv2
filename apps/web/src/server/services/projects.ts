@@ -1095,6 +1095,77 @@ export async function listProjectMembers(session: SessionContext) {
   )
 }
 
+export type ProjectMemberPage = {
+  items: ProjectMemberSummary[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+};
+
+export async function listProjectMemberPage(
+  session: SessionContext,
+  input: { page?: number; pageSize?: number } = {},
+): Promise<ProjectMemberPage> {
+  const pageSize = Math.min(Math.max(input.pageSize ?? 10, 1), 100);
+  const requestedPage = Math.max(input.page ?? 1, 1);
+  const access = await listAuthorizedProjectAccess(session);
+  if (access.projectIds.length === 0) {
+    return { items: [], page: 1, pageSize, totalItems: 0 };
+  }
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    projectId: { in: access.projectIds },
+    status: "ACTIVE"
+  } as const;
+  const [totalItems, scopes] = await Promise.all([
+    prisma.projectMember.count({ where }),
+    getActiveProjectScopes(session)
+  ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const members = await prisma.projectMember.findMany({
+    where,
+    include: {
+      project: {
+        include: {
+          members: { where: { status: "ACTIVE" }, include: { user: true } }
+        }
+      },
+      user: true
+    },
+    orderBy: [{ projectId: "asc" }, { createdAt: "asc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  const hasCompanyManage = hasCompanyManageScope(scopes, session.context.companyId);
+  return {
+    items: members.map(
+      (member): ProjectMemberSummary => ({
+        id: member.id,
+        userId: member.userId,
+        projectId: member.projectId,
+        projectCode: member.project.code,
+        projectName: member.project.name,
+        userName: member.user.displayName,
+        userEmail: member.user.email,
+        projectRole: member.projectRole,
+        canRemove:
+          member.userId !== session.user.id &&
+          session.permissionCodes.includes(permissions.projectManageMembers) &&
+          canManageMembersForProject({
+            session,
+            project: member.project,
+            hasCompanyManage
+          })
+      }),
+    ),
+    page,
+    pageSize,
+    totalItems
+  };
+}
+
 export async function listProjectMemberOptions(session: SessionContext) {
   await requirePermission(session, permissions.projectManageMembers)
   const users = await prisma.user.findMany({

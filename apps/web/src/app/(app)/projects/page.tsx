@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, Panel, WorkspaceTabs } from "@ogfi/ui";
+import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -13,8 +13,8 @@ import {
 import { getProjectDashboard } from "@/server/services/projectDashboard";
 import {
   createProjectRisk,
-  listProjectRisks,
   transitionProjectRisk,
+  listProjectRiskPage,
   type ProjectRiskCard
 } from "@/server/services/projectRisks";
 import { listPublishedProjectTemplatesForProjectCreate } from "@/server/services/projectTemplates";
@@ -22,7 +22,7 @@ import {
   addProjectMember,
   createProject,
   listProjectMemberOptions,
-  listProjectMembers,
+  listProjectMemberPage,
   listProjects,
   removeProjectMember,
   transitionProjectLifecycle
@@ -161,14 +161,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
 
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const activeTab = getProjectTab(resolvedSearchParams);
+  const requestedPage = Number.parseInt(getStringParam(resolvedSearchParams, "page") ?? "1", 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const actionFeedback = getActionFeedback(resolvedSearchParams);
   const canCreateProject = session.permissionCodes.includes(permissions.projectCreate);
-  const [projects, dashboard, risks, members, memberOptions, publishedTemplates] =
+  const [projects, dashboard, memberPage, riskPage, memberOptions, publishedTemplates] =
     await Promise.all([
       listProjects(session),
       getProjectDashboard(session),
-      listProjectRisks(session),
-      listProjectMembers(session),
+      listProjectMemberPage(session, { page, pageSize: 10 }),
+      listProjectRiskPage(session, { page, pageSize: 10 }),
       session.permissionCodes.includes(permissions.projectManageMembers)
         ? listProjectMemberOptions(session)
         : Promise.resolve([]),
@@ -208,8 +210,8 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         className="mb-5"
         items={[
           { label: "Overview", href: "/projects", active: activeTab === "overview", count: projects.length },
-          { label: "Members", href: "/projects?tab=members", active: activeTab === "members", count: members.length },
-          { label: "Risks", href: "/projects?tab=risks", active: activeTab === "risks", count: risks.filter((risk) => !["CLOSED", "CANCELLED"].includes(risk.status)).length },
+          { label: "Members", href: "/projects?tab=members", active: activeTab === "members", count: memberPage.totalItems },
+          { label: "Risks", href: "/projects?tab=risks", active: activeTab === "risks", count: riskPage.totalItems },
           { label: "Activity", href: "/projects?tab=activity", active: activeTab === "activity", count: dashboard.recentActivity.length },
         ]}
       />
@@ -535,16 +537,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
               Restricted projects rely on explicit membership and project scope.
             </p>
           </div>
-          <Badge tone="info">{members.length} active</Badge>
+          <Badge tone="info">{memberPage.totalItems} active</Badge>
         </div>
         <div className="grid gap-4 p-4 xl:grid-cols-[1fr_22rem]">
           <div className="grid gap-2">
-            {members.length === 0 ? (
+            {memberPage.totalItems === 0 ? (
               <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                 No project members visible.
               </p>
             ) : (
-              members.slice(0, 10).map((member) => (
+              memberPage.items.map((member) => (
                 <div
                   className="ogfi-list-row grid gap-2 rounded-md border border-slate-200 text-sm md:grid-cols-[1fr_10rem_12rem]"
                   key={member.id}
@@ -577,6 +579,13 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             )}
           </div>
         </div>
+        <PaginationBar
+          page={memberPage.page}
+          pageSize={memberPage.pageSize}
+          totalItems={memberPage.totalItems}
+          itemLabel="project members"
+          getPageHref={(nextPage) => `/projects?tab=members&page=${nextPage}`}
+        />
       </section>
 
       <section className={`ogfi-data-surface mb-5 ${activeTab === "risks" ? "" : "hidden"}`}>
@@ -587,18 +596,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
               Advisory project risks only; operational records remain in their source modules.
             </p>
           </div>
-          <Badge tone="warning">
-            {risks.filter((risk) => !["CLOSED", "CANCELLED"].includes(risk.status)).length} open
-          </Badge>
+          <Badge tone="warning">{riskPage.totalItems} total</Badge>
         </div>
         <div className="grid gap-4 p-4 xl:grid-cols-[1fr_22rem]">
           <div className="grid gap-3">
-            {risks.length === 0 ? (
+            {riskPage.totalItems === 0 ? (
               <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                 No project risks recorded.
               </p>
             ) : (
-              risks.slice(0, 8).map((risk) => (
+              riskPage.items.map((risk) => (
                 <div className="ogfi-record-summary p-4" key={risk.id}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -661,6 +668,13 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             )}
           </div>
         </div>
+        <PaginationBar
+          page={riskPage.page}
+          pageSize={riskPage.pageSize}
+          totalItems={riskPage.totalItems}
+          itemLabel="project risks"
+          getPageHref={(nextPage) => `/projects?tab=risks&page=${nextPage}`}
+        />
       </section>
 
       <section className={`ogfi-data-surface mb-5 ${activeTab === "activity" ? "" : "hidden"}`}>
