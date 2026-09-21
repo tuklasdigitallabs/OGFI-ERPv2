@@ -1,3 +1,5 @@
+import { withInventoryQuantityRead } from "./inventoryQuantityRead";
+import { assertRequiredLossEvidence } from "./lossEvidence";
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -169,9 +171,9 @@ export function calculateAdjustmentDelta(
   return adjustmentType === "DECREASE" ? -quantity : quantity;
 }
 
-export async function nextStockAdjustmentReference(companyId: string) {
+export async function nextStockAdjustmentReference(companyId: string, db: typeof prisma | TransactionClient = prisma) {
   const year = new Date().getUTCFullYear();
-  const count = await prisma.stockAdjustment.count({
+  const count = await db.stockAdjustment.count({
     where: {
       companyId,
       publicReference: { startsWith: `SA-${year}-` }
@@ -300,6 +302,7 @@ export async function listStockAdjustmentMyTaskPage(
   } = {}
 ): Promise<StockAdjustmentMyTaskPage> {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   if (!session.permissionCodes.includes(permissions.stockAdjustmentPost)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
@@ -327,14 +330,14 @@ export async function listStockAdjustmentMyTaskPage(
     inventoryLocation: { select: { name: true } }
   } satisfies Prisma.StockAdjustmentSelect;
   const [totalCount, rows] = await Promise.all([
-    prisma.stockAdjustment.count({
+    tx.stockAdjustment.count({
       where: {
         ...scopedStockAdjustmentWhere(session),
         status: "APPROVED",
         postedAt: null
       }
     }),
-    prisma.stockAdjustment.findMany({
+    tx.stockAdjustment.findMany({
       where,
       select,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -364,6 +367,8 @@ export async function listStockAdjustmentMyTaskPage(
           }
         : null
   };
+
+  }, { adjustments: true });
 }
 
 /**
@@ -374,14 +379,15 @@ export async function getStockAdjustmentDashboardRead(
   session: SessionContext,
 ): Promise<StockAdjustmentDashboardRead> {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
 
   const where = stockAdjustmentDashboardProfileWhere(
     session,
     "stock-adjustment-exceptions-v1"
   );
   const [exceptionCount, taskCandidates] = await Promise.all([
-    prisma.stockAdjustment.count({ where }),
-    prisma.stockAdjustment.findMany({
+    tx.stockAdjustment.count({ where }),
+    tx.stockAdjustment.findMany({
       where,
       select: {
         id: true,
@@ -409,6 +415,8 @@ export async function getStockAdjustmentDashboardRead(
       createdAt: adjustment.createdAt.toISOString(),
     })),
   };
+
+  }, { adjustments: true });
 }
 
 type LockedStockAdjustmentCancellationUser = {
@@ -823,6 +831,7 @@ export async function listStockAdjustments(
   input: { maxRows?: number } = {}
 ) {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const maxRows = input.maxRows;
   if (
     typeof maxRows !== "number" ||
@@ -833,7 +842,7 @@ export async function listStockAdjustments(
     throw new Error("STOCK_ADJUSTMENT_EXPORT_MAX_ROWS_INVALID");
   }
 
-  const adjustments = await prisma.stockAdjustment.findMany({
+  const adjustments = await tx.stockAdjustment.findMany({
     where: profile
       ? stockAdjustmentDashboardProfileWhere(session, profile)
       : scopedStockAdjustmentWhere(session),
@@ -854,6 +863,8 @@ export async function listStockAdjustments(
   }
 
   return adjustments.map(mapStockAdjustment);
+
+  }, { adjustments: true });
 }
 
 type StockAdjustmentWithRelations = Prisma.StockAdjustmentGetPayload<{ include: {
@@ -892,13 +903,14 @@ export async function listStockAdjustmentPage(
   input: { page?: number; pageSize?: number } = {}
 ) {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
   const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
   const where = scopedStockAdjustmentWhere(session);
-  const totalItems = await prisma.stockAdjustment.count({ where });
+  const totalItems = await tx.stockAdjustment.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  const adjustments = await prisma.stockAdjustment.findMany({
+  const adjustments = await tx.stockAdjustment.findMany({
     where,
     include: { inventoryLocation: true, requestedBy: true, cancelledBy: true, postedBy: true, reversedBy: true, lines: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -906,6 +918,8 @@ export async function listStockAdjustmentPage(
     take: pageSize
   });
   return { items: adjustments.map(mapStockAdjustment), totalItems, page, pageSize, totalPages };
+
+  }, { adjustments: true });
 }
 
 export type StockAdjustmentExceptionProfilePage = {
@@ -921,17 +935,18 @@ export async function listStockAdjustmentDashboardProfilePage(
   requestedPage: number
 ): Promise<StockAdjustmentExceptionProfilePage> {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
 
   const page = Number.isFinite(requestedPage) && requestedPage > 0
     ? Math.floor(requestedPage)
     : 1;
   const where = stockAdjustmentDashboardProfileWhere(session, profile);
-  const totalItems = await prisma.stockAdjustment.count({ where });
+  const totalItems = await tx.stockAdjustment.count({ where });
   const safePage = Math.min(
     page,
     Math.max(1, Math.ceil(totalItems / stockAdjustmentProfilePageSize))
   );
-  const adjustments = await prisma.stockAdjustment.findMany({
+  const adjustments = await tx.stockAdjustment.findMany({
     where,
     include: {
       inventoryLocation: true,
@@ -975,12 +990,15 @@ export async function listStockAdjustmentDashboardProfilePage(
     page: safePage,
     pageSize: stockAdjustmentProfilePageSize
   };
+
+  }, { adjustments: true });
 }
 
 export async function getStockAdjustment(session: SessionContext, id: string) {
   await requireStockAdjustmentRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
 
-  const adjustment = await prisma.stockAdjustment.findFirst({
+  const adjustment = await tx.stockAdjustment.findFirst({
     where: scopedStockAdjustmentWhere(session, id),
     include: {
       inventoryLocation: {
@@ -1009,7 +1027,7 @@ export async function getStockAdjustment(session: SessionContext, id: string) {
     return null;
   }
 
-  const auditEvents = await prisma.auditEvent.findMany({
+  const auditEvents = await tx.auditEvent.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -1069,6 +1087,8 @@ export async function getStockAdjustment(session: SessionContext, id: string) {
       metadata: event.metadata
     }))
   };
+
+  }, { adjustments: true, adjustmentId: id });
 }
 
 export async function createStockAdjustment(formData: FormData) {
@@ -1169,6 +1189,7 @@ export async function createStockAdjustment(formData: FormData) {
     values.reasonCode,
     values.adjustmentType
   );
+  assertRequiredLossEvidence({ required: controlledReasonCode.requiresEvidence, evidenceReference: values.evidenceReference, lines: lineDrafts, errorCode: "STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED" });
   const totalEstimatedValueImpact = lineDrafts.reduce(
     (total, line) => total + line.estimatedValueImpact,
     0
@@ -1179,13 +1200,20 @@ export async function createStockAdjustment(formData: FormData) {
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       const adjustment = await prisma.$transaction(async (tx) => {
+        await lockLiveInventoryActionAuthority(tx, session, {
+          inventoryLocationId: inventoryLocation.id,
+          permissionCode: permissions.stockAdjustmentCreate,
+          staleErrorCode: "PERMISSION_DENIED",
+        });
+        const controlledReasonCode = await requireActiveOperationalReasonCode(session, "STOCK_ADJUSTMENT", values.reasonCode, values.adjustmentType, tx);
+        const evidenceCoverage = assertRequiredLossEvidence({ required: controlledReasonCode.requiresEvidence, evidenceReference: values.evidenceReference, lines: lineDrafts, errorCode: "STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED" });
         const created = await tx.stockAdjustment.create({
           data: {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             inventoryLocationId: inventoryLocation.id,
             publicReference: await nextStockAdjustmentReference(
-              session.context.companyId
+              session.context.companyId, tx
             ),
             requestedByUserId: session.user.id,
             adjustmentType: values.adjustmentType,
@@ -1242,6 +1270,7 @@ export async function createStockAdjustment(formData: FormData) {
               reasonCode: controlledReasonCode.code,
               reasonLabel: controlledReasonCode.label,
               reasonCodeId: controlledReasonCode.id,
+              evidenceCoverage,
               approvalAndPostingRequired: true
             }
           }
@@ -1321,6 +1350,13 @@ export async function submitStockAdjustment(formData: FormData) {
       throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
     }
     assertDedicatedOpeningCutoverRequired(adjustment.adjustmentType);
+    await lockLiveInventoryActionAuthority(tx, session, {
+      inventoryLocationId: adjustment.inventoryLocationId,
+      permissionCode: permissions.stockAdjustmentSubmit,
+      staleErrorCode: "PERMISSION_DENIED",
+    });
+    const reason = await requireActiveOperationalReasonCode(session, "STOCK_ADJUSTMENT", adjustment.reasonCode, adjustment.adjustmentType, tx);
+    const evidenceCoverage = assertRequiredLossEvidence({ required: reason.requiresEvidence, evidenceReference: adjustment.evidenceReference, lines: adjustment.lines, errorCode: "STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED" });
     const transactionType = adjustment.sourceStockCountSessionId
       ? "StockCountVarianceAdjustment"
       : "StockAdjustment";
@@ -1458,6 +1494,8 @@ export async function submitStockAdjustment(formData: FormData) {
         metadata: {
           approvalInstanceId: approval.id,
           approvalRuleId: approvalRule.id,
+          reasonCodeId: reason.id,
+          evidenceCoverage,
           approvalRuleTransactionType: transactionType,
           lineCount: adjustment.lines.length,
           totalEstimatedValueImpact: Number(adjustment.totalEstimatedValueImpact),
@@ -1716,6 +1754,13 @@ export async function postStockAdjustment(formData: FormData) {
       if (lockedSource?.status === "POSTED" || lockedSource?.postedAt) return;
       throw new Error("STOCK_ADJUSTMENT_NOT_APPROVED_FOR_POSTING");
     }
+    const evidenceDocument = await tx.stockAdjustment.findFirst({
+      where: { id: adjustment.id, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { lines: true },
+    });
+    if (!evidenceDocument) throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
+    const evidenceReason = await requireActiveOperationalReasonCode(session, "STOCK_ADJUSTMENT", evidenceDocument.reasonCode, evidenceDocument.adjustmentType, tx);
+    assertRequiredLossEvidence({ required: evidenceReason.requiresEvidence, evidenceReference: evidenceDocument.evidenceReference, lines: evidenceDocument.lines, errorCode: "STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED" });
     const liveMfaSession = await assertFreshStockAdjustmentInventoryAuthority(tx, session, { inventoryLocationId: lockedSource.inventoryLocationId, permissionCode: permissions.stockAdjustmentPost });
     await assertPrivilegedMfaForAction(liveMfaSession, { action: "stock_adjustment.post", enforcementScope: "all_sensitive", permissionCode: permissions.stockAdjustmentPost, entityType: "StockAdjustment", entityId: adjustment.id, reason: "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.", metadata: { adjustmentType: adjustment.adjustmentType, inventoryLocationId: lockedSource.inventoryLocationId } }, { transaction: tx });
     const inventoryLocationLock = await lockInventoryLocationsForPosting(

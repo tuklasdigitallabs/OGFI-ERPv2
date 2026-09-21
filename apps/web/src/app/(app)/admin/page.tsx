@@ -5,6 +5,7 @@ import { Badge, ButtonLink, PaginationBar, Panel, WorkspaceTabs } from "@ogfi/ui
 import { ActionFeedbackToast } from "@/components/ActionFeedbackToast";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { AccessSetupForm } from "@/components/admin/AccessSetupForm";
 import {
   OrganizationEditForm,
   ShortMutationForm,
@@ -25,6 +26,7 @@ import {
   listCoreAdminAuditEventPage,
   listCoreAdminBrandOptions,
   listCoreAdminLocationOptions,
+  listCoreAdminRolePage,
   type CoreAdminAuditEventFilters
   , type CoreAdminOrganizationSection
 } from "@/server/services/coreAdmin";
@@ -311,6 +313,9 @@ export default async function CoreAdministrationPage({
   const auditFirstPageHref = `/admin?${auditFirstPageParams.toString()}`;
   const auditNextPageHref = `/admin?${auditNextPageParams.toString()}`;
   const activeUsers = overview.userPage.activeItems;
+  const quickRolePage = activeTab === "users"
+    ? await listCoreAdminRolePage(session, { page: 1, pageSize: 100, status: "ACTIVE" })
+    : null;
   const activeRules = overview.approvalRulePage.activeItems;
   const highAccessRoleCount = overview.rolePage.highAccessItems;
   const selectedOrganizationRecord = overview.organizationRecordDetail;
@@ -406,73 +411,11 @@ export default async function CoreAdministrationPage({
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="info">{activeUsers} active</Badge>
               <EntryModal title="Create User" triggerLabel="Create User">
-                <form action={createUserAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Full name
-                    <input className="rounded-md border border-slate-300 px-3 py-2" name="displayName" required />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Email
-                    <input className="rounded-md border border-slate-300 px-3 py-2" name="email" type="email" required />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Initial role
-                    <select className="rounded-md border border-slate-300 px-3 py-2" name="initialRoleId">
-                      <option value="">No role yet</option>
-                      {overview.roleOptions.items
-                        .map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name} - {role.systemRole ? "system role" : "custom role"}
-                          </option>
-                        ))}
-                    </select>
-                    {overview.roleOptions.hasMore ? (
-                      <span className="text-xs font-normal text-slate-500">
-                        Showing the first 100 active roles. Use Roles &amp; Permissions to review the full library.
-                      </span>
-                    ) : null}
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Initial location scope
-                    <select className="rounded-md border border-slate-300 px-3 py-2" name="initialLocationId">
-                      <option value="">No location yet</option>
-                      {locationOptions.items.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {location.name} / {location.code}
-                        </option>
-                      ))}
-                    </select>
-                    {locationOptions.hasMore ? (
-                      <span className="text-xs font-normal text-slate-500">
-                        Showing the first 100 active locations. Use Organization Scope to review the full registry.
-                      </span>
-                    ) : null}
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Location access
-                    <select className="rounded-md border border-slate-300 px-3 py-2" name="accessLevel">
-                      <option value="VIEW">View</option>
-                      <option value="OPERATE">Operate</option>
-                      <option value="APPROVE">Approve</option>
-                      <option value="MANAGE">Manage</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
-                    Setup reason
-                    <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
-                  </label>
-                  <p className="text-sm text-slate-500 md:col-span-2">
-                    Initial role assignment requires Administer tenant-wide roles and
-                    company Manage scope. The selected location establishes the new
-                    user&apos;s company eligibility. A setup reason is required and audited.
-                  </p>
-                  <p className="text-sm text-slate-500 md:col-span-2">
-                    This creates the ERP user record. Authentication credentials remain handled by the login system.
-                  </p>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
-                    Create User
-                  </button>
-                </form>
+                <AccessSetupForm
+                  action={createUserAction}
+                  roleOptions={quickRolePage?.items ?? []}
+                  locationOptions={locationOptions.items}
+                />
               </EntryModal>
             </div>
           </div>
@@ -656,6 +599,9 @@ export default async function CoreAdministrationPage({
                   </div>
                   <Badge tone={role.status === "ACTIVE" ? "success" : "neutral"}>
                     {role.status}
+                  </Badge>
+                  <Badge tone={role.systemRole ? "neutral" : role.canAssignDirectly ? "neutral" : "warning"}>
+                    {role.systemRole ? "System role" : role.canAssignDirectly ? "Quick setup" : "Approval required"}
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">

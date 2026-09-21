@@ -40,6 +40,17 @@ Posting rechecks the live PO, receipt header and lines, inventory-location scope
 
 [Screenshot placeholder: Receiving page showing an issued PO receipt form and draft receipt post action.]
 
+## Cancel an incorrect unposted draft
+
+Only users explicitly assigned `inventory.receiving.cancel` and current operational scope for the receiving location can cancel a `DRAFT`. This permission is not automatically assigned to existing roles.
+
+1. Open the draft from `Receiving` and confirm its Purchase Order and location.
+2. Select `Cancel Draft Receipt`.
+3. Enter a cancellation reason and confirm the action.
+4. Wait for the result and check the `CANCELLED` status and audit activity.
+
+Cancellation preserves the receipt, actor, time, and reason. It changes no stock or PO received quantity. If a stale draft blocks correction of another receipt, an authorized user can cancel that draft before separately reviewing the posted receipt's reversal. Posted receipts require the existing reversal permission and controls. A disabled cancellation action explains the missing permission; ask an authorized receiving supervisor.
+
 ## Expected result
 
 - A draft Receiving Report is created first.
@@ -47,6 +58,8 @@ Posting rechecks the live PO, receipt header and lines, inventory-location scope
 - Inventory balance cache updates in the same transaction as the movement.
 - PO line received quantities update.
 - The PO moves to `PARTIALLY_RECEIVED` or `FULLY_RECEIVED`.
+
+Each line must reconcile exactly: **delivered = accepted + rejected + damaged**. Short quantity describes units not delivered; it cannot explain an unclassified part of the delivered stock. The same check runs when creating and posting the receipt.
 
 ## Important controls and warnings
 

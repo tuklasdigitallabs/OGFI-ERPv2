@@ -5,10 +5,12 @@ import {
   assertDirectRoleAssignmentAllowed,
   assertDirectLocationScopeAssignmentAllowed,
   assertRequiresControlledLocationScopeRequest,
+  classifyRoleRisk,
   getLocationScopeRiskLabel,
   isDirectlyAssignableLocationScope,
   isDirectlyAssignableRole
 } from "./coreAdmin";
+import { getPermissionPresentation } from "./rolePermissionCatalog";
 
 const nonSensitiveRole = {
   code: "BRANCH_REQUESTER",
@@ -47,6 +49,23 @@ const systemRole = {
 };
 
 describe("core administration audit search wiring", () => {
+  test("classifies roles from effective permissions while preserving flexible composition", () => {
+    expect(classifyRoleRisk(nonSensitiveRole)).toMatchObject({
+      level: "STANDARD",
+      label: "Available for quick setup",
+      sensitivePermissionCodes: [],
+    });
+    expect(classifyRoleRisk(sensitiveRole)).toMatchObject({
+      level: "CONTROLLED",
+      label: "Approval required",
+      sensitivePermissionCodes: ["purchasing.purchase_request.approve"],
+    });
+    expect(classifyRoleRisk(systemRole)).toMatchObject({
+      level: "CONTROLLED",
+      label: "Admin-controlled role",
+    });
+  });
+
   test("users registry uses a bounded server-owned page contract and explicit denial boundary", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const adminPageSource = readFileSync(
@@ -174,7 +193,7 @@ describe("core administration audit search wiring", () => {
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
     expect(overviewSource).not.toContain("activeTab === \"audit\" ? prisma.auditEvent.findMany");
-    expect(userDetailSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
+    expect(userDetailSource).toContain("assertTargetUserInCurrentCompany(session, userId, prisma");
     expect(userDetailSource).toContain(
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
@@ -339,6 +358,12 @@ describe("core administration audit search wiring", () => {
     ).toBe(false);
     expect(
       isDirectlyAssignableLocationScope({
+        locationType: "BRANCH",
+        accessLevel: "APPROVE"
+      })
+    ).toBe(false);
+    expect(
+      isDirectlyAssignableLocationScope({
         locationType: "WAREHOUSE",
         accessLevel: "VIEW"
       })
@@ -367,11 +392,37 @@ describe("core administration audit search wiring", () => {
     ).toThrow("LOW_RISK_SCOPE_USE_QUICK_ASSIGNMENT");
   });
 
+  test("unknown permissions fail closed as approval-required", () => {
+    expect(getPermissionPresentation("future.module.new_capability")).toMatchObject({
+      sensitive: true,
+    });
+    expect(
+      isDirectlyAssignableRole({
+        code: "BRANCH_STAFF_CUSTOM",
+        systemRole: false,
+        permissions: [{ permission: { code: "future.module.new_capability" } }],
+      }),
+    ).toBe(false);
+  });
+
+  test("access changes use one audited replacement transaction with CAS and exact replay", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("export async function changeUserLocationScopeAccess");
+    expect(serviceSource).toContain("export async function changeUserRoleAssignment");
+    expect(serviceSource).toContain("SCOPE_ASSIGNMENT_VERSION_CONFLICT");
+    expect(serviceSource).toContain("ROLE_ASSIGNMENT_VERSION_CONFLICT");
+    expect(serviceSource).toContain("USER_ACCESS_IDEMPOTENCY_CONFLICT");
+    expect(serviceSource).toContain("deterministicAccessAssignmentId");
+    expect(serviceSource).toContain('eventType: "user_scope_assignment.changed"');
+    expect(serviceSource).toContain('eventType: "user_role_assignment.changed"');
+    expect(serviceSource).toContain("touchUserPrivilegeEpoch(tx");
+  });
+
   test("role grant paths enforce direct assignability while revocation remains available", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const deactivationSource = serviceSource.slice(
       serviceSource.indexOf("export async function deactivateUserRoleAssignment"),
-      serviceSource.indexOf("export async function requestSensitiveUserRole"),
+      serviceSource.indexOf("/**\n * Replaces one active tenant role assignment"),
     );
 
     expect(serviceSource).toContain("if (initialRole) {\n    assertDirectRoleAssignmentAllowed(initialRole);");
@@ -398,7 +449,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("directScopeDeactivation");
     expect(serviceSource).toContain("directLocationPredicate");
     expect(detailPageSource).toContain("scope.canMutate");
-    expect(detailPageSource).toContain("Manage-level scope requires controlled approval");
+    expect(detailPageSource).toContain("Approve and Manage access always require a controlled request");
     expect(feedbackSource).toContain("HIGH_RISK_SCOPE_ASSIGNMENT_BLOCKED");
   });
 
@@ -605,13 +656,9 @@ describe("core administration audit search wiring", () => {
     );
 
     expect(detailPageSource).toContain("EntryModal");
-    for (const title of [
-      "Deactivate Scope",
-      "Assign Location Scope",
-      "Assign Role"
-    ]) {
-      expect(detailPageSource).toContain(`title="${title}"`);
-    }
+    expect(detailPageSource).toContain('title="Change or deactivate scope"');
+    expect(detailPageSource).toContain('title="Assign Location Scope"');
+    expect(detailPageSource).toContain('title="Assign Role"');
     for (const actionName of [
       "deactivateRoleAssignment",
       "deactivateScope",
@@ -716,7 +763,7 @@ describe("core administration audit search wiring", () => {
     );
     expect(serviceSource).toContain("listCoreAdminUserAuditEventPage");
     expect(serviceSource).toContain("actorUserId");
-    expect(serviceSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
+    expect(serviceSource).toContain("assertTargetUserInCurrentCompany(session, userId, prisma");
     expect(serviceSource).toContain("const existingAnd = Array.isArray(where.AND)");
     expect(serviceSource).toContain("where.AND = [...existingAnd, { OR: queryConditions }]");
     expect(detailPageSource).toContain('section === "audit"');

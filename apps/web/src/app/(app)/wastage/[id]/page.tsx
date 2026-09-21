@@ -1,3 +1,4 @@
+import { lossEstimateAssurance } from "@/server/services/lossEvidence";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
@@ -225,6 +226,7 @@ export default async function WastageDetailPage({
               <dt className="text-sm font-medium text-slate-500">Estimated value</dt>
               <dd className="text-slate-950">
                 {formatMoney(report.totalEstimatedCost)}
+                <span className="block text-sm text-amber-800">{lossEstimateAssurance(report.totalEstimatedCost)}</span>
               </dd>
             </div>
             <div>
@@ -246,7 +248,7 @@ export default async function WastageDetailPage({
               <dd className="text-slate-950">
                 {report.evidenceRequired
                   ? report.evidenceSatisfied
-                    ? "Required and satisfied"
+                    ? "Required references present; artifacts not verified here"
                     : "Required and missing"
                   : "Not required"}
               </dd>
@@ -262,6 +264,11 @@ export default async function WastageDetailPage({
                 </dd>
               </div>
             ) : null}
+            <div className="sm:col-span-2">
+              <dt className="text-sm font-medium text-slate-500">Repeat item history snapshot</dt>
+              <dd className="break-words text-slate-950">{report.repeatHistorySummary}</dd>
+              <dd className="text-sm text-slate-500">Prior lines within the configured lookback, excluding this report. Reporter checks use the original reporter.</dd>
+            </div>
             {report.policyFlagLabels.length > 0 ? (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500">Policy flags</dt>
@@ -438,6 +445,7 @@ export default async function WastageDetailPage({
                 <dt className="font-semibold text-slate-950">Estimated value</dt>
                 <dd className="font-bold text-blue-700">
                   {formatMoney(report.totalEstimatedCost)}
+                <span className="block text-sm text-amber-800">{lossEstimateAssurance(report.totalEstimatedCost)}</span>
                 </dd>
               </div>
             </dl>

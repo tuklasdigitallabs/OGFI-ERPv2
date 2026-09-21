@@ -117,3 +117,7 @@ Notify Purchasing and relevant manager when configured thresholds are met.
 - Posting rechecks the scoped receipt/PO/line graph and inventory-location lock set inside one transaction; stale or competing posts fail safely without partial movement, line, PO, or audit effects.
 - The detail actions use a shared pending-submit control: `Post Receipt` changes to `Posting Receipt…`, and `Reverse Receipt` changes to `Reversing Receipt…` while disabled. This is operator feedback only; server-side status, idempotency, locks, and rollback remain authoritative.
 - Reversal uses the same inventory-location → PO → receipt lock order, rechecks original movement lineage, and CASes receipt/PO restoration before writing the reversal audit.
+
+## DEC-0282 — bounded remediation behavior
+
+Draft detail provides reasoned cancellation only with explicit cancellation authority and DRAFT status, with pending feedback and a clear unavailable explanation otherwise. Creation/posting rejects any unclassified delivered quantity. Cancellation preserves the document and audit history; it does not post stock.

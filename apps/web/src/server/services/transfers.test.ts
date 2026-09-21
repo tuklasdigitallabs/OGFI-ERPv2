@@ -467,6 +467,11 @@ describe("inventory transfer foundation rules", () => {
       hashInventoryTransferApprovalSource(reordered)
     );
 
+    const tracked = { ...source, lines: source.lines.map((line) => ({ ...line, lotNumber: "LOT-A", expiryDate: new Date("2027-01-01T00:00:00Z") })) };
+    expect(hashInventoryTransferApprovalSource(tracked)).not.toBe(hashInventoryTransferApprovalSource(source));
+    expect(hashInventoryTransferApprovalSource({ ...tracked, lines: tracked.lines.map((line) => ({ ...line, lotNumber: "LOT-B" })) })).not.toBe(hashInventoryTransferApprovalSource(tracked));
+    expect(hashInventoryTransferApprovalSource({ ...tracked, lines: tracked.lines.map((line) => ({ ...line, expiryDate: new Date("2027-01-02T00:00:00Z") })) })).not.toBe(hashInventoryTransferApprovalSource(tracked));
+
     const request = {
       transferId: "transfer-1",
       submitterUserId: "submitter-1",

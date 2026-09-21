@@ -190,6 +190,11 @@ export default async function CoreAdminRoleDetailPage({
           <p className="text-sm font-semibold text-slate-500">Status</p>
           <div className="mt-3">
             <Badge tone={role.status === "ACTIVE" ? "success" : "neutral"}>{role.status}</Badge>
+            <div className="mt-2">
+              <Badge tone={role.sensitiveEnabledCount > 0 ? "warning" : "neutral"}>
+                {role.sensitiveEnabledCount > 0 ? "Approval required" : "Standard role"}
+              </Badge>
+            </div>
           </div>
         </Panel>
         <Panel className="ogfi-detail-card">
@@ -224,7 +229,7 @@ export default async function CoreAdminRoleDetailPage({
                 {role.recommendedLabel}
               </Badge>
               {role.sensitiveEnabledCount > 0 ? (
-                <Badge tone="warning">{role.sensitiveEnabledCount} sensitive enabled</Badge>
+                <Badge tone="warning">{role.sensitiveEnabledCount} approval-required</Badge>
               ) : null}
             </div>
           </div>
@@ -262,6 +267,7 @@ export default async function CoreAdminRoleDetailPage({
             permissionQuery={role.permissionPage.query}
             permissionTotal={role.permissionPage.totalItems}
             returnPath={permissionReturnPath}
+            sensitiveEnabledCount={role.sensitiveEnabledCount}
             resetDraft={recommendedPermissionsApplied}
             roleId={role.id}
           />

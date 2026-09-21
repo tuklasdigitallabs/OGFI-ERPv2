@@ -72,12 +72,24 @@ While a post is running the action shows `Posting Adjustment…`; while a revers
 - Reversal is limited to manual `INCREASE` and `DECREASE` adjustments and requires privileged MFA in addition to the scoped reverse permission; opening-balance adjustments are not reversible in this release.
 - Users cannot rely on page visibility alone for authority; scope and permission checks are enforced by the service layer.
 
+## Evidence and value review
+
+Active reason rules and configured evidence-reference coverage are checked at creation, submission, and posting. Supply a report-level reference covering the applicable lines, or a reference on each applicable line. A previously approved adjustment with missing required references is blocked from posting; approval does not waive evidence requirements.
+
+A reference is text presence only, not a verified photo or reviewed artifact. Inspect the supporting evidence independently. Treat **Value unknown** and **Unverified estimate** as unresolved value context requiring independent review; a zero estimate is not proof of zero impact. The authoritative valuation policy remains open, and the labels do not change approval routing.
+
+VIEW-only scope does not authorize creating or submitting an adjustment. Current operational permission and location scope are checked again by the server.
+
 ## What To Check
 
 - The adjustment shows the correct company, location, item, quantity, reason, evidence reference, and status.
 - The approval history shows who approved, returned, or rejected the request.
 - Inventory Ledger shows no adjustment movement until the adjustment is posted.
 - Posted or reversed adjustments show the linked movement references.
+
+## What happens next
+
+Track the approval outcome and, where authorized, the separate posting result. If quantity details are protected by a blind count, continue the assigned count in `Inventory → Stock Counts` and refer review to an independent authorized reviewer. Do not create a manual adjustment to bypass the count-recovery gate.
 
 ## Related Articles
 

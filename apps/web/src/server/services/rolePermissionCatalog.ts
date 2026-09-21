@@ -189,6 +189,12 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Receiving",
     sensitive: true
   },
+  [permissions.receivingCancel]: {
+    label: "Cancel draft receiving",
+    description: "Cancel an unposted draft with a reason and preserve its audit history.",
+    group: "Receiving",
+    sensitive: false
+  },
   [permissions.receivingReverse]: {
     label: "Reverse receiving",
     description: "Create controlled reversal movements for posted receiving records.",
@@ -1076,7 +1082,7 @@ const recommendedRolePermissionCodes: Record<string, string[]> = {
     permissions.workforceAttendanceImportView
   ],
   CONFIGURED_ADMIN: Object.values(permissions).filter(
-    (permissionCode) => !configuredAdminPermissionExclusions.has(permissionCode)
+    (permissionCode) => permissionCode !== permissions.receivingCancel && !configuredAdminPermissionExclusions.has(permissionCode)
   )
 };
 
@@ -1101,7 +1107,10 @@ export function getPermissionPresentation(code: string): PermissionPresentation 
     label: sentenceFromPermissionCode(code),
     description: "Controlled ERP capability.",
     group: sentenceFromPermissionCode(module),
-    sensitive: code.includes("approve") || code.includes("post") || code.includes("reverse")
+    // Unknown capabilities fail closed until explicitly classified in this
+    // catalog. A new permission must never become directly assignable by
+    // omission.
+    sensitive: true
   };
 }
 

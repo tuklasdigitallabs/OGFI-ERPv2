@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { permissions } from "./authorization";
 import {
+  cancelGoodsReceipt,
   createGoodsReceiptFromPurchaseOrder,
   postGoodsReceipt
 } from "./receiving";
@@ -30,8 +31,8 @@ const mockInventory = vi.hoisted(() => ({
   postInventoryMovementInTransaction: vi.fn()
 }));
 
-vi.mock("@ogfi/database", () => ({
-  prisma: mockPrisma
+vi.mock("@ogfi/database", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@ogfi/database")>(), prisma: mockPrisma
 }));
 
 vi.mock("./context", async () => {
@@ -359,6 +360,7 @@ function makePostTransaction(input?: {
   const liveReceipt = input?.receipt ?? goodsReceipt();
   return {
     $queryRaw: makeQueryRaw(input),
+    inventoryMovement: { count: vi.fn().mockResolvedValue(0) },
     purchaseOrder: {
       findFirst: vi.fn().mockResolvedValue(liveOrder),
       updateMany: vi.fn().mockResolvedValue({ count: 1 })
@@ -406,6 +408,73 @@ describe("receiving Purchase Order serialization", () => {
       duplicate: false
     });
     mockPrisma.goodsReceipt.findFirst.mockResolvedValue(goodsReceipt());
+  });
+
+  it("cancels a draft under PO and line locks with an audited reason and no stock changes", async () => {
+    const tx = makePostTransaction();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    const form = postReceiptForm(); form.set("cancellationReason", "Stale receipt draft");
+    await expect(cancelGoodsReceipt(form)).resolves.toBe(ids.purchaseOrder);
+    expect(mockAuthorization.requirePermission).toHaveBeenCalledWith(session, permissions.receivingCancel);
+    const sql = tx.$queryRaw.mock.calls.map((call) => call[0].join(" "));
+    expect(sql[0]).toContain('FROM "PurchaseOrder" po');
+    expect(sql[1]).toContain('FROM "PurchaseOrderLine" pol');
+    expect(sql[2]).toContain('FROM "GoodsReceipt" gr');
+    expect(sql[3]).toContain('FROM "GoodsReceiptLine" grl');
+    expect(sql.find((query) => query.includes('FROM "UserScopeAssignment"'))).toContain('"accessLevel" IN');
+    expect(tx.goodsReceipt.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "DRAFT", tenantId: ids.tenant, companyId: ids.company, receivingLocationId: ids.location }), data: { status: "CANCELLED" } }));
+    expect(tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "goods_receipt.cancelled", actorUserId: ids.user, metadata: expect.objectContaining({ cancellationReason: "Stale receipt draft" }) }) }));
+    expect(mockInventory.postInventoryMovementInTransaction).not.toHaveBeenCalled();
+    expect(tx.purchaseOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["POSTED", "POSTING", "CANCELLED", "REVERSED"])("rejects cancellation of %s without another audit", async (status) => {
+    const tx = makePostTransaction({ receipt: goodsReceipt({ status }) });
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    const form = postReceiptForm(); form.set("cancellationReason", "Stale receipt draft");
+    await expect(cancelGoodsReceipt(form)).rejects.toThrow("GOODS_RECEIPT_NOT_DRAFT_FOR_CANCELLATION");
+    expect(tx.goodsReceipt.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([{ permissionGranted: false, code: "PERMISSION_DENIED" }, { scopeGranted: false, code: "SCOPE_DENIED" }])("rejects revoked cancellation authority: $code", async ({ code, ...authority }) => {
+    const tx = makePostTransaction(authority);
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    const form = postReceiptForm(); form.set("cancellationReason", "Stale receipt draft");
+    await expect(cancelGoodsReceipt(form)).rejects.toThrow(code);
+    expect(tx.goodsReceipt.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks cancellation when an existing movement is present despite a draft status", async () => {
+    const tx = makePostTransaction(); tx.inventoryMovement.count.mockResolvedValue(1);
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    const form = postReceiptForm(); form.set("cancellationReason", "Stale receipt draft");
+    await expect(cancelGoodsReceipt(form)).rejects.toThrow("GOODS_RECEIPT_CANCELLATION_POSTING_CONFLICT");
+    expect(tx.goodsReceipt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("propagates cancellation audit failure through the transaction", async () => {
+    const tx = makePostTransaction();
+    tx.auditEvent.create.mockRejectedValue(new Error("audit unavailable"));
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    const form = postReceiptForm(); form.set("cancellationReason", "Stale receipt draft");
+    await expect(cancelGoodsReceipt(form)).rejects.toThrow("audit unavailable");
+    expect(mockInventory.postInventoryMovementInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an underclassified draft at create and at post", async () => {
+    const createTx = makeCreateTransaction();
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(createTx));
+    await expect(createGoodsReceiptFromPurchaseOrder(createReceiptForm({ deliveredQty: 10, acceptedQty: 6 }))).rejects.toThrow("RECEIVING_LINE_OUTCOME_INCOMPLETE");
+    expect(createTx.goodsReceipt.create).not.toHaveBeenCalled();
+    const stale = goodsReceipt({ deliveredQty: 10, acceptedQty: 6 });
+    const postTx = makePostTransaction({ receipt: stale, order: purchaseOrder() });
+    mockPrisma.goodsReceipt.findFirst.mockResolvedValue(stale);
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(postTx));
+    await expect(postGoodsReceipt(postReceiptForm())).rejects.toThrow("RECEIVING_LINE_OUTCOME_INCOMPLETE");
+    expect(mockInventory.postInventoryMovementInTransaction).not.toHaveBeenCalled();
+    expect(postTx.auditEvent.create).not.toHaveBeenCalled();
   });
 
   it("locks the scoped PO and its ordered lines before atomically creating and auditing the receipt", async () => {

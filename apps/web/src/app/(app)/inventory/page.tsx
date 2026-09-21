@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { redirect } from "next/navigation";
 import {
   Badge,
@@ -138,6 +140,7 @@ function dashboardProfileCopy(profile: InventoryBalanceDashboardProfile) {
 }
 
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -257,6 +260,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       subtitle="Posted inventory balance inquiry for the current location"
       activeNav="inventory"
     >
+      <div className="mb-4"><ButtonLink href="/inventory/low-stock" tone="secondary">Low stock and thresholds</ButtonLink></div>
       <div className="mb-5 ogfi-workflow-cue">
         <div className="flex flex-wrap gap-2">
           <span>Derived balance</span>
@@ -505,4 +509,9 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       </section>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

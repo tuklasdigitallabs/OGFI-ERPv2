@@ -1,5 +1,21 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-09-08 — Guided User Access Setup
+
+- Recorded DEC-0284: grant eligible access now or create without access; sensitive roles and controlled scopes retain request workflows.
+- Documented assignment-level atomic Change Access with reason, stale/retry protection, linked audit history and session invalidation. No direct permission toggles or default access grants were introduced.
+- Confirmed the assignment-risk matrix: safe roles at ordinary branches may receive View or Operate directly; Approve, Manage, controlled locations, sensitive roles and system roles require controlled requests. Unknown permissions fail closed, while role designers retain permission-composition flexibility with visible warnings.
+
+## 2026-09-07 — Location-aware Low-stock Thresholds
+
+- Recorded DEC-0283 and the additive item/storage threshold model, audited MANAGE configuration, live dashboard/register/CSV semantics and blind-count suppression.
+- Clarified that thresholds monitor recorded on-hand, require explicit configuration, and preserve warehouse-first Request Stock. No automatic PR/PO, persistent notification job or UAT/production admission is implied.
+
+## 2026-09-07 — Bounded Inventory Audit Remediation
+
+- Recorded DEC-0282 and aligned affected workflow, permission, data and UI specifications with the bounded remediation.
+- Preserved the baseline audit and added a separate engineering verification register. F04 valuation, evidence qualification, recount/settlement and operational admission remain gated; browser UAT has not been executed in this pass.
+
 ## 2026-08-11 — Restricted Local-UAT Opening Inventory Executor
 
 - Added a default-off worker adapter that discovers only bounded pending or retryable Opening Inventory execution-command IDs with the restricted runtime role and invokes only the reviewed PostgreSQL execution routine with a separate opening-stock executor credential.

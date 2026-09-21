@@ -245,3 +245,9 @@ describe("role permission catalog metadata", () => {
     }
   });
 });
+
+
+test("draft receiving cancellation has no recommended role grant", () => {
+  expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).not.toContain(permissions.receivingCancel);
+  expect(getRecommendedPermissionCodesForRole("CONFIGURED_SUPER_USER")).not.toContain(permissions.receivingCancel);
+});

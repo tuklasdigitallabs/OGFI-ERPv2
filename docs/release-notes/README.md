@@ -6,6 +6,10 @@ Release notes do not replace source-of-truth specifications, technical deploymen
 
 ## Current release notes
 
+- [Low-stock thresholds and UAT preparation](2026-09-07-low-stock-thresholds.md) — explicit per-location coverage, recorded-on-hand semantics, and controlled setup
+
+- [2026-09-07 inventory-control remediation](2026-09-07-inventory-control-pre-uat-remediation.md) — local-build controls and operator preparation; valuation policy and named-role/browser UAT remain open
+
 - `docs/release-notes/authentication-and-approval-integrity-checkpoint.md`
 - `docs/release-notes/controlled-evidence-and-retention-controlled-rollout.md`
 - `docs/release-notes/phase-4-expansion-projects-readiness-summary.md`

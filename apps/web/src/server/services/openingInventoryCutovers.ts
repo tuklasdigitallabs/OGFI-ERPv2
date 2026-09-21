@@ -20,10 +20,36 @@ const v2ReadinessFamilies = ["PurchaseRequest", "QuotationRecommendation", "Purc
 const uuid = z.string().uuid();
 const positiveVersion = z.coerce.number().int().positive();
 
+/** Six-place HALF_UP facts retain the established JSON number/hash contract. */
+export function openingInventoryDecimalNumber(value: Prisma.Decimal.Value): number {
+  const rounded = new Prisma.Decimal(value).toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP);
+  const numeric = rounded.toNumber();
+  if (!rounded.isFinite() || rounded.abs().gte("1000000000000") || !new Prisma.Decimal(numeric).equals(rounded)) {
+    throw new Error("OPENING_INVENTORY_DECIMAL_NOT_REPRESENTABLE");
+  }
+  return numeric;
+}
+
+export function calculateOpeningInventoryValue(quantity: Prisma.Decimal.Value, unitCost: Prisma.Decimal.Value) {
+  // Two Decimal(18,6) facts can need 36 significant product digits before rounding.
+  const ExactDecimal = Prisma.Decimal.clone({ precision: 40 });
+  return openingInventoryDecimalNumber(new ExactDecimal(quantity).times(unitCost));
+}
+
+export function validateOpeningInventoryUnitCost(value: string | number): number {
+  let cost: Prisma.Decimal;
+  try { cost = new Prisma.Decimal(value); }
+  catch { throw new Error("OPENING_INVENTORY_UNIT_COST_PRECISION_INVALID"); }
+  if (!cost.isFinite() || cost.isNegative() || cost.decimalPlaces() > 6) {
+    throw new Error("OPENING_INVENTORY_UNIT_COST_PRECISION_INVALID");
+  }
+  return openingInventoryDecimalNumber(cost);
+}
+
 const valuationLineSchema = z.object({
   itemId: uuid,
   lotKey: z.string().trim().min(1).max(500),
-  unitCost: z.coerce.number().finite().min(0),
+  unitCost: z.union([z.string().trim().min(1), z.number().finite().min(0)]).transform(validateOpeningInventoryUnitCost),
 });
 
 const createCohortSchema = z.object({
@@ -540,16 +566,16 @@ export async function prepareOpeningInventoryCutover(
     }
     const cutoverLines = attempt.lines.map((line) => {
       const valuation = valuationByStockKey.get(`${line.itemId}:${line.lotKey}`)!;
-      const sourceSystemQuantity = Number(line.systemQuantityBaseUom);
-      const sourceCountedQuantity = Number(line.countedQuantityBaseUom);
+      const sourceSystemQuantity = openingInventoryDecimalNumber(line.systemQuantityBaseUom);
+      const sourceCountedQuantity = openingInventoryDecimalNumber(line.countedQuantityBaseUom!);
       const sourceVarianceQuantity = line.varianceQuantityBaseUom === null
-        ? sourceCountedQuantity - sourceSystemQuantity
-        : Number(line.varianceQuantityBaseUom);
+        ? openingInventoryDecimalNumber(new Prisma.Decimal(sourceCountedQuantity).minus(sourceSystemQuantity))
+        : openingInventoryDecimalNumber(line.varianceQuantityBaseUom);
       const quantity = sourceCountedQuantity;
       if (quantity > 0 && valuation.unitCost <= 0) {
         throw new Error(openingInventoryStableErrors.valuationRequired);
       }
-      const openingValue = quantity * valuation.unitCost;
+      const openingValue = calculateOpeningInventoryValue(line.countedQuantityBaseUom!, valuation.unitCost);
       const lineCanonicalJson = canonicalOpeningInventoryJson({
         expiryDate: line.expiryDate,
         itemId: line.itemId,
@@ -655,7 +681,7 @@ export async function sealOpeningInventoryCohort(
     }
     for (const cutover of cohort.cutovers) {
       const linesByKey = new Set(cutover.lines.map((line) => `${line.itemId}:${line.lotKey}`));
-      if (cutover.lines.length === 0 || [...selectedItems].some((itemId) => !cutover.lines.some((line) => line.itemId === itemId)) || cutover.lines.some((line) => !selectedItems.has(line.itemId) || Number(line.openingQuantityBaseUom) < 0 || (Number(line.openingQuantityBaseUom) > 0 && Number(line.unitCost) <= 0)) || linesByKey.size !== cutover.lines.length || cutover.stockCountAttempt.status !== "REVIEWED" || !cutover.stockCountAttempt.freezeMovements || !cutover.stockCountAttempt.cutoffAt || !cutover.stockCountAttempt.evidenceReference || !cutover.stockCountAttempt.stockCountSession.cutoffAt) {
+      if (cutover.lines.length === 0 || [...selectedItems].some((itemId) => !cutover.lines.some((line) => line.itemId === itemId)) || cutover.lines.some((line) => !selectedItems.has(line.itemId) || openingInventoryDecimalNumber(line.openingQuantityBaseUom) < 0 || (openingInventoryDecimalNumber(line.openingQuantityBaseUom) > 0 && openingInventoryDecimalNumber(line.unitCost) <= 0)) || linesByKey.size !== cutover.lines.length || cutover.stockCountAttempt.status !== "REVIEWED" || !cutover.stockCountAttempt.freezeMovements || !cutover.stockCountAttempt.cutoffAt || !cutover.stockCountAttempt.evidenceReference || !cutover.stockCountAttempt.stockCountSession.cutoffAt) {
         throw new Error(openingInventoryStableErrors.sourceCoverage);
       }
       if (cutover.stockCountAttempt.cutoffAt.getTime() > cohort.effectiveAt.getTime() || cutover.stockCountAttempt.stockCountSession.cutoffAt.getTime() > cohort.effectiveAt.getTime()) {
@@ -668,7 +694,7 @@ export async function sealOpeningInventoryCohort(
         throw new Error(openingInventoryStableErrors.evidenceRequired);
       }
       const evidenceManifest = await deriveOpeningInventoryEvidenceManifest(tx, session, cohort.id, selectedEvidenceIds);
-      const valuationCanonicalJson = canonicalOpeningInventoryJson(cutover.lines.map((line) => ({ itemId: line.itemId, lotKey: line.lotKey, unitCost: Number(line.unitCost) })).sort((left, right) => `${left.itemId}:${left.lotKey}`.localeCompare(`${right.itemId}:${right.lotKey}`)));
+      const valuationCanonicalJson = canonicalOpeningInventoryJson(cutover.lines.map((line) => ({ itemId: line.itemId, lotKey: line.lotKey, unitCost: openingInventoryDecimalNumber(line.unitCost) })).sort((left, right) => `${left.itemId}:${left.lotKey}`.localeCompare(`${right.itemId}:${right.lotKey}`)));
       const valuationDigest = openingInventoryDigest(JSON.parse(valuationCanonicalJson));
       if (cutover.evidenceManifestJson !== evidenceManifest.canonicalJson || cutover.evidenceDigest !== evidenceManifest.digest || cutover.valuationCanonicalJson !== valuationCanonicalJson || cutover.valuationDigest !== valuationDigest) throw new Error(openingInventoryStableErrors.evidenceRequired);
       for (const line of cutover.lines) {
@@ -678,13 +704,13 @@ export async function sealOpeningInventoryCohort(
           lineNumber: line.lineNumber,
           lotKey: line.lotKey,
           lotNumber: line.lotNumber,
-          openingQuantityBaseUom: Number(line.openingQuantityBaseUom),
-          openingValue: Number(line.openingValue),
-          sourceCountedQuantityBaseUom: Number(line.sourceCountedQuantityBaseUom),
-          sourceSystemQuantityBaseUom: Number(line.sourceSystemQuantityBaseUom),
-          sourceVarianceQuantityBaseUom: Number(line.sourceVarianceQuantityBaseUom),
+          openingQuantityBaseUom: openingInventoryDecimalNumber(line.openingQuantityBaseUom),
+          openingValue: openingInventoryDecimalNumber(line.openingValue),
+          sourceCountedQuantityBaseUom: openingInventoryDecimalNumber(line.sourceCountedQuantityBaseUom),
+          sourceSystemQuantityBaseUom: openingInventoryDecimalNumber(line.sourceSystemQuantityBaseUom),
+          sourceVarianceQuantityBaseUom: openingInventoryDecimalNumber(line.sourceVarianceQuantityBaseUom),
           stockCountAttemptLineId: line.stockCountAttemptLineId,
-          unitCost: Number(line.unitCost),
+          unitCost: openingInventoryDecimalNumber(line.unitCost),
           uomId: line.uomId,
         });
         if (line.lineCanonicalJson !== lineCanonicalJson || line.lineDigest !== openingInventoryDigest(JSON.parse(lineCanonicalJson))) {

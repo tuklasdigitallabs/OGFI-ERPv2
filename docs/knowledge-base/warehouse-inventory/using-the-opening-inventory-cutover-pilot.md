@@ -67,6 +67,8 @@ If a batch detail link is unavailable or outside your current authorized scope, 
 - Queue and activity page controls are server-paged and sized for practical touch use. Use `Previous` and `Next` rather than expecting more activity to load automatically in the browser.
 - This article is pilot training material, not a GO decision. Do not use the local implementation for live stock, staging/VPS activation, or production until the named release owners authorize it.
 
+Opening quantity and unit-cost inputs support up to six decimal places. The system calculates their product and rounds the opening value to six decimal places; it rejects unsupported precision or values it cannot preserve safely. Do not alter source quantities or costs merely to force acceptance. Report the validation message to the opening-stock owner. This change does not authorize a new cutover or production activation.
+
 ## What happens next
 
 The pilot release owner coordinates the evidence pack, recovery rehearsal, UAT result, and named release decision. If the activation is not authorized, keep the cohort as controlled local evidence and continue using the approved operational workflow. If an error, safe command failure, or unexpected movement is found, stop the affected action and report the cohort reference, location, batch status, command lifecycle/status, and evidence reference to the system administrator and release owner; do not attempt a direct data correction.

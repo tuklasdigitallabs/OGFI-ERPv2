@@ -1,3 +1,4 @@
+import { redactProtectedInventoryAuditEvent } from "./inventoryQuantityRead";
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -83,6 +84,24 @@ const deactivateRoleAssignmentSchema = z.object({
   targetUserId: z.string().uuid(),
   assignmentId: z.string().uuid(),
   reason: scopeReasonSchema,
+});
+
+const changeScopeAccessSchema = z.object({
+  targetUserId: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  expectedAccessLevel: accessLevelSchema,
+  accessLevel: accessLevelSchema,
+  reason: scopeReasonSchema,
+  idempotencyKey: z.string().uuid(),
+});
+
+const changeRoleAssignmentSchema = z.object({
+  targetUserId: z.string().uuid(),
+  assignmentId: z.string().uuid(),
+  expectedRoleId: z.string().uuid(),
+  roleId: z.string().uuid(),
+  reason: scopeReasonSchema,
+  idempotencyKey: z.string().uuid(),
 });
 
 const optionalUuidSchema = z.preprocess(
@@ -498,7 +517,7 @@ export function isDirectlyAssignableLocationScope(input: {
   accessLevel: z.infer<typeof accessLevelSchema>;
 }) {
   return (
-    input.accessLevel !== "MANAGE" &&
+    (input.accessLevel === "VIEW" || input.accessLevel === "OPERATE") &&
     !highRiskLocationTypes.has(input.locationType)
   );
 }
@@ -561,6 +580,48 @@ export function isDirectlyAssignableRole(role: {
   return isAssignableNonSensitiveRole(role.code) || !role.systemRole;
 }
 
+export type RoleRiskClassification = {
+  level: "STANDARD" | "CONTROLLED";
+  label: string;
+  reason: string;
+  sensitivePermissionCodes: string[];
+};
+
+/**
+ * Role composition stays flexible, but the resulting authority is classified
+ * from its effective permissions. This is a server-owned classification used
+ * by both role setup and assignment flows; UI warnings are advisory only.
+ */
+export function classifyRoleRisk(role: {
+  code: string;
+  systemRole: boolean;
+  permissions: Array<{ permission: { code: string } }>;
+}): RoleRiskClassification {
+  const sensitivePermissionCodes = Array.from(
+    new Set(
+      role.permissions
+        .map((rolePermission) => rolePermission.permission.code)
+        .filter(isSensitivePermissionCode),
+    ),
+  ).sort();
+  if (role.systemRole || sensitivePermissionCodes.length > 0) {
+    return {
+      level: "CONTROLLED",
+      label: role.systemRole ? "Admin-controlled role" : "Approval required",
+      reason: role.systemRole
+        ? "System roles require controlled administration."
+        : "One or more sensitive permissions change approval, inventory, financial, or administrative authority.",
+      sensitivePermissionCodes,
+    };
+  }
+  return {
+    level: "STANDARD",
+    label: "Available for quick setup",
+    reason: "This role contains no sensitive permissions.",
+    sensitivePermissionCodes,
+  };
+}
+
 function isDirectlyAssignableRoleWithPermissionCodes(
   role: { code: string; systemRole: boolean },
   permissionCodes: string[],
@@ -579,20 +640,6 @@ export function assertDirectRoleAssignmentAllowed(role: {
   if (!isDirectlyAssignableRole(role)) {
     throw new Error("SENSITIVE_ROLE_ASSIGNMENT_BLOCKED");
   }
-}
-
-function roleAssignmentRiskLabel(role: {
-  code: string;
-  systemRole: boolean;
-  permissions: Array<{ permission: { code: string } }>;
-}) {
-  if (isDirectlyAssignableRole(role)) {
-    return "Available for quick setup";
-  }
-  if (role.systemRole) {
-    return "Admin-controlled role";
-  }
-  return "Sensitive permissions require admin reason";
 }
 
 export async function touchUserPrivilegeEpoch(
@@ -733,6 +780,7 @@ async function assertTargetUserInCurrentCompany(
   session: SessionContext,
   targetUserId: string,
   client: typeof prisma | TransactionClient = prisma,
+  options: { allowUnscoped?: boolean } = {},
 ) {
   const now = new Date();
   const locations = await client.location.findMany({
@@ -765,8 +813,72 @@ async function assertTargetUserInCurrentCompany(
     select: { id: true },
   });
   if (!assignment) {
+    if (options.allowUnscoped) {
+      const [targetUser, anyActiveScope] = await Promise.all([
+        client.user.findFirst({
+          where: {
+            id: targetUserId,
+            tenantId: session.context.tenantId,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        }),
+        client.userScopeAssignment.findFirst({
+          where: {
+            userId: targetUserId,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        }),
+      ]);
+      // A genuinely unscoped active user may be opened so an administrator can
+      // grant the first scope. A user with any other active scope remains
+      // non-enumerable outside the operator's selected company.
+      if (targetUser && !anyActiveScope) return;
+    }
     throw new Error("TARGET_USER_NOT_FOUND");
   }
+}
+
+function accessChangeRequestHash(input: Record<string, string>) {
+  return createHash("sha256")
+    .update(JSON.stringify(Object.keys(input).sort().map((key) => [key, input[key]])))
+    .digest("hex");
+}
+
+function deterministicAccessAssignmentId(kind: "scope" | "role", idempotencyKey: string) {
+  const digest = createHash("sha256")
+    .update(`ogfi:user-access-change:${kind}:${idempotencyKey}`)
+    .digest("hex");
+  // UUID v4/variant bits keep the derived identifier valid for PostgreSQL UUID
+  // columns while remaining deterministic for safe retries.
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-${((Number.parseInt(digest.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0")}${digest.slice(18, 20)}-${digest.slice(20, 32)}`;
+}
+
+async function findAccessChangeReplay(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { idempotencyKey: string; requestHash: string },
+) {
+  const event = await tx.auditEvent.findFirst({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      requestId: input.idempotencyKey,
+      eventType: { in: ["user_scope_assignment.changed", "user_role_assignment.changed"] },
+      entityType: { in: ["UserScopeAssignment", "UserRoleAssignment"] },
+    },
+    select: { entityId: true, metadata: true },
+    orderBy: { occurredAt: "desc" },
+  });
+  if (!event) return null;
+  const metadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+    ? (event.metadata as Record<string, unknown>)
+    : {};
+  if (metadata.requestHash !== input.requestHash) {
+    throw new Error("USER_ACCESS_IDEMPOTENCY_CONFLICT");
+  }
+  return event.entityId;
 }
 
 async function assertRoleNotUsedInActiveApprovalRules(
@@ -923,6 +1035,9 @@ export type CoreAdminRolePage = {
     status: string;
     canAssignDirectly: boolean;
     assignmentEligibility: string;
+    riskLevel: RoleRiskClassification["level"];
+    riskReason: string;
+    sensitivePermissionCodes: string[];
     permissionCount: number;
     permissionPreview: Array<{ id: string; code: string; label: string }>;
   }>;
@@ -989,6 +1104,27 @@ async function listCoreAdminRolePageAuthorized(
     skip: (page - 1) * values.pageSize,
     take: values.pageSize,
   });
+  // The visible permission preview is intentionally capped, but risk
+  // classification must inspect every sensitive link so a sensitive grant
+  // beyond the preview cannot be mistaken for a quick-setup role.
+  const sensitivePermissionLinks = roles.length === 0
+    ? []
+    : await prisma.rolePermission.findMany({
+        where: {
+          roleId: { in: roles.map((role) => role.id) },
+          permission: {
+            code: { in: Object.values(permissions).filter(isSensitivePermissionCode) },
+            OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+          },
+        },
+        select: { roleId: true, permission: { select: { code: true } } },
+      });
+  const sensitiveCodesByRoleId = new Map<string, string[]>();
+  for (const link of sensitivePermissionLinks) {
+    const codes = sensitiveCodesByRoleId.get(link.roleId) ?? [];
+    codes.push(link.permission.code);
+    sensitiveCodesByRoleId.set(link.roleId, codes);
+  }
   const permissionCounts = roles.length === 0
     ? []
     : await prisma.rolePermission.groupBy({
@@ -1001,21 +1137,35 @@ async function listCoreAdminRolePageAuthorized(
       });
   const permissionCountByRoleId = new Map(permissionCounts.map((entry) => [entry.roleId, entry._count.roleId]));
   return {
-    items: roles.map((role) => ({
+    items: roles.map((role) => {
+      const classification = classifyRoleRisk({
+        ...role,
+        permissions: [
+          ...role.permissions,
+          ...(sensitiveCodesByRoleId.get(role.id) ?? []).map((code) => ({ permission: { code } })),
+        ],
+      });
+      return {
       id: role.id,
       name: role.name,
       code: role.code,
       systemRole: role.systemRole,
       status: role.status,
-      canAssignDirectly: isDirectlyAssignableRole(role),
-      assignmentEligibility: roleAssignmentRiskLabel(role),
+      canAssignDirectly: classification.level === "STANDARD" && isDirectlyAssignableRole(role),
+      assignmentEligibility: classification.level === "CONTROLLED"
+        ? (role.systemRole ? "Admin-controlled role" : "Sensitive permissions require admin reason")
+        : "Available for quick setup",
+      riskLevel: classification.level,
+      riskReason: classification.reason,
+      sensitivePermissionCodes: classification.sensitivePermissionCodes,
       permissionCount: permissionCountByRoleId.get(role.id) ?? 0,
       permissionPreview: role.permissions.map((rolePermission) => ({
         id: rolePermission.permission.id,
         code: rolePermission.permission.code,
         label: getPermissionPresentation(rolePermission.permission.code).label,
       })),
-    })),
+      };
+    }),
     page,
     pageSize: values.pageSize,
     totalItems,
@@ -1031,13 +1181,29 @@ async function listCoreAdminRoleOptionsAuthorized(session: SessionContext) {
     }),
     prisma.role.findMany({
       where: { tenantId: session.context.tenantId, status: "ACTIVE" },
-      select: { id: true, name: true, code: true, systemRole: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        systemRole: true,
+        permissions: {
+          where: { permission: tenantGlobalPermissionWhere(session.context.tenantId) },
+          select: { permission: { select: { code: true } } },
+        },
+      },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 100,
     }),
   ]);
   return {
-    items: options,
+    items: options.map((role) => ({
+      id: role.id,
+      name: role.name,
+      code: role.code,
+      systemRole: role.systemRole,
+      risk: classifyRoleRisk(role),
+      canAssignDirectly: isDirectlyAssignableRole(role),
+    })),
     totalItems: activeItems,
     hasMore: activeItems > options.length,
   };
@@ -2259,7 +2425,9 @@ export async function getCoreAdminUserDetail(
   await assertCanManageCompanyScope(session, session.context.companyId);
 
   try {
-    await assertTargetUserInCurrentCompany(session, userId);
+    await assertTargetUserInCurrentCompany(session, userId, prisma, {
+      allowUnscoped: true,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "TARGET_USER_NOT_FOUND") {
       return null;
@@ -2398,10 +2566,10 @@ export async function getCoreAdminUserDetail(
     )
   `;
   const [assignableRoleTotal, assignableRoles, sensitiveRoleTotal, sensitiveRoles] = await Promise.all([
-    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${directRolePredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
-    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${directRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100` : Promise.resolve([]),
-    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${sensitiveRolePredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
-    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${sensitiveRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100` : Promise.resolve([]),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>(Prisma.sql`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${directRolePredicate}`).then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>(Prisma.sql`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${directRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100`) : Promise.resolve([]),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>(Prisma.sql`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${sensitiveRolePredicate}`).then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>(Prisma.sql`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${sensitiveRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100`) : Promise.resolve([]),
   ]);
   const requestableSensitiveRoleCatalogHasMore = sensitiveRoleTotal > sensitiveRoles.length;
   const scopeRequestWhere: Prisma.HighRiskScopeRequestWhereInput = {
@@ -2516,10 +2684,10 @@ export async function getCoreAdminUserDetail(
   const controlledLocationPredicate = Prisma.sql`${locationCatalogPredicate} AND l."locationType"::text IN (${Prisma.join(highRiskLocationTypeValues)})`;
   const [directLocationTotal, directLocationCatalog, controlledLocationTotal, controlledLocationCatalog, referencedLocations] =
     await Promise.all([
-      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${directLocationPredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
-      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${directLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100` : Promise.resolve([]),
-      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${controlledLocationPredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
-      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${controlledLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100` : Promise.resolve([]),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>(Prisma.sql`SELECT COUNT(*)::int AS "totalItems" ${directLocationPredicate}`).then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>(Prisma.sql`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${directLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100`) : Promise.resolve([]),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>(Prisma.sql`SELECT COUNT(*)::int AS "totalItems" ${controlledLocationPredicate}`).then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>(Prisma.sql`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${controlledLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100`) : Promise.resolve([]),
       referencedLocationIds.length
         ? prisma.location.findMany({
             where: {
@@ -2790,11 +2958,13 @@ export async function listCoreAdminUserScopePage(
          AND (${query} = '' OR "displayName" ILIKE '%' || ${query} || '%' OR COALESCE(code, '') ILIKE '%' || ${query} || '%')
     )
   `;
-  const countRows = await prisma.$queryRaw<Array<{ totalItems: number }>>`${scopeBase} SELECT COUNT(*)::int AS "totalItems" FROM filtered`;
+  const countQuery = Prisma.sql`${scopeBase} SELECT COUNT(*)::int AS "totalItems" FROM filtered`;
+  const countRows = await prisma.$queryRaw<Array<{ totalItems: number }>>(countQuery);
   const totalItems = countRows[0]?.totalItems ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  const rows = await prisma.$queryRaw<Array<Omit<CoreAdminUserScopePage, "canMutate" | "riskLabel">>>`${scopeBase} SELECT * FROM filtered ORDER BY "scopeType" ASC, "displayName" ASC, "startsAt" ASC, id ASC OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}`;
+  const rowsQuery = Prisma.sql`${scopeBase} SELECT * FROM filtered ORDER BY "scopeType" ASC, "displayName" ASC, "startsAt" ASC, id ASC OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}`;
+  const rows = await prisma.$queryRaw<Array<Omit<CoreAdminUserScopePage, "canMutate" | "riskLabel">>>(rowsQuery);
   return {
     items: rows.map((row) => ({
       ...row,
@@ -2866,10 +3036,10 @@ export async function createUserRoleAssignment(formData: FormData) {
     await tx.$queryRaw`
       SELECT "id"
       FROM "User"
-      WHERE "id" = ${targetUser.id}::uuid
+      WHERE "id" = ${values.targetUserId}::uuid
       FOR UPDATE
     `;
-    await assertTargetUserInCurrentCompany(session, targetUser.id, tx);
+    await assertTargetUserInCurrentCompany(session, values.targetUserId, tx);
     await tx.$queryRaw`
       SELECT "id"
       FROM "Role"
@@ -2989,6 +3159,13 @@ export async function deactivateUserRoleAssignment(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT "id"
+      FROM "User"
+      WHERE "id" = ${values.targetUserId}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, values.targetUserId, tx);
+    await tx.$queryRaw`
+      SELECT "id"
       FROM "Role"
       WHERE "id" = ${assignment.role.id}::uuid
       FOR UPDATE
@@ -3061,13 +3238,145 @@ export async function deactivateUserRoleAssignment(formData: FormData) {
   });
 }
 
+/**
+ * Replaces one active tenant role assignment with another in a single audited
+ * transaction. Assignments remain append-only from the operator's point of
+ * view: the previous row is closed and a new row is appended. The expected
+ * role and deterministic replacement id provide optimistic concurrency and
+ * exact retry behavior without allowing duplicate active assignments.
+ */
+export async function changeUserRoleAssignment(formData: FormData) {
+  const session = await requireSessionContext();
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  const values = changeRoleAssignmentSchema.parse(Object.fromEntries(formData));
+  assertNotSelfRoleMutation(session.user.id, values.targetUserId);
+  await assertTargetUserInCurrentCompany(session, values.targetUserId);
+
+  const [targetUser, nextRole] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: values.targetUserId, tenantId: session.context.tenantId, status: "ACTIVE" },
+      select: { id: true, email: true },
+    }),
+    prisma.role.findFirst({
+      where: { id: values.roleId, tenantId: session.context.tenantId, status: "ACTIVE" },
+      include: { permissions: { include: { permission: true } } },
+    }),
+  ]);
+  if (!targetUser) throw new Error("TARGET_USER_NOT_FOUND");
+  if (!nextRole) throw new Error("TARGET_ROLE_NOT_FOUND");
+  assertDirectRoleAssignmentAllowed(nextRole);
+  if (values.roleId === values.expectedRoleId) throw new Error("ROLE_ASSIGNMENT_UNCHANGED");
+  await assertRoleNotUsedInActiveApprovalRules(nextRole.id, session.context.tenantId);
+
+  const requestHash = accessChangeRequestHash({
+    kind: "role",
+    targetUserId: values.targetUserId,
+    assignmentId: values.assignmentId,
+    expectedRoleId: values.expectedRoleId,
+    roleId: values.roleId,
+    reason: values.reason,
+  });
+  const replacementId = deterministicAccessAssignmentId("role", values.idempotencyKey);
+
+  return prisma.$transaction(async (tx) => {
+    const replay = await findAccessChangeReplay(tx, session, {
+      idempotencyKey: values.idempotencyKey,
+      requestHash,
+    });
+    if (replay) return { assignmentId: replay, replayed: true };
+
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${targetUser.id}::uuid AND "tenantId" = ${session.context.tenantId}::uuid FOR UPDATE`;
+    await assertTargetUserInCurrentCompany(session, targetUser.id, tx);
+    await tx.$queryRaw`SELECT "id" FROM "UserRoleAssignment" WHERE "id" = ${values.assignmentId}::uuid AND "userId" = ${targetUser.id}::uuid FOR UPDATE`;
+    const current = await tx.userRoleAssignment.findFirst({
+      where: { id: values.assignmentId, userId: targetUser.id, status: "ACTIVE" },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
+    });
+    if (!current) throw new Error("ROLE_ASSIGNMENT_NOT_FOUND");
+    if (current.roleId !== values.expectedRoleId) throw new Error("ROLE_ASSIGNMENT_VERSION_CONFLICT");
+    if (current.roleId === values.roleId) throw new Error("ROLE_ASSIGNMENT_UNCHANGED");
+    assertDirectRoleAssignmentAllowed(nextRole);
+    await assertRoleNotUsedInActiveApprovalRules(current.roleId, session.context.tenantId);
+    await tx.$queryRaw`SELECT "id" FROM "Role" WHERE "id" = ${nextRole.id}::uuid FOR UPDATE`;
+    const lockedNextRole = await tx.role.findUniqueOrThrow({
+      where: { id: nextRole.id },
+      include: { permissions: { include: { permission: true } } },
+    });
+    assertDirectRoleAssignmentAllowed(lockedNextRole);
+    await assertRoleNotUsedInActiveApprovalRules(lockedNextRole.id, session.context.tenantId);
+    const duplicate = await tx.userRoleAssignment.findFirst({
+      where: { userId: targetUser.id, roleId: lockedNextRole.id, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (duplicate) throw new Error("DUPLICATE_ACTIVE_ROLE_ASSIGNMENT");
+
+    const existingReplacement = await tx.userRoleAssignment.findUnique({ where: { id: replacementId }, select: { id: true } });
+    if (existingReplacement) throw new Error("USER_ACCESS_IDEMPOTENCY_CONFLICT");
+    const endedAt = new Date();
+    const closed = await tx.userRoleAssignment.updateMany({
+      where: { id: current.id, userId: targetUser.id, status: "ACTIVE", roleId: values.expectedRoleId },
+      data: { status: "INACTIVE", endsAt: endedAt },
+    });
+    if (closed.count !== 1) throw new Error("ROLE_ASSIGNMENT_VERSION_CONFLICT");
+    const replacement = await tx.userRoleAssignment.create({
+      data: { id: replacementId, userId: targetUser.id, roleId: lockedNextRole.id },
+    });
+    await touchUserPrivilegeEpoch(tx, targetUser.id, {
+      companyId: session.context.companyId,
+      requestedByUserId: session.user.id,
+      reason: "Role access changed; invalidate active sessions.",
+      sourceEventType: "user_role_assignment.changed",
+      sourceRecordId: replacement.id,
+    });
+    const metadata = {
+      reason: values.reason,
+      idempotencyKey: values.idempotencyKey,
+      requestHash,
+      targetUserEmail: targetUser.email,
+      changeAccess: true,
+    };
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        requestId: values.idempotencyKey,
+        eventType: "user_role_assignment.deactivated",
+        entityType: "UserRoleAssignment",
+        entityId: current.id,
+        beforeData: { userId: targetUser.id, roleId: current.roleId, roleCode: current.role.code, status: "ACTIVE" },
+        afterData: { status: "INACTIVE", endsAt: endedAt.toISOString() },
+        metadata: { ...metadata, replacementAssignmentId: replacement.id },
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        requestId: values.idempotencyKey,
+        eventType: "user_role_assignment.changed",
+        entityType: "UserRoleAssignment",
+        entityId: replacement.id,
+        afterData: { userId: targetUser.id, roleId: lockedNextRole.id, roleCode: lockedNextRole.code, status: "ACTIVE" },
+        metadata: { ...metadata, replacedAssignmentId: current.id, previousRoleId: current.roleId, nextRoleId: lockedNextRole.id },
+      },
+    });
+    return { assignmentId: replacement.id, replayed: false };
+  });
+}
+
 export async function requestSensitiveUserRole(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   const values = requestSensitiveRoleSchema.parse(Object.fromEntries(formData));
   assertNotSelfRoleMutation(session.user.id, values.targetUserId);
-  await assertTargetUserInCurrentCompany(session, values.targetUserId);
+  // Controlled role requests can be the first access grant for a new user.
+  await assertTargetUserInCurrentCompany(session, values.targetUserId, prisma, {
+    allowUnscoped: true,
+  });
 
   const [targetUser, role] = await Promise.all([
     prisma.user.findFirst({
@@ -3146,6 +3455,15 @@ export async function requestSensitiveUserRole(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${targetUser.id}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, targetUser.id, tx, {
+      allowUnscoped: true,
+    });
     await tx.$queryRaw`
       SELECT "id"
       FROM "Role"
@@ -3260,7 +3578,9 @@ export async function approveSensitiveUserRoleRequest(formData: FormData) {
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   const values = reviewSensitiveRoleSchema.parse(Object.fromEntries(formData));
-  await assertTargetUserInCurrentCompany(session, values.targetUserId);
+  await assertTargetUserInCurrentCompany(session, values.targetUserId, prisma, {
+    allowUnscoped: true,
+  });
 
   const request = await prisma.sensitiveRoleRequest.findFirst({
     where: {
@@ -3336,6 +3656,15 @@ export async function approveSensitiveUserRoleRequest(formData: FormData) {
   const reviewedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${targetUser.id}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, targetUser.id, tx, {
+      allowUnscoped: true,
+    });
     await tx.$queryRaw`
       SELECT "id"
       FROM "Role"
@@ -3516,7 +3845,9 @@ export async function rejectSensitiveUserRoleRequest(formData: FormData) {
       WHERE "id" = ${request.targetUserId}::uuid
       FOR UPDATE
     `;
-    await assertTargetUserInCurrentCompany(session, request.targetUserId, tx);
+    await assertTargetUserInCurrentCompany(session, request.targetUserId, tx, {
+      allowUnscoped: true,
+    });
     const claimed = await tx.sensitiveRoleRequest.updateMany({
       where: { id: request.id, status: "PENDING" },
       data: {
@@ -3639,6 +3970,135 @@ export async function createUserLocationScopeAssignment(formData: FormData) {
         },
       },
     });
+  });
+}
+
+/** Atomically replaces a standard location scope's access level. */
+export async function changeUserLocationScopeAccess(formData: FormData) {
+  const session = await requireSessionContext();
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  const values = changeScopeAccessSchema.parse(Object.fromEntries(formData));
+  assertNotSelfScopeMutation(session.user.id, values.targetUserId);
+  await assertTargetUserInCurrentCompany(session, values.targetUserId);
+  if (values.accessLevel === values.expectedAccessLevel) {
+    throw new Error("SCOPE_ACCESS_LEVEL_UNCHANGED");
+  }
+
+  const requestHash = accessChangeRequestHash({
+    kind: "scope",
+    targetUserId: values.targetUserId,
+    assignmentId: values.assignmentId,
+    expectedAccessLevel: values.expectedAccessLevel,
+    accessLevel: values.accessLevel,
+    reason: values.reason,
+  });
+  const replacementId = deterministicAccessAssignmentId("scope", values.idempotencyKey);
+
+  return prisma.$transaction(async (tx) => {
+    const replay = await findAccessChangeReplay(tx, session, {
+      idempotencyKey: values.idempotencyKey,
+      requestHash,
+    });
+    if (replay) return { assignmentId: replay, replayed: true };
+
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${values.targetUserId}::uuid AND "tenantId" = ${session.context.tenantId}::uuid FOR UPDATE`;
+    await assertTargetUserInCurrentCompany(session, values.targetUserId, tx);
+    await tx.$queryRaw`SELECT "id" FROM "UserScopeAssignment" WHERE "id" = ${values.assignmentId}::uuid AND "userId" = ${values.targetUserId}::uuid FOR UPDATE`;
+    const current = await tx.userScopeAssignment.findFirst({
+      where: { id: values.assignmentId, userId: values.targetUserId, status: "ACTIVE" },
+      include: { user: { select: { email: true } } },
+    });
+    if (!current) throw new Error("SCOPE_ASSIGNMENT_NOT_FOUND");
+    if (current.scopeType !== "LOCATION") throw new Error("ONLY_LOCATION_SCOPE_MUTATION_SUPPORTED");
+    if (current.accessLevel !== values.expectedAccessLevel) throw new Error("SCOPE_ASSIGNMENT_VERSION_CONFLICT");
+
+    const location = await tx.location.findFirst({
+      where: {
+        id: current.scopeId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+      },
+      select: { id: true, companyId: true, code: true, name: true, locationType: true },
+    });
+    if (!location) throw new Error("TARGET_LOCATION_NOT_FOUND");
+    assertDirectLocationScopeAssignmentAllowed({
+      locationType: location.locationType,
+      accessLevel: values.accessLevel,
+    });
+    const duplicate = await tx.userScopeAssignment.findFirst({
+      where: {
+        userId: values.targetUserId,
+        scopeType: "LOCATION",
+        scopeId: location.id,
+        status: "ACTIVE",
+        id: { not: current.id },
+      },
+      select: { id: true },
+    });
+    if (duplicate) throw new Error("DUPLICATE_ACTIVE_SCOPE_ASSIGNMENT");
+    const existingReplacement = await tx.userScopeAssignment.findUnique({ where: { id: replacementId }, select: { id: true } });
+    if (existingReplacement) throw new Error("USER_ACCESS_IDEMPOTENCY_CONFLICT");
+
+    const endedAt = new Date();
+    const closed = await tx.userScopeAssignment.updateMany({
+      where: { id: current.id, userId: values.targetUserId, status: "ACTIVE", accessLevel: values.expectedAccessLevel },
+      data: { status: "INACTIVE", endsAt: endedAt },
+    });
+    if (closed.count !== 1) throw new Error("SCOPE_ASSIGNMENT_VERSION_CONFLICT");
+    const replacement = await tx.userScopeAssignment.create({
+      data: {
+        id: replacementId,
+        userId: values.targetUserId,
+        scopeType: "LOCATION",
+        scopeId: location.id,
+        accessLevel: values.accessLevel,
+      },
+    });
+    await touchUserPrivilegeEpoch(tx, values.targetUserId, {
+      companyId: location.companyId,
+      requestedByUserId: session.user.id,
+      reason: "Location access changed; invalidate active sessions.",
+      sourceEventType: "user_scope_assignment.changed",
+      sourceRecordId: replacement.id,
+    });
+    const metadata = {
+      reason: values.reason,
+      idempotencyKey: values.idempotencyKey,
+      requestHash,
+      targetUserEmail: current.user.email,
+      locationCode: location.code,
+      locationType: location.locationType,
+      changeAccess: true,
+    };
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        requestId: values.idempotencyKey,
+        eventType: "user_scope_assignment.deactivated",
+        entityType: "UserScopeAssignment",
+        entityId: current.id,
+        beforeData: { userId: current.userId, scopeType: current.scopeType, scopeId: current.scopeId, accessLevel: current.accessLevel, status: "ACTIVE" },
+        afterData: { status: "INACTIVE", endsAt: endedAt.toISOString() },
+        metadata: { ...metadata, replacementAssignmentId: replacement.id },
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        requestId: values.idempotencyKey,
+        eventType: "user_scope_assignment.changed",
+        entityType: "UserScopeAssignment",
+        entityId: replacement.id,
+        afterData: { userId: replacement.userId, scopeType: replacement.scopeType, scopeId: replacement.scopeId, accessLevel: replacement.accessLevel, status: "ACTIVE" },
+        metadata: { ...metadata, replacedAssignmentId: current.id, previousAccessLevel: current.accessLevel, nextAccessLevel: replacement.accessLevel },
+      },
+    });
+    return { assignmentId: replacement.id, replayed: false };
   });
 }
 
@@ -4664,6 +5124,7 @@ export async function getCoreAdminRoleDetail(
     .filter((code) => !currentPermissionCodes.has(code)).length;
   const sensitiveEnabledCount = Array.from(currentPermissionCodes)
     .filter((code) => isSensitivePermissionCode(code)).length;
+  const riskClassification = classifyRoleRisk(role);
 
   return {
     id: role.id,
@@ -4676,6 +5137,7 @@ export async function getCoreAdminRoleDetail(
     addedFromRecommended: addedFromRecommendedTotal,
     removedFromRecommended: removedFromRecommendedTotal,
     sensitiveEnabledCount,
+    riskClassification,
     hasRecommendedSet: recommendedPermissionCodes.size > 0,
     permissionGroups,
     permissionPage: {
@@ -5172,12 +5634,13 @@ export async function getCoreAdminAuditEventDetail(
     return null;
   }
 
-  const event = await prisma.auditEvent.findFirst({
+  const rawEvent = await prisma.auditEvent.findFirst({
     where: {
       id: auditEventId,
       AND: [resolved.where],
     },
     select: {
+      companyId: true,
       id: true,
       eventType: true,
       entityType: true,
@@ -5192,10 +5655,11 @@ export async function getCoreAdminAuditEventDetail(
     },
   });
 
-  if (!event) {
+  if (!rawEvent) {
     return null;
   }
 
+  const event = await redactProtectedInventoryAuditEvent(session, rawEvent);
   return {
     id: event.id,
     eventType: event.eventType,
@@ -5431,7 +5895,8 @@ export async function listCoreAdminAuditEventPage(
   const hasMore = events.length > values.pageSize;
   const pageEvents = hasMore ? events.slice(0, values.pageSize) : events;
   return {
-    items: pageEvents.map(projectAuditEvent),
+    items: await Promise.all(pageEvents.map(async (event) =>
+      projectAuditEvent(await redactProtectedInventoryAuditEvent(session, event)))),
     totalItems: totalItems ?? 0,
     pageSize: values.pageSize,
     hasMore,

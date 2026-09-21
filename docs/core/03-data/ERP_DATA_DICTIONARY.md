@@ -350,7 +350,7 @@ Current Phase I scaffold implements item creation with category, base/purchase/i
 | `purchase_uom_id`, `issue_uom_id`                                       |       No | Procurement and consumption convenience.       |
 | `track_inventory`, `track_expiry`, `track_lot`                          |      Yes | Item control flags.                            |
 | `requires_receiving_inspection`                                         |      Yes | Quality / receiving control.                   |
-| `min_stock_level`, `max_stock_level`, `reorder_point`                   |       No | Optional Phase I alerts.                       |
+| `min_stock_level`, `max_stock_level`, `reorder_point`                   |       No | Planned item-level fields; live low-stock monitoring uses explicit item/inventory-location configuration under DEC-0283.                       |
 | `default_supplier_id`, `standard_cost`                                  |       No | Reference fields only.                         |
 | `status`                                                                |      Yes | `draft`, `active`, `inactive`, `discontinued`. |
 
@@ -1097,3 +1097,22 @@ Schema v1 is historic: existing cohorts, intents, and activation evidence remain
 For an admitted family, the producer revalidates the exact current activation against the typed intent boundary and cannot fall back to a legacy direct transition when its denial-only feature flag is off. The submission path atomically creates the source state change, intent, approval graph, audit evidence, and notification. Transfer final approval advances the source to `REQUESTED`; return/reject preserve a terminal graph and leave it non-dispatchable. Ordinary stock-count review is approve-only: return/reject are rejected server-side. Pending controlled cancellation changes the source and graph coherently, and a user recorded as an approval actor is excluded from subsequent transfer dispatch/receipt custody for that cycle. Visible actions use a submission idempotency key and route actionable work through the existing Approval Inbox; this remains default-off pending workflow acceptance.
 
 `InventoryTransfer.version`, `StockCountSession.version`, and `StockCountAttempt.version` are positive monotonic concurrency tokens. Existing material transfer writers (submit, dispatch, receive, discrepancy settlement, receipt reversal, cancel) and current-count aggregate writers (initial attempt link, start, entry save, submit, review, cancel, legacy relink) compare the locked expected version and increment the applicable aggregate exactly once on success. Exact receipt replay remains a no-op and does not increment the transfer version.
+
+## DEC-0282 — inventory remediation data semantics
+
+- Receipt delivered quantity must equal accepted + rejected + damaged. Short quantity is undelivered; accepted quantity alone enters stock. DRAFT cancellation retains status and actor/time/reason audit without stock movement.
+- Transfer line lot/expiry identifies the requested source bucket from draft through approval, dispatch, receipt and reversal. It is not an automatic allocation result.
+- Opening quantity and unit cost use supported six-place decimal inputs; opening value is their precision-40 product rounded HALF_UP to six places. Canonical numeric compatibility is checked before persistence; unrepresentable values are rejected. Existing immutable canonical evidence is preserved.
+- Wastage policy snapshot `repeatItemHistory` retains per-item prior-line counts; current-report exclusion and original-reporter identity prevent resubmission distortion. `valuationAssurance` distinguishes UNKNOWN from UNVERIFIED_ESTIMATE and does not establish an authoritative inventory valuation. Configured loss evidence coverage records reference presence only.
+
+## DEC-0283 — InventoryLowStockThreshold
+
+| Field / grain | Semantics |
+|---|---|
+| `tenantId`, `companyId`, `inventoryLocationId`, `itemId` | One unique configuration per tenant/company/item/storage pair; location-specific, not a global item default. |
+| `baseUomId` | Pinned item base UOM, enforced with the item scope foreign key. |
+| `thresholdQuantity` | Explicit nonnegative `DECIMAL(18,6)`; zero allowed, no seeded default. |
+| `active`, `version` | Monitoring activation/deactivation; positive optimistic-concurrency version incremented on changes. |
+| `createdAt`, `updatedAt` | UTC configuration timestamps; stock freshness is not inferred. |
+
+Derived `recordedOnHand` sums matching balance lots; no matching balance row yields recorded zero with `balanceRows = 0` for initialization guidance. `lowStock` requires active configuration and eligible active tracked item/UOM/storage/parent location, and recorded on-hand <= threshold. Neither this value nor threshold measures reservations, quarantine or in-transit dispatch availability. Audit events retain actor, before/after configuration, reason and location; no stock movement is generated.

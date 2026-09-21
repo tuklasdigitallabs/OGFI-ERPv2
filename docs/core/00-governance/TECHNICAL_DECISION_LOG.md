@@ -111,3 +111,21 @@ Any decision that changes tenant isolation, role/scope access, approval behavior
 **Constraint:** These efficiency measures must never bypass ERP business controls, inventory integrity, security, approvals, audit history, testing, documentation maintenance, or material decision governance.
 
 **Implementation:** Root `AGENTS.md`; governance mirror at `AGENT_WORKING_STYLE_AND_TOKEN_EFFICIENCY_STANDARD.md`.
+
+## DEC-0282 — Bounded inventory audit remediation
+
+[Confirmed record](decisions/DEC-0282-BOUNDED-INVENTORY-AUDIT-REMEDIATION.md): server-side blind-count read fences, live loss-action scope, configured reference coverage, truthful repeat/estimate context, receiving reconciliation and draft cancellation, decimal opening values, and draft-pinned transfer buckets. Verification and release admission are separate; no valuation policy or recovery activation is inferred.
+
+## DEC-0283 — Location-aware low-stock thresholds
+
+[Confirmed record](decisions/DEC-0283-LOCATION-AWARE-LOW-STOCK-THRESHOLDS.md) defines explicit item/inventory-location thresholds and shared live dashboard/list/export classification of recorded on-hand at or below threshold. No seeded defaults, availability-to-dispatch claim, automatic procurement or persistent notification delivery is introduced. UAT/production admission remains separate.
+
+## DEC-0284 — Guided user access setup and atomic change
+
+[Confirmed record](decisions/DEC-0284-GUIDED-USER-ACCESS-SETUP-AND-ATOMIC-CHANGE.md) keeps role-derived permissions and controlled requests while simplifying eligible branch onboarding. Change Access replaces one assignment transactionally with reason, expected-state comparison, idempotency, audit lineage and target-session invalidation; no-scope recovery grants no authority.
+
+The confirmed assignment-risk matrix permits direct assignment only for safe roles
+at ordinary branches with `VIEW` or `OPERATE`. `APPROVE`, `MANAGE`, controlled
+location types, sensitive roles, and system roles require controlled requests.
+Unknown or unclassified permissions fail closed; role designers retain
+permission-composition flexibility with visible warnings.

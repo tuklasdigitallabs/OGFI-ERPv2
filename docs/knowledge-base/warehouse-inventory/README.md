@@ -6,6 +6,8 @@ Use the knowledge-base article template and follow the knowledge-base standard.
 
 ## Current articles
 
+- [Monitoring Low Stock and Setting Thresholds](monitoring-low-stock-and-thresholds.md)
+
 - `docs/knowledge-base/warehouse-inventory/viewing-stock-balances.md`
 - `docs/knowledge-base/warehouse-inventory/reviewing-ledger-variance.md`
 - `docs/knowledge-base/warehouse-inventory/viewing-inventory-ledger.md`

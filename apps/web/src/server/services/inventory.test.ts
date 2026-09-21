@@ -33,6 +33,13 @@ import type { SessionContext } from "./context";
 import { permissions } from "./authorization";
 import { inventoryItemLotExpiryRequirements } from "./policySettings";
 
+// Predicate/pagination tests use the same mocked client; confidentiality and real
+// transaction fencing are exercised in inventoryQuantityRead(.Pg) regressions.
+vi.mock("./inventoryQuantityRead", async () => ({
+  ...await vi.importActual<typeof import("./inventoryQuantityRead")>("./inventoryQuantityRead"),
+  withInventoryQuantityRead: async (_session: SessionContext, read: (tx: TransactionClient) => Promise<unknown>) => read(prisma),
+}));
+
 describe("inventory ledger foundation rules", () => {
   test("bounds the dashboard balance aggregate to the selected tenant, company, and active location", () => {
     const dashboardSession = {
@@ -438,7 +445,7 @@ describe("inventory ledger foundation rules", () => {
     expect(balancePage).not.toContain("toLocaleDateString()");
 
     const inventorySource = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
-    expect(inventorySource).toContain("prisma.company.findFirst");
+    expect(inventorySource).toContain("tx.company.findFirst");
     expect(inventorySource).toContain("tenantId: session.context.tenantId");
     expect(inventorySource).toContain('timeZone: company?.timezone ?? "Asia/Manila"');
   });
@@ -818,7 +825,7 @@ describe("inventory ledger foundation rules", () => {
     expect(source).toContain("permissions.inventoryBalanceView");
     expect(source).toContain("requirePermission(session, permissions.inventoryLedgerView)");
     expect(source).toContain("buildInventoryLedgerVarianceQuery");
-    expect(source).toContain("prisma.$queryRaw<InventoryLedgerVarianceRawRow[]>");
+    expect(source).toContain("tx.$queryRaw<InventoryLedgerVarianceRawRow[]>");
     expect(source).not.toContain("const rowsByKey = new Map");
     expect(source).not.toContain("lastReconciledAt");
     expect(source).toContain("exportMaxRows");
@@ -963,7 +970,7 @@ describe("inventory-location posting serialization", () => {
         data: expect.objectContaining({ lotNumber: null })
       }));
       const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
-      expect(source).not.toContain("tx.inventoryBalance.");
+      expect(source).not.toMatch(/tx\.inventoryBalance\.(create|update|upsert|delete)/);
     } finally {
       policy.mockRestore();
     }

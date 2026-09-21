@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
@@ -100,6 +102,7 @@ function slaBadgeTone(status: PurchaseRequestSlaStatus) {
 }
 
 export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -356,4 +359,9 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
       </div>}
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

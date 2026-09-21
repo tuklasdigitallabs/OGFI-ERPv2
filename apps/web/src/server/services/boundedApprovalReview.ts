@@ -1,3 +1,4 @@
+import { withInventoryQuantityRead } from "./inventoryQuantityRead";
 import { createHash } from "node:crypto";
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
@@ -258,16 +259,19 @@ export async function getBoundedInventoryUatApprovalReview(
   if (!z.string().uuid().safeParse(approvalInstanceId).success) {
     return unavailable();
   }
-  const eligible = await exactEligibleStep(session, { approvalInstanceId });
-  const review = await loadReview(session, eligible);
+  const initial = await exactEligibleStep(session, { approvalInstanceId });
+  const read = async (tx: TransactionClient) => {
+  const eligible = await exactEligibleStep(session, { approvalInstanceId }, tx);
+  if (!sameEligibility(initial, eligible)) return unavailable();
+  const review = await loadReview(session, eligible, tx);
   const finalEligible = await exactEligibleStep(session, {
     approvalInstanceId,
     approvalInstanceStepId: eligible.approvalInstanceStepId,
     family: eligible.documentType as BoundedInventoryUatApprovalFamily,
-  });
+  }, tx);
   if (!sameEligibility(eligible, finalEligible)) return unavailable();
   const routing = await getBoundedApprovalRoutingSnapshot(
-    prisma,
+    tx,
     session,
     finalEligible,
   );
@@ -291,6 +295,28 @@ export async function getBoundedInventoryUatApprovalReview(
       reviewDigest: boundedApprovalReviewDigest(review),
     }),
   };
+
+  };
+  if (initial.documentType === "StockAdjustment" || initial.documentType === "StockCountAttemptReview") {
+    const where = { id: initial.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId };
+    const source = initial.documentType === "StockAdjustment"
+      ? await prisma.stockAdjustment.findFirst({ where, select: { inventoryLocationId: true } })
+      : await prisma.stockCountAttempt.findFirst({ where, select: { inventoryLocationId: true } });
+    if (!source) return unavailable();
+    return withInventoryQuantityRead(session, async (tx) => {
+      const fencedWhere = { ...where, inventoryLocationId: source.inventoryLocationId };
+      const fencedSource = initial.documentType === "StockAdjustment"
+        ? await tx.stockAdjustment.findFirst({ where: fencedWhere, select: { id: true } })
+        : await tx.stockCountAttempt.findFirst({ where: fencedWhere, select: { id: true } });
+      if (!fencedSource) return unavailable();
+      return read(tx);
+    }, {
+      inventoryLocationIds: [source.inventoryLocationId],
+      adjustments: initial.documentType === "StockAdjustment",
+      adjustmentId: initial.documentId,
+    });
+  }
+  return read(prisma);
 }
 
 /**

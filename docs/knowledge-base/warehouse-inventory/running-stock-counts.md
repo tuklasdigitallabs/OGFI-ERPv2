@@ -63,6 +63,10 @@ If a future authorized release has activated the pilot count-review route and th
 - Access to a count or dashboard does not authorize review, approval, adjustment posting, or inventory movement. The source workflow checks that authority again.
 - Recount history is append-only and reviewer-only; a successor never overwrites the reviewed attempt. Recount recovery and variance activation remain controlled release work. Do not use a reviewer view as evidence that stock has been corrected. If recovery is unavailable, preserve the count record and escalate through the approved supervisor/incident process rather than changing stock outside the ERP workflow.
 
+## What happens next
+
+Continue your assigned count without consulting system quantities. Blind-count confidentiality also protects quantity pages, exports, count-derived adjustment details, audit information, and linked-record previews. An unavailable quantity view is not a zero balance. Independent review remains subject to the server's current eligibility checks, even when a user has several roles. Preserve submitted evidence and await the authorized review; recount and variance-correction gates remain unchanged.
+
 ## Related articles
 
 - Viewing Stock Balances

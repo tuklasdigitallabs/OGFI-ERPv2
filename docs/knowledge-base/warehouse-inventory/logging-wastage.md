@@ -76,6 +76,16 @@ Before either stock-affecting action commits, the server locks the report and in
 - A posted report cannot be edited. Use the authorized reversal action with a
   reason, then create a corrected replacement report when necessary.
 
+## Evidence, estimates, and repeat history
+
+Configured evidence requirements are checked when creating, submitting, and posting. A report-level reference covers all applicable lines; otherwise each applicable line needs its own reference. Reason or report-policy requirements apply to all lines; a category-only requirement applies to that category's lines. An older draft or approved report may therefore be blocked if required references are missing. Contact the workflow owner to resolve the source record through an authorized path.
+
+A reference confirms only that text was supplied. It does not prove that a photo was uploaded, accessible, authentic, or reviewed. Review the underlying artifact separately; free text cannot replace protected recount evidence qualification.
+
+The detail and export distinguish **Value unknown** from **Unverified estimate**. A zero estimate is unknown, not proof of no loss; positive estimates also need independent value review. The approved authoritative valuation source remains an open policy decision, and these labels do not change approval routing.
+
+Repeat-item history considers every distinct item, excludes this report from its own history, and retains the original reporter when another user submits it. Counts describe prior report lines within the evaluated policy window, not unique incidents or proof of theft. Review the item-specific history and supporting circumstances.
+
 ## What happens next
 
 The report follows the configured approval route. After final approval, an

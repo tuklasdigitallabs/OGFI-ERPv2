@@ -716,6 +716,15 @@ export async function createSharedProcurementInventorySource(
     select: { id: true },
   });
 
+  if (family === "WastageReport" || family === "StockAdjustment") {
+    await prisma.operationalReasonCode.create({ data: {
+      tenantId: context.tenantId, companyId: context.companyId,
+      workflow: family === "WastageReport" ? "WASTAGE" : "STOCK_ADJUSTMENT",
+      code: "TEST", label: "Controlled test reason", requiresEvidence: false,
+      wastageTypes: family === "WastageReport" ? ["SPOILAGE_EXPIRY"] : [],
+      inventoryClasses: ["FOOD"],
+    } });
+  }
   if (family === "WastageReport") {
     const report = await prisma.wastageReport.create({
       data: {
@@ -725,7 +734,7 @@ export async function createSharedProcurementInventorySource(
         publicReference: `WR-PARITY-${context.suffix}`,
         reportedByUserId: context.requesterUserId,
         status: "PENDING_APPROVAL",
-        wastageType: "SPOILAGE",
+        wastageType: "SPOILAGE_EXPIRY",
         reasonCode: "TEST",
         submittedAt: new Date(),
         lines: {

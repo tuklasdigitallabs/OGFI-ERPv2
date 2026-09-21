@@ -7,6 +7,7 @@ import {
 } from "./authorizationDatabaseSafety";
 import type { SessionContext } from "../src/server/services/context";
 import {
+  calculateOpeningInventoryValue,
   canonicalOpeningInventoryJson,
   requestOpeningInventoryExecutionCommand,
 } from "../src/server/services/openingInventoryCutovers";
@@ -110,7 +111,9 @@ function session(input: {
  * action is cookie-bound; commands themselves are always requested through
  * the service and executed only by the isolated executor role.
  */
-async function createApprovedFixture(options: { twoLocations?: boolean } = {}): Promise<Fixture> {
+async function createApprovedFixture(options: { twoLocations?: boolean; quantity?: number; unitCost?: number } = {}): Promise<Fixture> {
+  const quantity = options.quantity ?? 7;
+  const unitCost = options.unitCost ?? 3;
   const suffix = randomUUID().slice(0, 8);
   const now = new Date();
   const effectiveAt = new Date(now.getTime() - 60_000);
@@ -269,7 +272,7 @@ async function createApprovedFixture(options: { twoLocations?: boolean } = {}): 
     data: { currentAttemptId: ids.stockCountAttemptId },
   });
   await prisma.stockCountAttemptLine.createMany({ data: [
-    { id: ids.positiveAttemptLineId, stockCountAttemptId: ids.stockCountAttemptId, tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId, itemId: ids.positiveItemId, uomId: ids.uomId, lineNumber: 1, lotKey: "NOLOT|NOEXP", systemQuantityBaseUom: 0, countedQuantityBaseUom: 7, varianceQuantityBaseUom: 7, countedByUserId: ids.counterId, countedAt: cutoffAt },
+    { id: ids.positiveAttemptLineId, stockCountAttemptId: ids.stockCountAttemptId, tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId, itemId: ids.positiveItemId, uomId: ids.uomId, lineNumber: 1, lotKey: "NOLOT|NOEXP", systemQuantityBaseUom: 0, countedQuantityBaseUom: quantity, varianceQuantityBaseUom: quantity, countedByUserId: ids.counterId, countedAt: cutoffAt },
     { id: ids.zeroAttemptLineId, stockCountAttemptId: ids.stockCountAttemptId, tenantId: ids.tenantId, companyId: ids.companyId, inventoryLocationId: ids.inventoryLocationId, itemId: ids.zeroItemId, uomId: ids.uomId, lineNumber: 2, lotKey: "NOLOT|NOEXP", systemQuantityBaseUom: 0, countedQuantityBaseUom: 0, varianceQuantityBaseUom: 0, countedByUserId: ids.counterId, countedAt: cutoffAt },
   ] });
   if (options.twoLocations) {
@@ -318,13 +321,13 @@ async function createApprovedFixture(options: { twoLocations?: boolean } = {}): 
     controlledEvidenceAttachmentId: ids.controlledEvidenceId, attachmentId: ids.attachmentId, objectVersionId, checksum,
   }]);
   const sourceLines = [
-    { itemId: ids.positiveItemId, attemptLineId: ids.positiveAttemptLineId, lineNumber: 1, quantity: 7, unitCost: 3 },
+    { itemId: ids.positiveItemId, attemptLineId: ids.positiveAttemptLineId, lineNumber: 1, quantity, unitCost },
     { itemId: ids.zeroItemId, attemptLineId: ids.zeroAttemptLineId, lineNumber: 2, quantity: 0, unitCost: 0 },
   ];
   const cutoverLineFacts = sourceLines.map((line) => {
     const lineCanonicalJson = canonicalOpeningInventoryJson({
       expiryDate: null, itemId: line.itemId, lineNumber: line.lineNumber, lotKey: "NOLOT|NOEXP", lotNumber: null,
-      openingQuantityBaseUom: line.quantity, openingValue: line.quantity * line.unitCost,
+      openingQuantityBaseUom: line.quantity, openingValue: calculateOpeningInventoryValue(line.quantity, line.unitCost),
       sourceCountedQuantityBaseUom: line.quantity, sourceSystemQuantityBaseUom: 0, sourceVarianceQuantityBaseUom: line.quantity,
       stockCountAttemptLineId: line.attemptLineId, unitCost: line.unitCost, uomId: ids.uomId,
     });
@@ -353,7 +356,7 @@ async function createApprovedFixture(options: { twoLocations?: boolean } = {}): 
     stockCountAttemptId: ids.stockCountAttemptId, stockCountAttemptLineId: line.attemptLineId, lineNumber: line.lineNumber,
     lotKey: "NOLOT|NOEXP", sourceSystemQuantityBaseUom: 0, sourceCountedQuantityBaseUom: line.quantity,
     sourceVarianceQuantityBaseUom: line.quantity, openingQuantityBaseUom: line.quantity, unitCost: line.unitCost,
-    openingValue: line.quantity * line.unitCost, lineCanonicalJson: line.lineCanonicalJson, lineDigest: line.lineDigest,
+    openingValue: calculateOpeningInventoryValue(line.quantity, line.unitCost), lineCanonicalJson: line.lineCanonicalJson, lineDigest: line.lineDigest,
   })) });
 
   await createSealedApprovalRuleFixture(prisma, { data: {
@@ -411,7 +414,7 @@ async function createApprovedFixture(options: { twoLocations?: boolean } = {}): 
     const secondaryLineFacts = secondarySourceLines.map((line) => {
       const lineCanonicalJson = canonicalOpeningInventoryJson({
         expiryDate: null, itemId: line.itemId, lineNumber: line.lineNumber, lotKey: "NOLOT|NOEXP", lotNumber: null,
-        openingQuantityBaseUom: line.quantity, openingValue: line.quantity * line.unitCost,
+        openingQuantityBaseUom: line.quantity, openingValue: calculateOpeningInventoryValue(line.quantity, line.unitCost),
         sourceCountedQuantityBaseUom: line.quantity, sourceSystemQuantityBaseUom: 0, sourceVarianceQuantityBaseUom: line.quantity,
         stockCountAttemptLineId: line.attemptLineId, unitCost: line.unitCost, uomId: ids.uomId,
       });
@@ -440,7 +443,7 @@ async function createApprovedFixture(options: { twoLocations?: boolean } = {}): 
       stockCountAttemptId: ids.secondaryStockCountAttemptId, stockCountAttemptLineId: line.attemptLineId, lineNumber: line.lineNumber,
       lotKey: "NOLOT|NOEXP", sourceSystemQuantityBaseUom: 0, sourceCountedQuantityBaseUom: line.quantity,
       sourceVarianceQuantityBaseUom: line.quantity, openingQuantityBaseUom: line.quantity, unitCost: line.unitCost,
-      openingValue: line.quantity * line.unitCost, lineCanonicalJson: line.lineCanonicalJson, lineDigest: line.lineDigest,
+      openingValue: calculateOpeningInventoryValue(line.quantity, line.unitCost), lineCanonicalJson: line.lineCanonicalJson, lineDigest: line.lineDigest,
     })) });
     await prisma.approvalInstance.create({ data: {
       id: ids.secondaryApprovalId, tenantId: ids.tenantId, companyId: ids.companyId, documentType: "OpeningInventoryCutover",
@@ -655,6 +658,18 @@ pgDescribe("DEC-0263 opening-inventory cutover PostgreSQL executor boundary", ()
       SELECT has_function_privilege(current_user, 'public.execute_opening_inventory_command(uuid)', 'EXECUTE') AS "mayExecute"
     `;
     expect(rows).toEqual([{ mayExecute: false }]);
+  });
+
+  test.each([[3, 0.1, "0.3"], [1.234567, 1.23, "1.518517"], [1000.999999, 100000.500001, "100100500.401"]])("persists canonical six-place opening product %s × %s and preserves exact command replay", async (quantity, unitCost, expected) => {
+    const fixture = await createApprovedFixture({ quantity: Number(quantity), unitCost: Number(unitCost) });
+    const line = await prisma.openingInventoryCutoverLine.findFirstOrThrow({ where: { cutoverId: fixture.cutoverId, itemId: fixture.positiveItemId } });
+    expect(line.openingValue.toString()).toBe(expected);
+    expect(JSON.parse(line.lineCanonicalJson).openingValue).toBe(Number(expected));
+    expect(sha256(line.lineCanonicalJson)).toBe(line.lineDigest);
+    const key = `fractional-freeze-${randomUUID()}`;
+    const first = await command(fixture, fixture.freezer, "FREEZE_COHORT", { cohortVersion: 2, key });
+    const replay = await command(fixture, fixture.freezer, "FREEZE_COHORT", { cohortVersion: 2, key });
+    expect(replay.id).toBe(first.id);
   });
 
   test("rejects direct malformed cohort and location command target shapes before creating command activity", async () => {

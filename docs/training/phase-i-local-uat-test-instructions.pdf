@@ -1,0 +1,293 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 5 /Kids [7 0 R 9 0 R 11 0 R 13 0 R 15 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+6 0 obj
+<< /Length 4208 >>
+stream
+0.12 0.20 0.36 rg
+BT /F2 18.0 Tf 48.00 784.89 Td (OGFI ERP - Phase I Local UAT Test Instructions) Tj ET
+BT /F2 13.0 Tf 48.00 736.89 Td (Purpose) Tj ET
+BT /F1 9.5 Tf 48.00 711.89 Td (Use this guide to execute one traceable, end-to-end Phase I UAT chain covering access, procurement,) Tj ET
+BT /F1 9.5 Tf 48.00 698.89 Td (receiving, inventory custody, physical controls, wastage, adjustments, and restaurant consumption.) Tj ET
+BT /F1 9.5 Tf 48.00 685.89 Td (Record every result in templates/phase-i-uat-evidence-sheet.xlsx.) Tj ET
+BT /F1 9.5 Tf 48.00 666.89 Td (The authoritative detailed runbook remains phase-i-local-end-to-end-uat-runbook.md. If these) Tj ET
+BT /F1 9.5 Tf 48.00 653.89 Td (instructions and the authoritative runbook differ, stop and follow the authoritative runbook.) Tj ET
+BT /F2 13.0 Tf 48.00 624.89 Td (Environment boundary) Tj ET
+BT /F1 9.5 Tf 60.00 599.89 Td (- Ordinary local application: http://localhost:3001) Tj ET
+BT /F1 9.5 Tf 60.00 585.89 Td (- The ordinary local stack intentionally keeps the Approval Inbox unavailable.) Tj ET
+BT /F1 9.5 Tf 60.00 571.89 Td (- Approval-dependent scenarios may run only in the separately admitted hardened UAT lane at) Tj ET
+BT /F1 9.5 Tf 60.00 558.89 Td (https://127.0.0.1:3443.) Tj ET
+BT /F1 9.5 Tf 60.00 544.89 Td (- When that lane is unavailable, record the approval-dependent step as Not Run - activation) Tj ET
+BT /F1 9.5 Tf 60.00 531.89 Td (dependency. Never enable routing by editing the ordinary .env.) Tj ET
+BT /F1 9.5 Tf 60.00 517.89 Td (- Candidate commit for this execution must be recorded before testing. Do not silently continue) Tj ET
+BT /F1 9.5 Tf 60.00 504.89 Td (after rebuilding or changing source code.) Tj ET
+BT /F2 13.0 Tf 48.00 476.89 Td (Step 1 - Prepare the session) Tj ET
+BT /F1 9.5 Tf 60.00 451.89 Td (1. Confirm the application image passed the full release build check.) Tj ET
+BT /F1 9.5 Tf 60.00 437.89 Td (2. Record the Git commit, build-evidence path, application URL, browser, tester, and test date) Tj ET
+BT /F1 9.5 Tf 60.00 424.89 Td (in the workbook's Session sheet.) Tj ET
+BT /F1 9.5 Tf 60.00 410.89 Td (3. Confirm the local services:) Tj ET
+BT /F3 8.5 Tf 60.00 392.89 Td (   docker compose -p ogfi-clean --env-file .env ps) Tj ET
+BT /F1 9.5 Tf 60.00 377.89 Td (4. Keep the application log open in a separate terminal:) Tj ET
+BT /F3 8.5 Tf 60.00 359.89 Td (   docker logs -f ogfi-clean-web-1) Tj ET
+BT /F1 9.5 Tf 60.00 344.89 Td (5. Create one unique reference, for example UAT-YYYYMMDD-01, and use it on all related records) Tj ET
+BT /F1 9.5 Tf 60.00 331.89 Td (and evidence.) Tj ET
+BT /F1 9.5 Tf 60.00 317.89 Td (6. Prepare separate named users for Requester, Purchasing, Approver, Receiver, Warehouse) Tj ET
+BT /F1 9.5 Tf 60.00 304.89 Td (Dispatcher, Branch Receiver, and Inventory Reviewer/Poster. Do not perform the whole chain as) Tj ET
+BT /F1 9.5 Tf 60.00 291.89 Td (one super-administrator.) Tj ET
+BT /F2 13.0 Tf 48.00 263.89 Td (Step 2 - Apply the evidence rules) Tj ET
+BT /F1 9.5 Tf 48.00 238.89 Td (For each scenario record the actor, scope, source record, before state, exact action, after state,) Tj ET
+BT /F1 9.5 Tf 48.00 225.89 Td (stock before and after, audit reference, evidence link, and result.) Tj ET
+BT /F1 9.5 Tf 48.00 206.89 Td (Allowed results are Not Started, Pass, Fail, Blocked, and Not Run. Every Fail or Blocked result) Tj ET
+BT /F1 9.5 Tf 48.00 193.89 Td (requires a defect reference. Approval steps unavailable on the ordinary stack must use Not Run with) Tj ET
+BT /F1 9.5 Tf 48.00 180.89 Td (the note activation dependency.) Tj ET
+BT /F2 13.0 Tf 48.00 151.89 Td (Step 3 - Smoke test authentication and navigation) Tj ET
+BT /F1 9.5 Tf 60.00 126.89 Td (1. Open http://localhost:3001/sign-in and sign in as the authorized administrator.) Tj ET
+BT /F1 9.5 Tf 60.00 112.89 Td (2. Confirm the dashboard loads without a blank page.) Tj ET
+BT /F1 9.5 Tf 60.00 98.89 Td (3. Switch between the warehouse and branch and confirm the selected scope refreshes correctly.) Tj ET
+BT /F1 9.5 Tf 60.00 84.89 Td (4. Sign out and sign in again.) Tj ET
+0.35 0.40 0.48 rg
+BT /F1 8 Tf 48.00 24 Td (OGFI ERP Phase I Local UAT Test Instructions) Tj ET
+BT /F1 8 Tf 502.28 24 Td (Page 1 of 5) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 4689 >>
+stream
+0.12 0.20 0.36 rg
+BT /F1 9.5 Tf 60.00 786.89 Td (5. Pass only when login, logout, navigation, and location switching work without a manual) Tj ET
+BT /F1 9.5 Tf 60.00 773.89 Td (refresh.) Tj ET
+BT /F2 13.0 Tf 48.00 745.89 Td (Step 4 - Verify organization and access scope) Tj ET
+BT /F1 9.5 Tf 60.00 720.89 Td (1. Open Administration -> Organization Scope.) Tj ET
+BT /F1 9.5 Tf 60.00 706.89 Td (2. Verify Company, Brand, Department, warehouse, and branch records.) Tj ET
+BT /F1 9.5 Tf 60.00 692.89 Td (3. Select a row and confirm its applicable action becomes available.) Tj ET
+BT /F1 9.5 Tf 60.00 678.89 Td (4. Edit one permitted non-structural value, provide a reason, and save.) Tj ET
+BT /F1 9.5 Tf 60.00 664.89 Td (5. Confirm the modal closes, a user-safe toast appears, the value refreshes, and audit history) Tj ET
+BT /F1 9.5 Tf 60.00 651.89 Td (retains before/after values and the reason.) Tj ET
+BT /F1 9.5 Tf 60.00 637.89 Td (6. Sign in as a branch-scoped user and confirm another branch is denied server-side.) Tj ET
+BT /F2 13.0 Tf 48.00 609.89 Td (Step 5 - Verify Suppliers, Items, and UOMs) Tj ET
+BT /F1 9.5 Tf 60.00 584.89 Td (1. Open Procurement -> Suppliers, select a supplier row, and open the selected supplier.) Tj ET
+BT /F1 9.5 Tf 60.00 570.89 Td (2. Verify the correct supplier, accreditation, contact, terms, status, and catalog appear.) Tj ET
+BT /F1 9.5 Tf 60.00 556.89 Td (3. Test catalog search and pagination, then select another supplier and verify the modal changes) Tj ET
+BT /F1 9.5 Tf 60.00 543.89 Td (to that supplier.) Tj ET
+BT /F1 9.5 Tf 60.00 529.89 Td (4. Open Inventory -> Items and select the high-risk item used throughout UAT.) Tj ET
+BT /F1 9.5 Tf 60.00 515.89 Td (5. Record its item code, base UOM, purchase UOM, issue UOM, and conversions.) Tj ET
+BT /F1 9.5 Tf 60.00 501.89 Td (6. Confirm searchable dropdowns return matching active, company-scoped options.) Tj ET
+BT /F2 13.0 Tf 48.00 473.89 Td (Step 6 - Establish controlled opening stock) Tj ET
+BT /F1 9.5 Tf 48.00 448.89 Td (Do not edit a stock balance directly. Establish stock using the controlled Opening Inventory) Tj ET
+BT /F1 9.5 Tf 48.00 435.89 Td (workflow or a posted receipt from an issued Purchase Order.) Tj ET
+BT /F1 9.5 Tf 48.00 416.89 Td (For Opening Inventory:) Tj ET
+BT /F1 9.5 Tf 60.00 397.89 Td (1. Open Inventory -> Opening Inventory -> Setup Center and create a configuration draft with the) Tj ET
+BT /F1 9.5 Tf 60.00 384.89 Td (UAT reference.) Tj ET
+BT /F1 9.5 Tf 60.00 370.89 Td (2. Configure exact warehouse and branch endpoints and only the required capabilities.) Tj ET
+BT /F1 9.5 Tf 60.00 356.89 Td (3. Select the high-risk pilot items.) Tj ET
+BT /F1 9.5 Tf 60.00 342.89 Td (4. Assign five distinct eligible users: preparer, submitter, Operations reviewer, Accounting) Tj ET
+BT /F1 9.5 Tf 60.00 329.89 Td (reviewer, and command requester.) Tj ET
+BT /F1 9.5 Tf 60.00 315.89 Td (5. Bind the required approval routes and validate all eight readiness families.) Tj ET
+BT /F1 9.5 Tf 60.00 301.89 Td (6. Resolve every blocker in its authoritative workspace.) Tj ET
+BT /F1 9.5 Tf 60.00 287.89 Td (7. Seal the revision with an independent authorized user and record its revision and SHA-256) Tj ET
+BT /F1 9.5 Tf 60.00 274.89 Td (digest.) Tj ET
+BT /F1 9.5 Tf 60.00 260.89 Td (8. Confirm the sealed revision cannot be edited or deleted.) Tj ET
+BT /F1 9.5 Tf 60.00 246.89 Td (9. Create reviewed OPENING count attempts, create the cohort, add evidence and valuation,) Tj ET
+BT /F1 9.5 Tf 60.00 233.89 Td (prepare immutable location batches, seal, and submit.) Tj ET
+BT /F1 9.5 Tf 60.00 219.89 Td (10. Complete independent Operations and Accounting reviews in the admitted approval lane.) Tj ET
+BT /F1 9.5 Tf 60.00 205.89 Td (11. Request Freeze, Stage, and Activate in order. Verify only successful activation posts) Tj ET
+BT /F1 9.5 Tf 60.00 192.89 Td (opening movements exactly once.) Tj ET
+BT /F2 13.0 Tf 48.00 164.89 Td (Step 7 - Purchase Request) Tj ET
+BT /F1 9.5 Tf 60.00 139.89 Td (1. Sign in as the Requester and select the intended branch.) Tj ET
+BT /F1 9.5 Tf 60.00 125.89 Td (2. Create a draft Purchase Request with required date, urgency, justification, item, quantity,) Tj ET
+BT /F1 9.5 Tf 60.00 112.89 Td (valid UOM, estimated cost when available, and line purpose.) Tj ET
+BT /F1 9.5 Tf 60.00 98.89 Td (3. Submit for approval and record the PR number.) Tj ET
+BT /F1 9.5 Tf 60.00 84.89 Td (4. Confirm submission creates no inventory movement.) Tj ET
+BT /F1 9.5 Tf 60.00 70.89 Td (5. Attempt self-approval and confirm denial.) Tj ET
+0.35 0.40 0.48 rg
+BT /F1 8 Tf 48.00 24 Td (OGFI ERP Phase I Local UAT Test Instructions) Tj ET
+BT /F1 8 Tf 502.28 24 Td (Page 2 of 5) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 4266 >>
+stream
+0.12 0.20 0.36 rg
+BT /F1 9.5 Tf 60.00 786.89 Td (6. In the admitted approval lane, sign in as the assigned Approver, verify all scope and policy) Tj ET
+BT /F1 9.5 Tf 60.00 773.89 Td (information, and approve.) Tj ET
+BT /F1 9.5 Tf 60.00 759.89 Td (7. Use another UAT PR to test return or rejection with required remarks.) Tj ET
+BT /F2 13.0 Tf 48.00 731.89 Td (Step 8 - Supplier quotations and comparison) Tj ET
+BT /F1 9.5 Tf 60.00 706.89 Td (1. Sign in as Purchasing and open the approved PR.) Tj ET
+BT /F1 9.5 Tf 60.00 692.89 Td (2. Record at least two supplier quotations when comparison is required.) Tj ET
+BT /F1 9.5 Tf 60.00 678.89 Td (3. Include reference, validity, quantities, UOMs, prices, availability, lead time, notes, and) Tj ET
+BT /F1 9.5 Tf 60.00 665.89 Td (reason.) Tj ET
+BT /F1 9.5 Tf 60.00 651.89 Td (4. Complete the comparison, retain recommendation evidence, and submit for approval when) Tj ET
+BT /F1 9.5 Tf 60.00 638.89 Td (configured.) Tj ET
+BT /F1 9.5 Tf 60.00 624.89 Td (5. Confirm quotation and recommendation decisions do not change inventory.) Tj ET
+BT /F2 13.0 Tf 48.00 596.89 Td (Step 9 - Purchase Order) Tj ET
+BT /F1 9.5 Tf 60.00 571.89 Td (1. Create the PO from the approved sourcing result.) Tj ET
+BT /F1 9.5 Tf 60.00 557.89 Td (2. Verify Supplier, Company, receiving Location, Item, UOM, quantity, price, totals, and source) Tj ET
+BT /F1 9.5 Tf 60.00 544.89 Td (PR.) Tj ET
+BT /F1 9.5 Tf 60.00 530.89 Td (3. Submit and independently approve the PO when required.) Tj ET
+BT /F1 9.5 Tf 60.00 516.89 Td (4. Issue it and record the PO number.) Tj ET
+BT /F1 9.5 Tf 60.00 502.89 Td (5. Confirm draft, approval, and issue create no inventory movement.) Tj ET
+BT /F1 9.5 Tf 60.00 488.89 Td (6. Attempt one invalid or stale transition and confirm no mutation occurs.) Tj ET
+BT /F2 13.0 Tf 48.00 460.89 Td (Step 10 - Receiving) Tj ET
+BT /F1 9.5 Tf 60.00 435.89 Td (1. Sign in as the Receiver and create a draft receipt against the issued PO.) Tj ET
+BT /F1 9.5 Tf 60.00 421.89 Td (2. Enter the supplier delivery reference and exercise one partial or discrepant receipt, such as) Tj ET
+BT /F1 9.5 Tf 60.00 408.89 Td (ordered 10, delivered and accepted 7, short 3.) Tj ET
+BT /F1 9.5 Tf 60.00 394.89 Td (3. Add required reason, evidence, lot, and expiry information.) Tj ET
+BT /F1 9.5 Tf 60.00 380.89 Td (4. Save and confirm the draft has no stock effect.) Tj ET
+BT /F1 9.5 Tf 60.00 366.89 Td (5. Post once and confirm usable stock increases only by the accepted quantity.) Tj ET
+BT /F1 9.5 Tf 60.00 352.89 Td (6. Refresh or retry and confirm the movement is not duplicated.) Tj ET
+BT /F1 9.5 Tf 60.00 338.89 Td (7. Confirm the PO remains open for its outstanding quantity.) Tj ET
+BT /F2 13.0 Tf 48.00 310.89 Td (Step 11 - Balance and ledger reconciliation) Tj ET
+BT /F1 9.5 Tf 60.00 285.89 Td (1. Open Inventory -> Stock Balances at the posting Location and record the item balance and) Tj ET
+BT /F1 9.5 Tf 60.00 272.89 Td (version.) Tj ET
+BT /F1 9.5 Tf 60.00 258.89 Td (2. Open Movement Ledger and find the receipt by Item, PO, or receipt reference.) Tj ET
+BT /F1 9.5 Tf 60.00 244.89 Td (3. Confirm exactly one movement with the correct quantity, actor, source, lot, reason, and) Tj ET
+BT /F1 9.5 Tf 60.00 231.89 Td (timestamp.) Tj ET
+BT /F1 9.5 Tf 60.00 217.89 Td (4. Open Ledger Variance and confirm cached and ledger-derived balances reconcile.) Tj ET
+BT /F1 9.5 Tf 60.00 203.89 Td (5. Treat any unexplained mismatch as a blocking defect.) Tj ET
+BT /F2 13.0 Tf 48.00 175.89 Td (Step 12 - Warehouse-to-branch transfer) Tj ET
+BT /F1 9.5 Tf 60.00 150.89 Td (1. Create a transfer from the Main Warehouse to the branch for less than available stock.) Tj ET
+BT /F1 9.5 Tf 60.00 136.89 Td (2. Submit and independently approve it.) Tj ET
+BT /F1 9.5 Tf 60.00 122.89 Td (3. Sign in as the Warehouse Dispatcher and dispatch once.) Tj ET
+BT /F1 9.5 Tf 60.00 108.89 Td (4. Confirm the source movement and warehouse reduction.) Tj ET
+BT /F1 9.5 Tf 60.00 94.89 Td (5. Sign in as the Branch Receiver, record accepted and discrepant quantities with evidence, and) Tj ET
+BT /F1 9.5 Tf 60.00 81.89 Td (post receipt.) Tj ET
+0.35 0.40 0.48 rg
+BT /F1 8 Tf 48.00 24 Td (OGFI ERP Phase I Local UAT Test Instructions) Tj ET
+BT /F1 8 Tf 502.28 24 Td (Page 3 of 5) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<< /Length 4296 >>
+stream
+0.12 0.20 0.36 rg
+BT /F1 9.5 Tf 60.00 786.89 Td (6. Confirm destination stock increases only by accepted quantity and retry cannot duplicate) Tj ET
+BT /F1 9.5 Tf 60.00 773.89 Td (stock.) Tj ET
+BT /F1 9.5 Tf 60.00 759.89 Td (7. Confirm the approver cannot dispatch or receive, the dispatcher cannot receive, and out-of-) Tj ET
+BT /F1 9.5 Tf 60.00 746.89 Td (scope users are denied.) Tj ET
+BT /F2 13.0 Tf 48.00 718.89 Td (Step 13 - Wastage) Tj ET
+BT /F1 9.5 Tf 60.00 693.89 Td (1. At the branch, create wastage for the test item with quantity, cost, type, compatible reason) Tj ET
+BT /F1 9.5 Tf 60.00 680.89 Td (code, and evidence.) Tj ET
+BT /F1 9.5 Tf 60.00 666.89 Td (2. Submit and independently approve it.) Tj ET
+BT /F1 9.5 Tf 60.00 652.89 Td (3. Confirm approval alone does not reduce stock.) Tj ET
+BT /F1 9.5 Tf 60.00 638.89 Td (4. Post Wastage once and confirm exactly one WASTAGE_OUT movement.) Tj ET
+BT /F1 9.5 Tf 60.00 624.89 Td (5. Test missing reason, missing evidence, incompatible reason/type, insufficient stock, and) Tj ET
+BT /F1 9.5 Tf 60.00 611.89 Td (repeated posting. Each must fail without mutation.) Tj ET
+BT /F2 13.0 Tf 48.00 583.89 Td (Step 14 - Stock count) Tj ET
+BT /F1 9.5 Tf 60.00 558.89 Td (1. Schedule and start a count for the selected Location.) Tj ET
+BT /F1 9.5 Tf 60.00 544.89 Td (2. Enter every snapshot quantity and deliberately create one controlled variance.) Tj ET
+BT /F1 9.5 Tf 60.00 530.89 Td (3. Submit for review and review with an independent eligible user.) Tj ET
+BT /F1 9.5 Tf 60.00 516.89 Td (4. Confirm the snapshot, attempt, evidence, variance, actors, and history remain visible.) Tj ET
+BT /F1 9.5 Tf 60.00 502.89 Td (5. Confirm review does not overwrite stock. Do not create a corrective adjustment from this) Tj ET
+BT /F1 9.5 Tf 60.00 489.89 Td (count during this scenario.) Tj ET
+BT /F2 13.0 Tf 48.00 461.89 Td (Step 15 - Stock adjustment and reversal) Tj ET
+BT /F1 9.5 Tf 60.00 436.89 Td (1. Create an INCREASE or DECREASE adjustment with quantity, reason code, explanation, and) Tj ET
+BT /F1 9.5 Tf 60.00 423.89 Td (evidence.) Tj ET
+BT /F1 9.5 Tf 60.00 409.89 Td (2. Submit and independently approve it.) Tj ET
+BT /F1 9.5 Tf 60.00 395.89 Td (3. Confirm approval alone has no stock effect.) Tj ET
+BT /F1 9.5 Tf 60.00 381.89 Td (4. Post once with the authorized poster and verify one correctly signed movement.) Tj ET
+BT /F1 9.5 Tf 60.00 367.89 Td (5. If reversal is available, enter a reversal reason and confirm it creates an auditable) Tj ET
+BT /F1 9.5 Tf 60.00 354.89 Td (counter-movement rather than deleting history.) Tj ET
+BT /F2 13.0 Tf 48.00 326.89 Td (Step 16 - Servings and consumption) Tj ET
+BT /F1 9.5 Tf 60.00 301.89 Td (1. Select a configured restaurant branch and open Restaurant Ops -> Servings & Consumption.) Tj ET
+BT /F1 9.5 Tf 60.00 287.89 Td (2. Confirm staff can view but cannot modify branch configuration.) Tj ET
+BT /F1 9.5 Tf 60.00 273.89 Td (3. Create a declaration for the correct business date and service period.) Tj ET
+BT /F1 9.5 Tf 60.00 259.89 Td (4. Select a published recipe belonging to the branch's Brand and record paid and complimentary) Tj ET
+BT /F1 9.5 Tf 60.00 246.89 Td (servings separately.) Tj ET
+BT /F1 9.5 Tf 60.00 232.89 Td (5. Submit, then verify/approve with the configured independent role.) Tj ET
+BT /F1 9.5 Tf 60.00 218.89 Td (6. Confirm theoretical ingredient consumption is calculated but the declaration itself creates) Tj ET
+BT /F1 9.5 Tf 60.00 205.89 Td (no inventory movement.) Tj ET
+BT /F1 9.5 Tf 60.00 191.89 Td (7. Compare theoretical consumption with physical-count and ledger evidence.) Tj ET
+BT /F2 13.0 Tf 48.00 163.89 Td (Step 17 - Final theft-control reconciliation) Tj ET
+BT /F1 9.5 Tf 48.00 138.89 Td (For one high-risk Item and one Location calculate:) Tj ET
+BT /F3 8.5 Tf 60.00 119.89 Td (Opening quantity) Tj ET
+BT /F3 8.5 Tf 60.00 108.89 Td (+ accepted purchase receipts) Tj ET
+BT /F3 8.5 Tf 60.00 97.89 Td (+ accepted inbound transfers) Tj ET
+BT /F3 8.5 Tf 60.00 86.89 Td (- outbound transfer dispatches) Tj ET
+BT /F3 8.5 Tf 60.00 75.89 Td (- posted wastage) Tj ET
+BT /F3 8.5 Tf 60.00 64.89 Td (+/- posted stock adjustments) Tj ET
+0.35 0.40 0.48 rg
+BT /F1 8 Tf 48.00 24 Td (OGFI ERP Phase I Local UAT Test Instructions) Tj ET
+BT /F1 8 Tf 502.28 24 Td (Page 4 of 5) Tj ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 12 0 R >>
+endobj
+14 0 obj
+<< /Length 2200 >>
+stream
+0.12 0.20 0.36 rg
+BT /F3 8.5 Tf 60.00 786.89 Td (= expected current on-hand quantity) Tj ET
+BT /F1 9.5 Tf 48.00 771.89 Td (Compare the result with Stock Balances, Movement Ledger, latest physical Stock Count, Ledger) Tj ET
+BT /F1 9.5 Tf 48.00 758.89 Td (Variance, and audit history. Pass only when posted actions have exactly one movement, drafts and) Tj ET
+BT /F1 9.5 Tf 48.00 745.89 Td (approvals have no stock effect, scope/actor/reason/evidence are retained, custody restrictions) Tj ET
+BT /F1 9.5 Tf 48.00 732.89 Td (hold, and cached and ledger-derived balances reconcile.) Tj ET
+BT /F2 13.0 Tf 48.00 703.89 Td (Step 18 - Record and triage defects) Tj ET
+BT /F1 9.5 Tf 60.00 678.89 Td (1. Do not rebuild immediately.) Tj ET
+BT /F1 9.5 Tf 60.00 664.89 Td (2. Capture the screen, browser Network request/response, exact timestamp, actor, scope, source) Tj ET
+BT /F1 9.5 Tf 60.00 651.89 Td (record, and expected versus actual behavior.) Tj ET
+BT /F1 9.5 Tf 60.00 637.89 Td (3. Collect recent logs:) Tj ET
+BT /F3 8.5 Tf 60.00 619.89 Td (   docker logs --since=10m ogfi-clean-web-1) Tj ET
+BT /F1 9.5 Tf 60.00 604.89 Td (4. Assign a defect such as UAT-DEFECT-001 and classify it as Blocking, High, Medium, or Low.) Tj ET
+BT /F1 9.5 Tf 60.00 590.89 Td (5. Stop the affected chain immediately for inventory-integrity, authorization, approval, audit,) Tj ET
+BT /F1 9.5 Tf 60.00 577.89 Td (or unexplained reconciliation defects.) Tj ET
+BT /F1 9.5 Tf 60.00 563.89 Td (6. Group related defects into one bounded implementation batch instead of rebuilding after every) Tj ET
+BT /F1 9.5 Tf 60.00 550.89 Td (finding.) Tj ET
+BT /F2 13.0 Tf 48.00 522.89 Td (Completion rule) Tj ET
+BT /F1 9.5 Tf 48.00 497.89 Td (UAT is complete only when every scenario is Pass, an explicitly justified Not Run, or a documented) Tj ET
+BT /F1 9.5 Tf 48.00 484.89 Td (Blocked item with a defect, owner, and resolution plan. The release owner and business owner must) Tj ET
+BT /F1 9.5 Tf 48.00 471.89 Td (complete the workbook sign-off; automated test success alone is not UAT approval.) Tj ET
+0.35 0.40 0.48 rg
+BT /F1 8 Tf 48.00 24 Td (OGFI ERP Phase I Local UAT Test Instructions) Tj ET
+BT /F1 8 Tf 502.28 24 Td (Page 5 of 5) Tj ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 14 0 R >>
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000148 00000 n 
+0000000218 00000 n 
+0000000293 00000 n 
+0000000361 00000 n 
+0000004621 00000 n 
+0000004773 00000 n 
+0000009514 00000 n 
+0000009666 00000 n 
+0000013985 00000 n 
+0000014139 00000 n 
+0000018488 00000 n 
+0000018642 00000 n 
+0000020895 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+21049
+%%EOF

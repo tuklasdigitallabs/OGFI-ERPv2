@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
@@ -15,7 +16,9 @@ import {
   approveSensitiveUserRoleRequest,
   assertCanManageCompanyScope,
   createUserRoleAssignment,
+  changeUserRoleAssignment,
   createUserLocationScopeAssignment,
+  changeUserLocationScopeAccess,
   deactivateUserRoleAssignment,
   deactivateUserScopeAssignment,
   getCoreAdminUserDetail,
@@ -171,6 +174,23 @@ async function deactivateScope(formData: FormData) {
   redirect(returnPath);
 }
 
+async function changeScopeAccess(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=scopes`;
+  try {
+    await changeUserLocationScopeAccess(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(returnPath, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
+}
+
 async function createRoleAssignment(formData: FormData) {
   "use server";
 
@@ -195,6 +215,23 @@ async function deactivateRoleAssignment(formData: FormData) {
   const returnPath = String(formData.get("returnPath") || "/admin/users/" + targetUserId + "?section=roles");
   try {
     await deactivateUserRoleAssignment(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(returnPath, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
+}
+
+async function changeRoleAssignment(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=roles`;
+  try {
+    await changeUserRoleAssignment(formData);
   } catch (error) {
     redirect(actionErrorRedirectPath(returnPath, error));
   }
@@ -491,6 +528,32 @@ export default async function CoreAdminUserDetailPage({
                     <ButtonLink href={roleReturnPath} tone="ghost" className="min-h-11">Close controls</ButtonLink>
                   </div>
                   {user.canMutateRoles && selectedRole.canMutate ? (
+                    <>
+                    {user.assignableRoles.filter((role) => role.id !== selectedRole.roleId).length > 0 ? (
+                    <form action={changeRoleAssignment} className="ogfi-form-shell mt-4 grid gap-3 rounded-xl border border-blue-200 bg-white p-3" data-testid="admin-change-role-form">
+                      <input name="targetUserId" type="hidden" value={user.id} />
+                      <input name="assignmentId" type="hidden" value={selectedRole.assignmentId} />
+                      <input name="expectedRoleId" type="hidden" value={selectedRole.roleId} />
+                      <input name="idempotencyKey" type="hidden" value={randomUUID()} />
+                      <input name="returnPath" type="hidden" value={roleReturnPath} />
+                      <p className="text-sm font-semibold text-slate-900">Change role</p>
+                      <p className="text-sm text-slate-600">Replace this role in one audited action. The current assignment is closed only after the server confirms the expected role is still active.</p>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        New role
+                        <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="roleId" required defaultValue="">
+                          <option value="" disabled>Select a role</option>
+                          {user.assignableRoles.filter((role) => role.id !== selectedRole.roleId).map((role) => (
+                            <option key={role.id} value={role.id}>{role.name} · {role.assignmentEligibility}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        Reason
+                        <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required placeholder="Why is this role changing?" />
+                      </label>
+                      <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">Change role</button>
+                    </form>
+                    ) : null}
                     <form action={deactivateRoleAssignment} className="ogfi-form-shell mt-4 grid gap-3">
                       <input name="targetUserId" type="hidden" value={user.id} />
                       <input name="assignmentId" type="hidden" value={selectedRole.assignmentId} />
@@ -504,6 +567,7 @@ export default async function CoreAdminUserDetailPage({
                         Deactivate Role
                       </button>
                     </form>
+                    </>
                   ) : (
                     <p className="mt-3 text-sm text-amber-900">This role cannot be changed from the current user context. Server-side authorization and self-protection controls remain authoritative.</p>
                   )}
@@ -615,8 +679,9 @@ export default async function CoreAdminUserDetailPage({
             )}
           </div>
           {scopeActionId && !selectedScope ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">This scope is no longer available in the current filtered page. Refresh the register before taking action.</p> : null}
-          {selectedScope ? <EntryModal title="Deactivate Scope" triggerLabel={`Controls: ${selectedScope.displayName}`}>
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{selectedScope.displayName}</p><p>{selectedScope.displayContext} · {humanizeEnum(selectedScope.type)} · {humanizeEnum(selectedScope.accessLevel)}</p><p className="mt-1">{selectedScope.riskLabel}. Deactivation is audited and rechecked when submitted.</p></div>
+          {selectedScope ? <EntryModal title="Change or deactivate scope" triggerLabel={`Controls: ${selectedScope.displayName}`}>
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{selectedScope.displayName}</p><p>{selectedScope.displayContext} · {humanizeEnum(selectedScope.type)} · Current access: {humanizeEnum(selectedScope.accessLevel)}</p><p className="mt-1">{selectedScope.riskLabel}. Changes close the current assignment and create an audited replacement.</p></div>
+            {user.canMutateScopes && selectedScope.canMutate ? <form action={changeScopeAccess} className="ogfi-form-shell mt-4 grid gap-3 rounded-xl border border-blue-200 bg-white p-3" data-testid="admin-change-scope-access-form"><input name="targetUserId" type="hidden" value={user.id} /><input name="assignmentId" type="hidden" value={selectedScope.id} /><input name="expectedAccessLevel" type="hidden" value={selectedScope.accessLevel} /><input name="idempotencyKey" type="hidden" value={randomUUID()} /><input name="returnPath" type="hidden" value={scopeReturnPath} /><p className="text-sm font-semibold text-slate-900">Change access level</p><label className="grid gap-1 text-sm font-medium text-slate-700">New access level<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="accessLevel" required defaultValue={selectedScope.accessLevel === "VIEW" ? "OPERATE" : "VIEW"}><option value="VIEW" disabled={selectedScope.accessLevel === "VIEW"}>View · read authorized records</option><option value="OPERATE" disabled={selectedScope.accessLevel === "OPERATE"}>Operate · create and submit routine work</option></select></label><p className="text-xs leading-5 text-slate-500">View and Operate changes are direct only for safe roles at ordinary branches. Approve, Manage, controlled roles, and controlled locations require a separate request.</p><label className="grid gap-1 text-sm font-medium text-slate-700">Reason<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required placeholder="Why is this access changing?" /></label><button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">Change access level</button></form> : null}
             {user.canMutateScopes && selectedScope.canMutate ? <form action={deactivateScope} className="ogfi-form-shell mt-4 grid gap-3"><input name="targetUserId" type="hidden" value={user.id} /><input name="assignmentId" type="hidden" value={selectedScope.id} /><input name="returnPath" type="hidden" value={scopeReturnPath} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required /></label><button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white sm:w-fit">Deactivate Scope</button></form> : <p className="mt-3 text-sm text-amber-800">This scope cannot be deactivated from the current user context. Live authorization and risk controls remain authoritative.</p>}
           </EntryModal> : null}
           {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => buildScopeHref(undefined, nextPage)} /> : null}
@@ -704,12 +769,11 @@ export default async function CoreAdminUserDetailPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Access
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="accessLevel" required>
-                        <option value="VIEW">VIEW</option>
-                        <option value="OPERATE">OPERATE</option>
-                        <option value="APPROVE">APPROVE</option>
+                        <option value="VIEW">VIEW · Direct for safe branch scope</option>
+                        <option value="OPERATE">OPERATE · Direct for safe branch scope</option>
                       </select>
                       <span className="text-xs text-slate-500">
-                        Manage-level scope requires controlled approval and is not available in quick assignment.
+                        Approve and Manage access always require a controlled request. Warehouse, head-office, commissary, and other controlled locations also require approval.
                       </span>
                     </label>
                     <label className="grid gap-1 text-sm font-medium text-slate-700">

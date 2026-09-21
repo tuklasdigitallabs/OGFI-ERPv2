@@ -45,6 +45,7 @@ import { formatDashboardCheckedAt } from "./sourceObservation";
 export const dynamic = "force-dynamic";
 
 const metricIcons = {
+  "low-stock": AlertTriangle,
   "stocked-items": Boxes,
   "active-stock-rows": Boxes,
   "zero-stock-rows": AlertTriangle,
@@ -588,9 +589,9 @@ function SourceObservationList({
             ) : null}
             {source.availability === "UNAVAILABLE" ? (
               <p className="mt-1 text-xs">
-                {source.id === "approvals"
+                {source.unavailableReason ?? (source.id === "approvals"
                   ? "The approval queue is unavailable. Pending work may still exist."
-                  : "Source data was unavailable for this response."}
+                  : "Source data was unavailable for this response.")}
               </p>
             ) : null}
           </div>
@@ -891,6 +892,22 @@ function DashboardOverview({
   const topIndicator = priorityIndicators[0];
   const topException = dashboard.exceptionQueueContract.items[0];
   const sections: DashboardOverviewAccordionSection[] = [];
+
+  const lowStockSource = dashboard.sourceObservations.find(source => source.id === "low-stock");
+  if (lowStockSource) {
+    const metric = dashboard.metrics.find(item => item.id === "low-stock");
+    const available = lowStockSource.availability === "AVAILABLE" && Boolean(metric);
+    sections.push({
+      id: "low-stock", title: "Low-stock alerts",
+      supportingText: "Configured thresholds for the selected branch or warehouse; live recorded on-hand across storage lots.",
+      snapshots: [{ label: "Item/storage pairs", value: available ? metric!.displayValue : "Unavailable", tone: available ? metric!.tone : "warning" }],
+      body: <div className="grid gap-3 p-4 lg:p-5">
+        {available ? <><p>{metric!.displayValue} configured item/storage pairs are at or below their threshold.</p><p className="text-sm text-slate-600">Only configured items are monitored. Zero alerts does not confirm every item is stocked. A configured item without a balance is recorded as zero and needs initialization or reconciliation.</p></>
+          : <p role="status">{lowStockSource.unavailableReason ?? "Low-stock details are unavailable in this context. No count or stock status is disclosed."}</p>}
+        <ButtonLink href="/inventory/low-stock" tone="secondary">Review low stock and thresholds</ButtonLink>
+      </div>,
+    });
+  }
 
   if (approvalSource) {
     const approvalUnavailable =

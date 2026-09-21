@@ -732,6 +732,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "This approval step is not assigned to your role or user.",
   APPROVAL_AUTHORITY_STALE:
     "Your approval authority changed. Refresh the approval and try again.",
+  INVENTORY_QUANTITY_READ_PROTECTED:
+    "Quantities and count-derived details are protected by blind-count confidentiality. Continue your assigned count in Stock Counts; an independent authorized reviewer can access eligible submitted counts.",
   APPROVAL_REVIEW_STALE:
     "This approval changed or the review expired. Reload it and review the current details before deciding.",
   APPROVAL_DOCUMENT_NOT_FOUND:
@@ -1225,6 +1227,12 @@ const actionFeedbackMessages: Record<string, string> = {
     "Rejected, damaged, or short quantities require evidence when configured by policy.",
   RECEIVING_LINE_EXCEEDS_OUTSTANDING:
     "Received quantities cannot exceed the outstanding Purchase Order quantity.",
+  OPENING_INVENTORY_UNIT_COST_PRECISION_INVALID: "Enter a nonnegative unit cost with no more than six decimal places.",
+  OPENING_INVENTORY_DECIMAL_NOT_REPRESENTABLE: "The opening value exceeds the supported six-decimal precision. Review the quantity and unit cost.",
+  GOODS_RECEIPT_NOT_DRAFT_FOR_CANCELLATION: "Only draft receiving reports can be cancelled.",
+  GOODS_RECEIPT_CANCELLATION_POSTING_CONFLICT: "This receipt has posting activity and cannot be cancelled. Contact Inventory Control.",
+  GOODS_RECEIPT_CANCELLATION_CONFLICT: "The receipt changed while cancelling. Refresh and try again.",
+  RECEIVING_LINE_OUTCOME_INCOMPLETE: "Classify every delivered unit as accepted, rejected, or damaged before saving or posting.",
   RECEIVING_LINE_OUTCOME_EXCEEDS_DELIVERED:
     "Accepted, rejected, and damaged quantities cannot exceed the delivered quantity.",
   RECEIVING_QUANTITY_INVALID:
@@ -1448,8 +1456,10 @@ const actionFeedbackMessages: Record<string, string> = {
   WASTAGE_ALREADY_REVERSED: "This wastage report has already been reversed.",
   WASTAGE_APPROVAL_ALREADY_SUBMITTED:
     "This wastage report has already been submitted for approval.",
+  STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED:
+    "Provide a document reference or a reference for every adjustment line required by this reason. References still require independent artifact review.",
   WASTAGE_EVIDENCE_REFERENCE_REQUIRED:
-    "Evidence is required for this wastage type or policy flag.",
+    "Provide a document reference or references for every applicable wastage line. References still require independent artifact review.",
   WASTAGE_EXPIRY_REQUIRED:
     "The selected item requires an expiry date before wastage can be logged.",
   WASTAGE_INVENTORY_LOCATION_NOT_FOUND:

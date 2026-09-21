@@ -495,3 +495,15 @@ Phase 1.5 adds a project domain module. It must be implemented as a separate Pri
 - A project attachment has one valid context: task-only, comment-only, requirement-only, or a task plus its matching task-bound requirement. Database checks reject parentless or comment-mixed rows, and database triggers reject task/requirement mismatch or later requirement-task drift.
 - Add indexes for `company_id`, `project_id`, `status`, `due_at`, `assignee`, `is_blocked`, and activity timestamps.
 - Use transaction boundaries for activity creation plus the corresponding state mutation.
+
+## DEC-0282 — receiving permission and opening precision migration
+
+Migration `20260907100000_inventory_receiving_cancel_and_opening_precision` inserts the global `inventory.receiving.cancel` permission without role grants and changes `OpeningInventoryCutoverLine_identity_check` to require `openingValue = round(openingQuantityBaseUom * unitCost, 6)`, preserving its other identity/nonnegative checks. It changes no immutable opening row or canonical bytes.
+
+Rollback must preserve receipt audit history and separately revoke any explicit cancellation assignments. The prior exact-product CHECK may be restored only if no rounded persisted product differs from its exact product; otherwise retain the compatible CHECK during application rollback. Never rewrite immutable opening evidence to satisfy the old constraint.
+
+## DEC-0283 — low-stock threshold configuration
+
+Migration `20260907130000_inventory_low_stock_thresholds` creates `InventoryLowStockThreshold` with UUID primary key, scoped unique item/inventory-location pair, base-UOM-pinned composite item foreign key, composite inventory-location foreign key, active flag, positive version, UTC timestamps and nonnegative/non-NaN `DECIMAL(18,6)` threshold. An active-location lookup index supports scoped reads. The migration seeds no defaults and changes no balances or movements.
+
+Rollback requires preserving/exporting configuration and audit history, reverting application dependencies before dropping the additive table/indexes, and retaining immutable stock/audit records. It does not reverse inventory effects because configuration produces none.

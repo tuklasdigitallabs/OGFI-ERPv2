@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, EmptyState, PaginationBar } from "@ogfi/ui";
@@ -81,6 +83,7 @@ function formatQuantity(quantity: number) {
 export default async function AdjustmentsPage({
   searchParams
 }: AdjustmentsPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -271,4 +274,9 @@ export default async function AdjustmentsPage({
       </div>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

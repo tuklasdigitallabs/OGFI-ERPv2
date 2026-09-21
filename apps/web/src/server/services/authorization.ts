@@ -79,6 +79,7 @@ export const permissions = {
   receivingView: "inventory.receiving.view",
   receivingCreate: "inventory.receiving.create",
   receivingPost: "inventory.receiving.post",
+  receivingCancel: "inventory.receiving.cancel",
   receivingReverse: "inventory.receiving.reverse",
   projectView: "projects.project.view",
   projectCreate: "projects.project.create",
@@ -246,7 +247,8 @@ export function canUseReceiving(permissionCodes: string[]) {
     permissionCodes.includes(permissions.receivingView) ||
     permissionCodes.includes(permissions.receivingCreate) ||
     permissionCodes.includes(permissions.receivingPost) ||
-    permissionCodes.includes(permissions.receivingReverse)
+    permissionCodes.includes(permissions.receivingReverse) ||
+    permissionCodes.includes(permissions.receivingCancel)
   );
 }
 

@@ -42,6 +42,7 @@ type RolePermissionEditorProps = {
   permissionQuery: string;
   permissionTotal: number;
   returnPath: string;
+  sensitiveEnabledCount: number;
   resetDraft?: boolean | undefined;
   roleId: string;
 };
@@ -97,6 +98,7 @@ export function RolePermissionEditor({
   permissionQuery,
   permissionTotal,
   returnPath,
+  sensitiveEnabledCount,
   resetDraft = false,
   roleId,
 }: RolePermissionEditorProps) {
@@ -119,6 +121,12 @@ export function RolePermissionEditor({
     Math.ceil(permissionTotal / permissionPageSize),
   );
   const hasDraftChanges = !equalSets(selectedCodes, initialCodes);
+  const sensitiveOnPage = useMemo(
+    () => new Set(groups.flatMap((group) => group.permissions.filter((permission) => permission.sensitive).map((permission) => permission.code))),
+    [groups],
+  );
+  const selectedSensitiveOnPage = Array.from(selectedCodes).filter((code) => sensitiveOnPage.has(code)).length;
+  const hasControlledPermissions = sensitiveEnabledCount > 0 || selectedSensitiveOnPage > 0;
 
   useEffect(() => {
     const draft = permissionDrafts.get(roleId);
@@ -235,6 +243,15 @@ export function RolePermissionEditor({
           </Badge>
         </div>
 
+        {hasControlledPermissions ? (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="alert" data-testid="admin-role-controlled-warning">
+            <p className="font-bold">Controlled role · approval required for assignment</p>
+            <p className="mt-1 leading-6">
+              This role includes sensitive permissions that can post, reverse, approve, or administer controlled records. You may save the role definition with a reason, but assigning it to a user must go through the approval workflow.
+            </p>
+          </div>
+        ) : null}
+
         {permissionTotal === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
             No permissions match the current search or filter. Clear the filter
@@ -270,7 +287,7 @@ export function RolePermissionEditor({
                     return (
                       <label
                         key={permission.id}
-                        className="ogfi-toggle-row grid cursor-pointer gap-3 px-4 py-4 md:grid-cols-[1fr_auto] md:items-center"
+                        className={`ogfi-toggle-row grid cursor-pointer gap-3 px-4 py-4 md:grid-cols-[1fr_auto] md:items-center ${permission.sensitive ? "bg-amber-50/60" : "bg-white"}`}
                         data-testid="admin-role-permission-toggle"
                       >
                         <span className="min-w-0">
@@ -285,7 +302,7 @@ export function RolePermissionEditor({
                             ) : null}
                             {permission.sensitive ? (
                               <Badge tone="warning" size="sm">
-                                Sensitive
+                                Controlled
                               </Badge>
                             ) : null}
                             {permission.overrideState ===

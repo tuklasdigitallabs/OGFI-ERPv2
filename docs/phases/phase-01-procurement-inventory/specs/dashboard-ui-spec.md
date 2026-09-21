@@ -114,3 +114,7 @@ Example: `Receive Transfer TO-2026-00182 · Main Warehouse → YL-MOA · Due tod
 - Every actionable card opens a relevant record or filtered list.
 - No Phase II metrics appear as live figures without reliable data source.
 - Mobile user can complete top task within three taps after dashboard open where practical.
+
+## DEC-0283 — live low-stock signal
+
+The Low-stock alerts section displays the live count of eligible configured item/storage pairs at or below threshold in the selected location and links to `/inventory/low-stock`. Use the same recorded-on-hand classification as register/CSV. Explain that only configured items are monitored, no-balance pairs are recorded zero pending initialization/reconciliation, and zero alerts does not prove all stock is healthy. Protected or unavailable reads expose an unavailable reason without membership/count disclosure. The signal is not persistent notification delivery and creates no procurement record.

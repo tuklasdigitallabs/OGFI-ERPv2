@@ -213,7 +213,11 @@ COMMIT;`;
   });
   if (assessment.result !== "PASS") {
     const codes = [...new Set(assessment.failures.map((failure) => failure.code))].sort().join(", ");
-    throw new Error(`Migration ledger validation failed: ${codes}.`);
+    const details = assessment.failures
+      .filter((failure) => failure.code === "INVALID_MIGRATION_TIMESTAMPS")
+      .map((failure) => failure.migrationName)
+      .join(", ");
+    throw new Error(`Migration ledger validation failed: ${codes}.${details ? ` Invalid timestamp order: ${details}.` : ""}`);
   }
   if (requireExactCurrent && assessment.classification !== "EXACT_CURRENT") {
     throw new Error("Migration ledger postflight failed: pending filesystem migrations remain.");

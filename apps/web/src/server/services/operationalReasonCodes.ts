@@ -1,4 +1,4 @@
-import { prisma, type Prisma } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
@@ -274,7 +274,7 @@ export async function listOperationalReasonCodes(session: SessionContext) {
 export async function listActiveOperationalReasonCodes(
   session: SessionContext,
   workflow: OperationalReasonWorkflow,
-  appliesTo?: string | null
+  appliesTo?: string | null,
 ) {
   const codes = await prisma.operationalReasonCode.findMany({
     where: {
@@ -319,16 +319,34 @@ export async function listActiveWastageReasonCodes(session: SessionContext) {
   }));
 }
 
+async function lockOperationalReasonCode(
+  transaction: TransactionClient,
+  session: SessionContext,
+  workflow: OperationalReasonWorkflow,
+  code: string,
+) {
+  await transaction.$queryRaw`
+    SELECT id FROM "OperationalReasonCode"
+     WHERE "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+       AND workflow = ${workflow}
+       AND code = ${code}
+     ORDER BY id FOR SHARE
+  `;
+}
+
 export async function requireActiveWastageReasonCode(
   session: SessionContext,
   code: string,
   input: { wastageType: string; inventoryClasses: string[] },
+  transaction?: TransactionClient,
 ) {
   const normalizedCode = reasonCodeSchema.parse(code);
   const normalizedClasses = Array.from(
     new Set(input.inventoryClasses.map(normalizeInventoryClass).filter(Boolean)),
   );
-  const reasonCode = await prisma.operationalReasonCode.findFirst({
+  if (transaction) await lockOperationalReasonCode(transaction, session, "WASTAGE", normalizedCode);
+  const reasonCode = await (transaction ?? prisma).operationalReasonCode.findFirst({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -363,10 +381,12 @@ export async function getActiveOperationalReasonCode(
   session: SessionContext,
   workflow: OperationalReasonWorkflow,
   code: string,
-  appliesTo?: string | null
+  appliesTo?: string | null,
+  transaction?: TransactionClient,
 ) {
   const normalizedCode = reasonCodeSchema.parse(code);
-  return prisma.operationalReasonCode.findFirst({
+  if (transaction) await lockOperationalReasonCode(transaction, session, workflow, normalizedCode);
+  return (transaction ?? prisma).operationalReasonCode.findFirst({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -383,13 +403,15 @@ export async function requireActiveOperationalReasonCode(
   session: SessionContext,
   workflow: OperationalReasonWorkflow,
   code: string,
-  appliesTo?: string | null
+  appliesTo?: string | null,
+  transaction?: TransactionClient,
 ) {
   const reasonCode = await getActiveOperationalReasonCode(
     session,
     workflow,
     code,
-    appliesTo
+    appliesTo,
+    transaction,
   );
   if (!reasonCode) {
     throw new Error("OPERATIONAL_REASON_CODE_INVALID");

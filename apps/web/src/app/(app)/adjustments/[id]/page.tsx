@@ -1,3 +1,6 @@
+import { lossEstimateAssurance } from "@/server/services/lossEvidence";
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
@@ -119,6 +122,7 @@ export default async function AdjustmentDetailPage({
   params,
   searchParams
 }: AdjustmentDetailPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -206,6 +210,7 @@ export default async function AdjustmentDetailPage({
               <dt className="text-sm font-medium text-slate-500">Estimated impact</dt>
               <dd className="text-slate-950">
                 {formatMoney(adjustment.totalEstimatedValueImpact)}
+                <span className="block text-sm text-amber-800">{lossEstimateAssurance(Math.abs(adjustment.totalEstimatedValueImpact))}</span>
               </dd>
             </div>
             <div>
@@ -433,4 +438,9 @@ export default async function AdjustmentDetailPage({
       </div>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

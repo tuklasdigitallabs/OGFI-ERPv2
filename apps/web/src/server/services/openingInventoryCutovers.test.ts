@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
+  validateOpeningInventoryUnitCost,
+  calculateOpeningInventoryValue,
+  openingInventoryDecimalNumber,
   canonicalOpeningInventoryJson,
   openingInventoryDigest,
 } from "./openingInventoryCutovers";
@@ -53,7 +56,7 @@ describe("opening inventory cutover foundation", () => {
     expect(source).toContain('statusSummary');
     expect(source).toContain('executorSeparated: true');
     expect(source).toContain('sourceVarianceQuantity = line.varianceQuantityBaseUom === null');
-    expect(source).toContain('sourceCountedQuantity - sourceSystemQuantity');
+    expect(source).toContain('new Prisma.Decimal(sourceCountedQuantity).minus(sourceSystemQuantity)');
     expect(source).toContain('sourceSystemQuantityBaseUom: sourceSystemQuantity');
     expect(source).toContain('sourceCountedQuantityBaseUom: sourceCountedQuantity');
     expect(source).toContain('sourceVarianceQuantityBaseUom: sourceVarianceQuantity');
@@ -198,5 +201,20 @@ describe("opening inventory cutover foundation", () => {
     expect(source).toContain('authSession.absoluteExpiresAt.getTime()');
     expect(source).toContain('mfaValidUntil: attestation.mfaValidUntil.toISOString()');
     expect(source).toContain('mfaValidUntil: attestation.mfaValidUntil');
+  });
+});
+
+
+describe("opening inventory six-place decimal contract", () => {
+  test.each([[3, 0.1, 0.3], [1.234567, 1.23, 1.518517], [0.5, 0.000001, 0.000001], [1000.999999, 100000.500001, 100100500.401], [0, 1.23, 0]])("rounds %s × %s HALF_UP to %s", (qty, cost, expected) => {
+    expect(calculateOpeningInventoryValue(qty, cost)).toBe(expected);
+    expect(canonicalOpeningInventoryJson({ openingValue: calculateOpeningInventoryValue(qty, cost) })).toBe(JSON.stringify({ openingValue: expected }));
+  });
+  test("normalizes costs and fails closed on numbers outside numeric JSON precision", () => {
+    expect(validateOpeningInventoryUnitCost("1.234567")).toBe(1.234567);
+    expect(() => validateOpeningInventoryUnitCost("1.2345675")).toThrow("OPENING_INVENTORY_UNIT_COST_PRECISION_INVALID");
+    expect(() => validateOpeningInventoryUnitCost("1.00000000000000001")).toThrow("OPENING_INVENTORY_UNIT_COST_PRECISION_INVALID");
+    expect(() => openingInventoryDecimalNumber("999999999999.999999")).toThrow("OPENING_INVENTORY_DECIMAL_NOT_REPRESENTABLE");
+    expect(openingInventoryDigest({ openingValue: calculateOpeningInventoryValue(3, 2) })).toBe(openingInventoryDigest({ openingValue: 6 }));
   });
 });

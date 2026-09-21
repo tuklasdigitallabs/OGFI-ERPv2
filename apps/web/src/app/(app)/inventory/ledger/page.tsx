@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, PaginationBar } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
@@ -139,6 +141,7 @@ function inventoryReturnContext(value: string | undefined) {
 export default async function InventoryLedgerPage({
   searchParams
 }: InventoryLedgerPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -488,4 +491,9 @@ export default async function InventoryLedgerPage({
       </section>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

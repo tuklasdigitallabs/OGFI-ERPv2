@@ -51,7 +51,7 @@ describe("project record link boundary controls", () => {
     expect(source).not.toContain("receiveTransfer");
     expect(source).not.toContain("dispatchTransfer");
     expect(source).not.toContain("reverse");
-    expect(source).not.toContain("./inventory");
+    expect(source).not.toContain('from "./inventory"');
   });
 
   test("approval instance links use native approval visibility guards", () => {
@@ -149,7 +149,7 @@ describe("project record link boundary controls", () => {
     expect(source).toContain('"INVENTORY_BALANCE"');
     expect(source).toContain("resolveInventoryBalanceSummary");
     expect(source).toContain("permissions.inventoryBalanceView");
-    expect(source).toContain("prisma.inventoryBalance.findFirst");
+    expect(source).toContain("tx.inventoryBalance.findFirst");
     expect(source).toContain("locationId: session.context.locationId");
     expect(source).toContain("return restrictedSummary(\"INVENTORY_BALANCE\")");
     expect(source).toContain("record.item.itemName");

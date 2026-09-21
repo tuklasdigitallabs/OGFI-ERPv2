@@ -21,3 +21,12 @@ describe("Receiving detail follow-up return contract", () => {
     expect(source).toContain("href={receivingReturnHref}");
   });
 });
+
+
+it("exposes scoped draft cancellation, an explicit permission-denied state, and its audited reason", () => {
+  expect(source).toContain("permissions.receivingCancel");
+  expect(source).toContain("await cancelGoodsReceipt(formData)");
+  expect(source).toContain('name="cancellationReason" minLength={5} maxLength={500} required');
+  expect(source).toContain("Your role does not have permission to cancel draft receipts");
+  expect(source).toContain("event.metadata.cancellationReason");
+});

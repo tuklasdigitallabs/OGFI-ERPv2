@@ -1,3 +1,4 @@
+import { isInventoryQuantityReadProtected, inventoryQuantityProtectedMessage, INVENTORY_QUANTITY_READ_PROTECTED } from "./inventoryQuantityRead";
 import { parseDateOnlyUtc } from "./projectDates";
 
 const validationErrorStatusByCode = new Map<string, number>([
@@ -49,6 +50,9 @@ export function exportPermissionDeniedResponse() {
 }
 
 export function exportErrorResponse(error: unknown) {
+  if (isInventoryQuantityReadProtected(error)) {
+    return Response.json({ error: INVENTORY_QUANTITY_READ_PROTECTED, message: inventoryQuantityProtectedMessage }, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  }
   if (!(error instanceof Error)) {
     return null;
   }

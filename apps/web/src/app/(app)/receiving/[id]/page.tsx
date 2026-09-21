@@ -17,6 +17,7 @@ import {
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
+  cancelGoodsReceipt,
   getGoodsReceipt,
   isReceivingFollowUp,
   postGoodsReceipt,
@@ -52,6 +53,17 @@ async function postReceiptAction(formData: FormData) {
   revalidatePath(`/receiving/${id}`);
   revalidatePath("/receiving");
   revalidatePath("/purchase-orders");
+  revalidatePath(`/purchase-orders/${purchaseOrderId}`);
+}
+
+async function cancelReceiptAction(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  let purchaseOrderId: string;
+  try { purchaseOrderId = await cancelGoodsReceipt(formData); }
+  catch (error) { redirect(actionErrorRedirectPath(`/receiving/${id}`, error)); }
+  revalidatePath(`/receiving/${id}`);
+  revalidatePath("/receiving");
   revalidatePath(`/purchase-orders/${purchaseOrderId}`);
 }
 
@@ -118,6 +130,7 @@ export default async function ReceivingDetailPage({
   if (!receipt) {
     redirect("/receiving");
   }
+  const canCancelReceiving = session.permissionCodes.includes(permissions.receivingCancel);
   const canPostReceiving = session.permissionCodes.includes(permissions.receivingPost);
   const canReverseReceiving = session.permissionCodes.includes(
     permissions.receivingReverse
@@ -336,6 +349,24 @@ export default async function ReceivingDetailPage({
               </form>
             ) : null}
           </div>
+          {receipt.status === "DRAFT" ? (
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              {canCancelReceiving ? (
+                <EntryModal title="Cancel Draft Receipt" triggerLabel="Cancel Draft Receipt">
+                  <form action={cancelReceiptAction} className="mt-4 grid gap-3">
+                    <input name="id" type="hidden" value={receipt.id} />
+                    <p className="text-sm text-slate-600">Close this unposted draft so a corrected receipt or authorized reversal can proceed. The draft and its history remain available.</p>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Cancellation reason
+                      <textarea name="cancellationReason" minLength={5} maxLength={500} required className="min-h-24 rounded-md border border-slate-300 px-3 py-2" />
+                    </label>
+                    <PendingActionButton label="Cancel Draft Receipt" pendingLabel="Cancelling…" tone="danger" confirmation="Cancel this unposted draft?" />
+                  </form>
+                </EntryModal>
+              ) : (
+                <div><button disabled className="min-h-10 rounded-md border border-slate-200 px-3 text-sm text-slate-500">Cancel Draft Receipt</button><p className="mt-1 text-sm text-slate-600">Your role does not have permission to cancel draft receipts. Ask an authorized receiving supervisor.</p></div>
+              )}
+            </div>
+          ) : null}
         </Panel>
 
         <div className="grid gap-4">
@@ -382,6 +413,7 @@ export default async function ReceivingDetailPage({
                 receipt.auditEvents.map((event) => (
                   <li key={event.id} className="border-l-2 border-blue-200 pl-3">
                     <p className="text-sm font-medium text-slate-950">{event.eventType}</p>
+                    {event.eventType === "goods_receipt.cancelled" && typeof event.metadata?.cancellationReason === "string" ? <p className="text-sm text-slate-600">{event.metadata.cancellationReason}</p> : null}
                     <p className="text-xs text-slate-500">
                       {event.occurredAt}
                       {event.actorName ? ` / by ${event.actorName}` : ""}

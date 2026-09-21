@@ -26,7 +26,7 @@ const mockPrisma = vi.hoisted(() => ({
   userRoleAssignment: { findMany: vi.fn() }
 }));
 
-vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+vi.mock("@ogfi/database", async (importOriginal) => ({ ...await importOriginal<typeof import("@ogfi/database")>(), prisma: mockPrisma }));
 
 const dashboardSession = {
   user: {
@@ -742,5 +742,15 @@ describe("receiving foundation rules", () => {
     expect(route).toContain("logOperationalExportFailure");
     expect(route).not.toContain("postInventoryMovementInTransaction");
     expect(route).not.toContain("goodsReceipt.update");
+  });
+});
+
+
+describe("complete delivered outcome partition", () => {
+  test("rejects delivered stock without a classified disposition", () => {
+    expect(() => validateReceivingQuantities({ deliveredQty: 10, acceptedQty: 6, rejectedQty: 0, damagedQty: 0, shortQty: 0 })).toThrow("RECEIVING_LINE_OUTCOME_INCOMPLETE");
+  });
+  test("accepts decimal partitions without binary floating point drift", () => {
+    expect(() => validateReceivingQuantities({ deliveredQty: 0.3, acceptedQty: 0.1, rejectedQty: 0.2, damagedQty: 0, shortQty: 0, discrepancyReason: "Rejected portion", evidenceReference: "DR-1" })).not.toThrow();
   });
 });

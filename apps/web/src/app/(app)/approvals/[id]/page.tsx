@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
@@ -103,6 +105,7 @@ export default async function ApprovalDetailPage({
   params,
   searchParams
 }: ApprovalDetailPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -123,7 +126,8 @@ export default async function ApprovalDetailPage({
     let review;
     try {
       review = await getBoundedInventoryUatApprovalReview(session, id);
-    } catch {
+    } catch (error) {
+      if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
       redirect("/approvals?error=APPROVAL_WORKLIST_ITEM_UNAVAILABLE&stale=1");
     }
     const boundedDecisionPresentation = getApprovalDecisionSurfaceContract(
@@ -308,4 +312,9 @@ export default async function ApprovalDetailPage({
       </div>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

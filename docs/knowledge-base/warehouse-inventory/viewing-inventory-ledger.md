@@ -39,6 +39,8 @@ Use this article to trace posted inventory movements for the location selected i
 
 ## Important controls and warnings
 
+- If the page or export says quantities are protected by blind-count confidentiality, continue the assigned work in `Inventory → Stock Counts`. This is a restricted view, not zero stock or an empty ledger. Other roles, copied links, reports, adjustments, and audit views do not grant a bypass; an independent authorized reviewer can access eligible submitted counts.
+
 - The ledger is the source-of-truth movement trail. Do not edit posted ledger rows.
 - Balance corrections must be made through controlled workflows such as receiving correction, transfer, count variance, wastage, adjustment, or reversal when those workflows are released.
 - The ordinary inquiry is server-paginated and scoped to the selected location. CSV export, when authorized, is a separate full filtered export; exact reconciliation traces use a dedicated controlled trace route.

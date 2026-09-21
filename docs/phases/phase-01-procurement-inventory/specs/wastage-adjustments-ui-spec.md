@@ -93,3 +93,7 @@ Reversed with reason and audit history
 
 Stock-affecting detail actions provide explicit pending feedback (`Posting Wastage…`, `Reversing Wastage…`, `Posting Adjustment…`, and `Reversing Adjustment…`) and disable duplicate submission. The server remains authoritative: before movement or reversal writes it rechecks live actor/session, permission, exact location scope, and privileged MFA.
 - Stock Adjustment submission records scope, requester, item, quantity impact, reason, evidence where configured, and audit history; approval is non-posting, while separate authorized posting/reversal creates linked inventory movements.
+
+## DEC-0282 — bounded remediation behavior
+
+Create/submit/post failures identify missing configured evidence references and changed authority. Header coverage or references on every applicable line are required; reference labels must not claim verified photos. Detail/export cost context distinguishes unknown from unverified requester estimates, and wastage review shows item-specific prior-line history. These signals do not resolve F04 valuation policy or establish theft.

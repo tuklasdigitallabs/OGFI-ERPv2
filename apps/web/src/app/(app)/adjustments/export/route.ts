@@ -1,3 +1,4 @@
+import { lossEstimateAssurance } from "@/server/services/lossEvidence";
 import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
         "Line Count",
         "Quantity Delta",
         "Estimated Value Impact",
+        "Valuation Assurance",
         "Created At",
         "Submitted At",
         "Posted At",
@@ -86,6 +88,7 @@ export async function GET(request: Request) {
         adjustment.lineCount,
         adjustment.totalQuantityDelta,
         adjustment.totalEstimatedValueImpact,
+        lossEstimateAssurance(Math.abs(adjustment.totalEstimatedValueImpact)),
         adjustment.createdAt,
         adjustment.submittedAt ?? "",
         adjustment.postedAt ?? "",

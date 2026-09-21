@@ -4,7 +4,7 @@
 **System:** OGFI ERP — Multi-Brand, Multi-Branch Restaurant Operations Platform  
 **Applies To:** Phase I foundation and forward-compatible permissions for all future phases  
 **Status:** Working Baseline  
-**Last Updated:** July 21, 2026
+**Last Updated:** September 8, 2026
 
 ---
 
@@ -71,6 +71,41 @@ Important records must be cancelled, voided, reversed, archived, or deactivated 
 The system must log material actions including create, edit, submit, approve, reject, cancel, reopen, receive, transfer, adjust, export, role change, and configuration change.
 
 ---
+
+### 2.7 Role and scope assignment risk
+
+Role permissions remain role-derived and may be designed by an authorized role
+administrator. The assignment gate evaluates the complete active permission set,
+the requested access level, the target scope type, and whether the role is a
+system role.
+
+The approved assignment matrix is:
+
+| Role and scope combination | Result |
+|---|---|
+| Safe role + ordinary branch + `VIEW` | Direct assignment |
+| Safe role + ordinary branch + `OPERATE` | Direct assignment |
+| Safe role + ordinary branch + `APPROVE` | Controlled request |
+| Any role + ordinary branch + `MANAGE` | Controlled request |
+| Any role + warehouse, Head Office, commissary / central kitchen, project, or temporary site | Controlled request |
+| Sensitive role + any scope level | Controlled request |
+| System role + any scope level | Controlled request |
+
+“Safe role” means every active permission is explicitly classified as eligible
+for direct assignment and the role is not a system role. Unknown, new, or
+unclassified permissions fail closed and make the role approval-required until
+explicitly classified. Name patterns are not sufficient to establish safety. The
+role editor must warn on approval-required permissions, and assignment must
+identify the permission(s) or classification that caused controlled handling.
+
+The matrix governs assignment risk; it does not grant a capability. Effective
+authority still requires the role permission, assigned company/brand/location
+scope, access level, workflow eligibility, and segregation-of-duties checks. No
+direct per-user permission toggles are permitted.
+
+An active user created without a usable scope may be opened through safe
+first-grant recovery. Recovery grants no default role, scope, or permission and
+must apply this same matrix and controlled-request rules.
 
 ## 3. Permission Action Vocabulary
 
@@ -515,10 +550,10 @@ Role changes should be controlled by an authorized administrator. Current implem
 - every direct role-administration surface requires `core.tenant_role_administer`; `core.administer` or company `MANAGE` alone is insufficient;
 - the seeded `CONFIGURED_ADMIN` and `CONFIGURED_SUPER_USER` roles receive `core.tenant_role_administer` by default;
 - role overview/details, role creation, direct grants/deactivation, sensitive-role request/review, role-permission updates, and onboarding with `initialRoleId` all use this tenant-level guard;
-- a target user must be active and have a currently effective `COMPANY` assignment for the selected company or a currently effective `LOCATION` assignment to an active location in that company before a grant, deactivation, sensitive request, or review may proceed;
+- a target user must be active and have a currently effective `COMPANY` assignment for the selected company or a currently effective `LOCATION` assignment to an active location in that company before an ordinary grant, deactivation, or review may proceed; the safe first-grant recovery path is the explicit exception for an active no-scope target and still applies the assignment-risk matrix and controlled-request safeguards;
 - selected-company membership limits the eligible target population but does not scope the resulting role assignment; company-bound assignments are deferred under `DEC-0043`;
 - onboarding with `initialRoleId` must establish selected-company membership in the same transaction rather than create a role-only user;
-- quick role assignment is limited to roles whose current live permission set contains no sensitive capability; an allowlisted role code never overrides that live sensitivity check;
+- quick role assignment is limited to a safe role at an ordinary branch with `VIEW` or `OPERATE`; an allowlisted role code never overrides live permission classification, access-level, scope-type, or system-role checks;
 - admin, approver, system, and sensitive-permission roles use a `SensitiveRoleRequest`;
 - a role with an active, effective assignee cannot be promoted by adding a sensitive permission; direct grants and role-permission changes serialize on the role so they cannot race around this safeguard;
 - role permissions cannot change while a sensitive-role request for that role is pending, and approval reloads the active role and its current permission set under the same role lock so the granted authority and audit evidence match what was approved;
@@ -531,12 +566,15 @@ Role changes should be controlled by an authorized administrator. Current implem
 - external identity-provider invalidation follow-up is tracked only when an external provider is configured.
 
 User Access option catalogs are server-owned eligibility projections, not authority
-grants. Quick-assignment role and low-risk location catalogs exclude every active
-assignment and pending controlled request for the target before the bounded first
-100 results are returned; controlled role and high-risk location catalogs use their
-own predicates and exact totals. Search refinement is required when a catalog
-reports overflow. The mutation service rechecks the same target, scope, active
-assignment, pending-request, and sensitivity rules at commit time.
+grants. The role selector may show all active roles with their Quick setup,
+Approval required, or System role classification. Direct-assignment options and
+low-risk location catalogs exclude every active assignment and pending controlled
+request for the target before the bounded first 100 results are returned;
+controlled role and high-risk location catalogs use their own predicates and exact
+totals. Search refinement is required when a catalog reports overflow. The
+mutation service rechecks the same target, scope, active assignment,
+pending-request, permission classification, access-level, and system-role rules
+at commit time.
 
 Account activation and recovery remain Core Administration actions within company `MANAGE` scope. Initial activation may be issued for a user who has no local identity. Recovery for an existing identity requires one administrator to record the reason and identity-verification evidence and a different MFA-assured administrator to approve or reject it. The target user, requester, and reviewer separation rules are enforced by the service; recovery cannot grant roles or scopes.
 
@@ -694,3 +732,21 @@ Later phases may add:
 - Only Project Managers or Project Administrators may edit project membership, board configuration, templates, milestones, and project closure settings.
 - Project comments and attachments inherit the project’s visibility rule; do not expose sensitive attachments through a broad global search.
 - Completion of a task does not automatically equal approval of a controlled ERP record.
+
+## DEC-0282 — inventory action and confidentiality boundaries
+
+`inventory.receiving.cancel` authorizes reasoned cancellation of an unposted DRAFT receipt only, subject to live tenant/company/source scope checks. Permission registration does not grant it to any default, seeded or recommended role; assignments require the existing controlled role process. It does not authorize posted reversal.
+
+Wastage and Stock Adjustment create/submit revalidate operational source authority transactionally. VIEW at the source is insufficient even if another location grants OPERATE. Blind-count confidentiality also applies to combined-role quantity reads and indirect approval/audit/link projections; independent review eligibility remains unchanged. UI hiding is not the authorization boundary.
+
+## DEC-0283 — low-stock threshold access
+
+Read dashboard/register/export requires `inventory.balance.view` and active selected-location scope, allowing existing company MANAGE authority. Quantity-bearing reads share blind-count restrictions across alert membership, totals and exports. Configuration additionally requires `master_data.item.edit` and live MANAGE at the selected location or company, revalidated transactionally with the inventory action authority boundary. VIEW/OPERATE alone does not permit threshold changes. Require audited reason and matching expected version for create/update/deactivation. This reuses existing permissions; no new permission or default role grant is introduced.
+
+## DEC-0284 — guided access and assignment replacement
+
+Access Setup distinguishes granting eligible access now from creating an account without access. Neither account creation nor safe no-scope recovery implies a default role/location grant. Permissions derive from roles and remain constrained by scope, access level, workflow eligibility and segregation; there are no per-user direct permission toggles.
+
+Direct setup/change remains limited to eligible low-risk roles and ordinary branch/operating locations. Sensitive roles, MANAGE access and controlled location types use existing governed requests. Role changes require tenant-role administration plus selected-company Manage authority; location-access changes retain existing company scope-management checks. Self-mutation, foreign-company targets, duplicate assignments and applicable approval-rule dependencies are blocked.
+
+Change Access operates on one eligible assignment: compare the expected role/access level, end the old assignment and create its replacement in one audited transaction with reason and idempotency identity. Preserve linked history and invalidate target sessions through the privilege epoch. A stale or conflicting command must not partially revoke or grant access. This changes the administrator experience, not the underlying permission catalog or approval policy.

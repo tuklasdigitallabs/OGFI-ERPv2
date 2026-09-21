@@ -199,7 +199,7 @@ After final approval, source location receives notice. Source user:
 1. checks availability;
 2. allocates stock;
 3. records approved / prepared quantity;
-4. selects lot / expiry where required;
+4. verifies the lot / expiry selected in the draft and bound to the approved request;
 5. records partial availability / short supply visibly.
 
 Source cannot silently substitute item or quantity. Material change must be visible to destination and re-approved where policy requires.
@@ -302,3 +302,11 @@ Audit all expected versus actual quantities, dispatch and receipt users, line co
 10. Paired transfer movements share source-document and correlation linkage.
 11. Lists filter / export by location, supplier, PO, transfer status, date, item, receiver, dispatcher, discrepancy, and value.
 12. Receiving and transfer steps work on branch tablet / mobile layouts.
+
+## DEC-0282 — receiving reconciliation, recovery and transfer custody
+
+Receipt creation and posting require exact decimal equality between delivered quantity and accepted + rejected + damaged quantities. Short quantities describe undelivered units and cannot account for delivered units. There is no implicit pending-inspection remainder in a posted receipt.
+
+An authorized user with explicit `inventory.receiving.cancel` may cancel an unposted DRAFT receipt with a reason. Cancellation revalidates live source scope, locks PO → PO lines → receipt → receipt lines, and compares the draft status before transition. It preserves actor/time/reason audit and creates no inventory movement. No role receives the permission automatically. A stale draft can therefore be cancelled before independently authorized reversal of a posted receipt; posted receipts use reversal, not draft cancellation.
+
+Required source lot/expiry is supplied during transfer draft creation and retained in the approval payload identity. Separate lines represent separate buckets. Dispatch verifies available stock for that approved bucket; receiver details retain the same lot/expiry through receipt and reversal. Automatic source allocation and silent substitution are not introduced. Settlement finality remains governed by the existing open decision.

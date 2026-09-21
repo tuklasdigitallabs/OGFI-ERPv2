@@ -331,7 +331,7 @@ describe("action feedback helpers", () => {
       })
     ).toEqual({
       code: "WASTAGE_EVIDENCE_REFERENCE_REQUIRED",
-      message: "Evidence is required for this wastage type or policy flag.",
+      message: "Provide a document reference or references for every applicable wastage line. References still require independent artifact review.",
       title: "Action not completed"
     });
   });

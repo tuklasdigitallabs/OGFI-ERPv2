@@ -37,6 +37,11 @@ const postReceiptSchema = z.object({
   id: z.string().uuid()
 });
 
+const cancelReceiptSchema = z.object({
+  id: z.string().uuid(),
+  cancellationReason: z.string().trim().min(5).max(500)
+});
+
 const reverseReceiptSchema = z.object({
   id: z.string().uuid(),
   reversalReason: z.string().trim().min(5).max(500)
@@ -483,11 +488,13 @@ export function validateReceivingQuantities(values: {
   if (quantities.some((quantity) => !Number.isFinite(quantity) || quantity < 0)) {
     throw new Error("RECEIVING_QUANTITY_INVALID");
   }
-  if (
-    values.acceptedQty + values.rejectedQty + values.damagedQty >
-    values.deliveredQty
-  ) {
+  const classified = new Prisma.Decimal(values.acceptedQty)
+    .plus(values.rejectedQty).plus(values.damagedQty);
+  if (classified.gt(values.deliveredQty)) {
     throw new Error("RECEIVING_LINE_OUTCOME_EXCEEDS_DELIVERED");
+  }
+  if (!classified.equals(values.deliveredQty)) {
+    throw new Error("RECEIVING_LINE_OUTCOME_INCOMPLETE");
   }
   if (
     values.outstandingQty != null &&
@@ -742,6 +749,7 @@ async function assertFreshReceivingAuthority(
        AND usa."scopeType" = 'LOCATION'::"ScopeType"
        AND usa."scopeId" = ${session.context.locationId}::uuid
        AND usa.status = 'ACTIVE'::"RecordStatus"
+       AND usa."accessLevel" IN ('OPERATE', 'APPROVE', 'MANAGE')
        AND usa."startsAt" <= ${now}
        AND (usa."endsAt" IS NULL OR usa."endsAt" > ${now})
        AND l."tenantId" = ${session.context.tenantId}::uuid
@@ -1848,6 +1856,68 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
     }
   }
   throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");
+}
+
+export async function cancelGoodsReceipt(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.receivingCancel);
+  const values = cancelReceiptSchema.parse(Object.fromEntries(formData));
+  const scope = {
+    id: values.id, tenantId: session.context.tenantId,
+    companyId: session.context.companyId, receivingLocationId: session.context.locationId
+  };
+  const receipt = await prisma.goodsReceipt.findFirst({ where: scope });
+  if (!receipt) throw new Error("GOODS_RECEIPT_NOT_FOUND");
+  assertAuthorizedLocation(session, receipt.receivingLocationId);
+  return prisma.$transaction(async (tx) => {
+    await lockScopedPurchaseOrder(tx, session, receipt.purchaseOrderId);
+    await lockScopedPurchaseOrderLines(tx, session, receipt.purchaseOrderId);
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT gr.id FROM "GoodsReceipt" gr
+      WHERE gr.id = ${receipt.id}::uuid
+        AND gr."tenantId" = ${session.context.tenantId}::uuid
+        AND gr."companyId" = ${session.context.companyId}::uuid
+        AND gr."purchaseOrderId" = ${receipt.purchaseOrderId}::uuid
+        AND gr."receivingLocationId" = ${session.context.locationId}::uuid
+      FOR UPDATE OF gr
+    `;
+    if (!locked[0]) throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    const lockedLines = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT grl.id FROM "GoodsReceiptLine" grl
+      WHERE grl."goodsReceiptId" = ${receipt.id}::uuid
+        AND grl."tenantId" = ${session.context.tenantId}::uuid
+        AND grl."companyId" = ${session.context.companyId}::uuid
+      ORDER BY grl."lineNumber", grl.id FOR UPDATE OF grl
+    `;
+    await assertFreshReceivingAuthority(tx, session, permissions.receivingCancel, false);
+    const current = await tx.goodsReceipt.findFirst({
+      where: { ...scope, purchaseOrderId: receipt.purchaseOrderId }, include: { lines: true }
+    });
+    if (!current) throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    if (current.status !== "DRAFT") throw new Error("GOODS_RECEIPT_NOT_DRAFT_FOR_CANCELLATION");
+    if (lockedLines.length !== current.lines.length) throw new Error("GOODS_RECEIPT_LINE_LOCK_SCOPE_CHANGED");
+    const movementCount = await tx.inventoryMovement.count({ where: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      sourceDocumentType: "GoodsReceipt", sourceDocumentId: current.id
+    }});
+    if (current.postedAt || current.lines.some((line) => line.postedMovementId) || movementCount > 0) {
+      throw new Error("GOODS_RECEIPT_CANCELLATION_POSTING_CONFLICT");
+    }
+    const changed = await tx.goodsReceipt.updateMany({
+      where: { ...scope, purchaseOrderId: receipt.purchaseOrderId, status: "DRAFT", updatedAt: current.updatedAt },
+      data: { status: "CANCELLED" }
+    });
+    if (changed.count !== 1) throw new Error("GOODS_RECEIPT_CANCELLATION_CONFLICT");
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      actorUserId: session.user.id, eventType: "goods_receipt.cancelled",
+      entityType: "GoodsReceipt", entityId: current.id,
+      beforeData: { status: "DRAFT" }, afterData: { status: "CANCELLED" },
+      metadata: { purchaseOrderId: current.purchaseOrderId, receivingLocationId: current.receivingLocationId,
+        cancellationReason: values.cancellationReason }
+    }});
+    return current.purchaseOrderId;
+  });
 }
 
 export async function postGoodsReceipt(formData: FormData) {

@@ -1,3 +1,4 @@
+import { withInventoryQuantityRead, isInventoryQuantityReadProtected } from "./inventoryQuantityRead";
 import { prisma } from "@ogfi/database";
 import { z } from "zod";
 import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
@@ -533,10 +534,12 @@ async function resolveInventoryMovementSummary(
   session: SessionContext,
   sourceRecordId: string
 ): Promise<SafeSourceSummary> {
+  try {
+    return await withInventoryQuantityRead(session, async (tx) => {
   if (!session.permissionCodes.includes(permissions.inventoryLedgerView)) {
     return restrictedSummary("INVENTORY_MOVEMENT");
   }
-  const record = await prisma.inventoryMovement.findFirst({
+  const record = await tx.inventoryMovement.findFirst({
     where: {
       id: sourceRecordId,
       tenantId: session.context.tenantId,
@@ -563,16 +566,24 @@ async function resolveInventoryMovementSummary(
     primaryDate: record.occurredAt.toISOString().slice(0, 10),
     href: `/inventory/ledger?query=${encodeURIComponent(record.sourceDocumentType)}`
   };
+
+    }, { adjustments: true });
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return restrictedSummary("INVENTORY_MOVEMENT");
+    throw error;
+  }
 }
 
 async function resolveInventoryBalanceSummary(
   session: SessionContext,
   sourceRecordId: string
 ): Promise<SafeSourceSummary> {
+  try {
+    return await withInventoryQuantityRead(session, async (tx) => {
   if (!session.permissionCodes.includes(permissions.inventoryBalanceView)) {
     return restrictedSummary("INVENTORY_BALANCE");
   }
-  const record = await prisma.inventoryBalance.findFirst({
+  const record = await tx.inventoryBalance.findFirst({
     where: {
       id: sourceRecordId,
       tenantId: session.context.tenantId,
@@ -599,6 +610,12 @@ async function resolveInventoryBalanceSummary(
     primaryDate: record.updatedAt.toISOString().slice(0, 10),
     href: `/inventory?query=${encodeURIComponent(record.item.itemCode)}`
   };
+
+    }, {});
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return restrictedSummary("INVENTORY_BALANCE");
+    throw error;
+  }
 }
 
 async function resolveApprovalInstanceSummary(
@@ -679,10 +696,12 @@ async function resolveStockAdjustmentSummary(
   session: SessionContext,
   sourceRecordId: string
 ): Promise<SafeSourceSummary> {
+  try {
+    return await withInventoryQuantityRead(session, async (tx) => {
   if (!canUseStockAdjustments(session.permissionCodes)) {
     return restrictedSummary("STOCK_ADJUSTMENT");
   }
-  const record = await prisma.stockAdjustment.findFirst({
+  const record = await tx.stockAdjustment.findFirst({
     where: {
       id: sourceRecordId,
       tenantId: session.context.tenantId,
@@ -706,6 +725,12 @@ async function resolveStockAdjustmentSummary(
     primaryDate: record.createdAt.toISOString().slice(0, 10),
     href: "/adjustments"
   };
+
+    }, { adjustments: true, adjustmentId: sourceRecordId });
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return restrictedSummary("STOCK_ADJUSTMENT");
+    throw error;
+  }
 }
 
 export async function resolveProjectRecordLinkSourceSummary(

@@ -377,3 +377,7 @@ source/version/step locking and CAS, required sensitive-action MFA, no inventory
 or approval-ledger effect, role-scoped visibility, and truthful partial-coverage
 UI are mandatory. `APPROVAL_ROUTING_V1_ENABLED` remains false; its global
 activation questions and gates remain open.
+
+## Inventory Control Pilot — authoritative loss valuation (F04)
+
+DEC-0282 labels requester estimates as unknown or unverified but does not approve a valuation source or change monetary policy selection. Operations and Inventory/Accounting must confirm the authoritative cost source, effective date, missing/zero/understated-cost handling, independent review responsibility and treatment of value-dependent evidence/material-loss policies. Until confirmed and verified, labels and ordinary approval do not establish that material losses cannot evade value-dependent classification. F04 remains OPEN; do not infer weighted-average, last-purchase, standard cost or a new approval route.

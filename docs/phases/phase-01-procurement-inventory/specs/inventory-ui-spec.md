@@ -416,3 +416,13 @@ Inventory mobile screens must support:
 ## 12. Acceptance checks
 
 The inventory UI is ready for Phase I only if staff can receive a PO delivery, record a discrepancy, dispatch and receive transfers, count stock, submit wastage, request a stock adjustment, and trace every posted change through the immutable inventory ledger.
+
+## DEC-0282 — bounded remediation behavior
+
+Quantity-bearing balances, ledger, reconciliation, dashboard and export surfaces enforce protected-count eligibility server-side. A restricted surface explains that quantities are unavailable under blind-count controls; it must not display false zeros, empty success or a generic export success. Combined-role grants do not bypass the read boundary.
+
+## DEC-0283 — Low stock and thresholds workspace
+
+`/inventory/low-stock` provides Low-stock alerts and Configured thresholds views for the selected branch/warehouse, with item/storage search, server pagination, desktop table/mobile cards and Export this view. Grain is item/storage pair; quantities use base UOM. Display recorded on-hand, threshold, eligibility/active status and no-balance initialization guidance. Zero alerts does not establish complete coverage.
+
+Authorized managers use Set stock threshold or Edit threshold in focused task mode, selecting storage and item code, explicit threshold, monitoring active/deactivated state and required reason. Existing pair identity is read-only. Save exposes pending feedback, validation/stale/access errors and audited success; detail shows the latest ten changes, not a complete audit export. Readers without configuration authority receive an explicit read-only explanation. Protected quantity views show the shared blind-count unavailable state, never false zeros. Configuration entry itself loads no actual-stock facts. Branch-critical browser/mobile UAT remains a separate gate.

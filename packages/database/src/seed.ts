@@ -8412,6 +8412,12 @@ async function main() {
     update: {},
   });
 
+  await prisma.permission.upsert({
+    where: { code: "inventory.receiving.cancel" },
+    create: { code: "inventory.receiving.cancel", module: "inventory", action: "receiving.cancel" },
+    update: {},
+  });
+
   const projectPermissions = [
     {
       id: ids.projectViewPermissionId,
@@ -9992,6 +9998,7 @@ async function main() {
 
   const allSeededPermissions = await prisma.permission.findMany({
     where: {
+      code: { not: "inventory.receiving.cancel" },
       OR: [{ tenantId: ids.tenantId }, { tenantId: null }],
     },
     select: { id: true },

@@ -289,6 +289,7 @@ export default async function TransferDetailPage({
                   <p className="font-semibold text-slate-500">#{line.lineNumber}</p>
                   <div>
                     <p className="font-medium text-slate-950">{line.itemName}</p>
+                    {line.lotNumber || line.expiryDate ? <p className="text-xs text-slate-600">Lot {line.lotNumber ?? "none"} / Expiry {line.expiryDate ?? "none"}</p> : null}
                     <p className="text-xs text-slate-500">
                       {line.itemCode} / {line.sourceInventoryLocationName} to{" "}
                       {line.destinationInventoryLocationName}
@@ -366,6 +367,8 @@ export default async function TransferDetailPage({
                   id: line.id,
                   lineNumber: line.lineNumber,
                   itemName: line.itemName,
+                  lotNumber: line.lotNumber,
+                  expiryDate: line.expiryDate,
                   uomCode: line.uomCode,
                   remainingQty: Math.max(Number((line.dispatchedQty - line.receivedQty - line.rejectedQty - line.damagedQty - line.discrepancyQty).toFixed(6)), 0)
                 }))}

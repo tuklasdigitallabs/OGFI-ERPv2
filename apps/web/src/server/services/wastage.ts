@@ -1,3 +1,4 @@
+import { assertRequiredLossEvidence, lossRepeatHistory } from "./lossEvidence";
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -92,6 +93,8 @@ const reverseWastageSchema = z.object({
 });
 
 const wastagePolicyFlagLabels: Record<string, string> = {
+  VALUATION_UNKNOWN: "Value unknown — independent review required",
+  VALUATION_UNVERIFIED: "Unverified estimate — independent review required",
   CATEGORY_PHOTO_REQUIRED: "Category photo required",
   HIGH_VALUE: "High-value wastage",
   EVIDENCE_REQUIRED: "Evidence required",
@@ -147,7 +150,7 @@ export function buildWastagePolicyEvaluation({
   repeatItemLocationPriorCount,
   repeatReporterPriorCount
 }: WastagePolicyEvaluationInput) {
-  const flags = new Set<string>();
+  const flags = new Set<string>([totalEstimatedCost > 0 ? "VALUATION_UNVERIFIED" : "VALUATION_UNKNOWN"]);
   const minimumEstimatedCost = policy?.minimumEstimatedCost ?? null;
   const highValue =
     minimumEstimatedCost !== null && totalEstimatedCost >= minimumEstimatedCost;
@@ -201,6 +204,7 @@ export function buildWastagePolicyEvaluation({
       repeatItemLocationCount: repeatItemLocationThreshold,
       repeatReporterCount: repeatReporterThreshold,
       totalEstimatedCost,
+      valuationAssurance: totalEstimatedCost > 0 ? "UNVERIFIED_ESTIMATE" : "UNKNOWN",
       categoryPhotoRequired,
       reasonCodeRequiresEvidence,
       repeatItemLocationPriorCount,
@@ -270,9 +274,9 @@ export function assertWastageCanCancel(status: string) {
   }
 }
 
-async function nextWastageReference(companyId: string) {
+async function nextWastageReference(companyId: string, db: typeof prisma | TransactionClient = prisma) {
   const year = new Date().getUTCFullYear();
-  const count = await prisma.wastageReport.count({
+  const count = await db.wastageReport.count({
     where: {
       companyId,
       publicReference: { startsWith: `WR-${year}-` }
@@ -281,11 +285,13 @@ async function nextWastageReference(companyId: string) {
   return `WR-${year}-${String(count + 1).padStart(5, "0")}`;
 }
 
-async function evaluateWastagePolicy(input: {
+export async function evaluateWastagePolicy(input: {
   db?: typeof prisma | TransactionClient;
   session: SessionContext;
   inventoryLocationId: string;
-  itemId: string;
+  itemIds: string[];
+  currentReportId?: string;
+  reportedByUserId?: string;
   wastageType: string;
   reasonCode: string;
   evidenceReference?: string | null;
@@ -333,39 +339,43 @@ async function evaluateWastagePolicy(input: {
     }
   });
 
-  let repeatItemLocationPriorCount = 0;
+  const itemIds = [...new Set(input.itemIds)].sort();
   let repeatReporterPriorCount = 0;
+  let repeatItemHistory = itemIds.map((itemId) => ({ itemId, priorCount: 0 }));
   if (policy) {
-    const lookbackStart = new Date(
-      Date.now() - policy.repeatLookbackDays * 24 * 60 * 60 * 1000
-    );
-    [repeatItemLocationPriorCount, repeatReporterPriorCount] = await Promise.all([
-      db.wastageLine.count({
+    const lookbackStart = new Date(Date.now() - policy.repeatLookbackDays * 24 * 60 * 60 * 1000);
+    const [groups, reporterCount] = await Promise.all([
+      db.wastageLine.groupBy({
+        by: ["itemId"],
         where: {
           tenantId: input.session.context.tenantId,
           companyId: input.session.context.companyId,
           inventoryLocationId: input.inventoryLocationId,
-          itemId: input.itemId,
+          itemId: { in: itemIds },
           createdAt: { gte: lookbackStart },
-          wastageReport: {
-            status: { notIn: ["CANCELLED", "REJECTED"] }
-          }
-        }
+          ...(input.currentReportId ? { wastageReportId: { not: input.currentReportId } } : {}),
+          wastageReport: { status: { notIn: ["CANCELLED", "REJECTED"] } },
+        },
+        _count: { _all: true },
       }),
       db.wastageReport.count({
         where: {
           tenantId: input.session.context.tenantId,
           companyId: input.session.context.companyId,
           inventoryLocationId: input.inventoryLocationId,
-          reportedByUserId: input.session.user.id,
+          reportedByUserId: input.reportedByUserId ?? input.session.user.id,
           createdAt: { gte: lookbackStart },
-          status: { notIn: ["CANCELLED", "REJECTED"] }
-        }
-      })
+          status: { notIn: ["CANCELLED", "REJECTED"] },
+          ...(input.currentReportId ? { id: { not: input.currentReportId } } : {}),
+        },
+      }),
     ]);
+    const priorByItem = new Map(groups.map((row) => [row.itemId, row._count._all]));
+    repeatItemHistory = itemIds.map((itemId) => ({ itemId, priorCount: priorByItem.get(itemId) ?? 0 }));
+    repeatReporterPriorCount = reporterCount;
   }
-
-  return buildWastagePolicyEvaluation({
+  const repeatItemLocationPriorCount = Math.max(0, ...repeatItemHistory.map((item) => item.priorCount));
+  const evaluation = buildWastagePolicyEvaluation({
     policy: policy
       ? {
           ...policy,
@@ -381,6 +391,16 @@ async function evaluateWastagePolicy(input: {
     repeatItemLocationPriorCount,
     repeatReporterPriorCount
   });
+  return {
+    ...evaluation,
+    policySnapshot: {
+      ...evaluation.policySnapshot,
+      repeatItemHistory,
+      repeatItemIds: repeatItemHistory.filter((item) => policy?.repeatItemLocationCount != null && item.priorCount + 1 >= policy.repeatItemLocationCount).map((item) => item.itemId),
+      reportedByUserId: input.reportedByUserId ?? input.session.user.id,
+      historyMetric: "PRIOR_LINES_EXCLUDING_CURRENT_REPORT",
+    },
+  };
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -1101,6 +1121,7 @@ function mapWastageReport(report: WastageReportWithRelations) {
     totalEstimatedCost: Number(report.totalEstimatedCost),
     policyFlags: parseWastagePolicyFlags(report.policyFlags),
     policyFlagLabels: formatWastagePolicyFlagLabels(report.policyFlags),
+    repeatHistorySummary: lossRepeatHistory(report.policySnapshot, report.lines),
     evidenceRequired: report.evidenceRequired,
     evidenceSatisfied: report.evidenceSatisfied,
     lineCount: report.lines.length,
@@ -1198,6 +1219,7 @@ export async function listWastageDashboardProfilePage(
       totalEstimatedCost: Number(report.totalEstimatedCost),
       policyFlags: parseWastagePolicyFlags(report.policyFlags),
       policyFlagLabels: formatWastagePolicyFlagLabels(report.policyFlags),
+    repeatHistorySummary: lossRepeatHistory(report.policySnapshot, report.lines),
       evidenceRequired: report.evidenceRequired,
       evidenceSatisfied: report.evidenceSatisfied,
       lineCount: report.lines.length,
@@ -1275,6 +1297,7 @@ export async function getWastageReport(session: SessionContext, id: string) {
     reversalReason: report.reversalReason ?? null,
     policyFlags: parseWastagePolicyFlags(report.policyFlags),
     policyFlagLabels: formatWastagePolicyFlagLabels(report.policyFlags),
+    repeatHistorySummary: lossRepeatHistory(report.policySnapshot, report.lines),
     policySnapshot: report.policySnapshot,
     evidenceRequired: report.evidenceRequired,
     evidenceSatisfied: report.evidenceSatisfied,
@@ -1347,7 +1370,7 @@ export async function createWastageReport(formData: FormData) {
     throw new Error("WASTAGE_ITEM_NOT_FOUND");
   }
 
-  const controlledReasonCode = await requireActiveWastageReasonCode(
+  await requireActiveWastageReasonCode(
     session,
     values.reasonCode,
     {
@@ -1408,32 +1431,37 @@ export async function createWastageReport(formData: FormData) {
     values.evidenceReference ||
     lineDrafts.find((line) => line.evidenceReference)?.evidenceReference ||
     null;
-  const policyEvaluation = await evaluateWastagePolicy({
-    session,
-    inventoryLocationId: inventoryLocation.id,
-    itemId: firstLine.item.id,
-    wastageType: values.wastageType,
-    reasonCode: controlledReasonCode.code,
-    evidenceReference,
-    estimatedTotalCost,
-    categoryPhotoRequired: lineDrafts.some((line) => line.photoRequired),
-    reasonCodeRequiresEvidence: controlledReasonCode.requiresEvidence
-  });
-  if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
-    throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
-  }
 
   let reportId: string | null = null;
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       const report = await prisma.$transaction(async (tx) => {
+        await lockLiveInventoryActionAuthority(tx, session, { inventoryLocationId: inventoryLocation.id, permissionCode: permissions.wastageCreate, staleErrorCode: "PERMISSION_DENIED" });
+        const controlledReasonCode = await requireActiveWastageReasonCode(session, values.reasonCode, { wastageType: values.wastageType, inventoryClasses: items.map((item) => item.category.inventoryClass) }, tx);
+        const policyEvaluation = await evaluateWastagePolicy({
+          db: tx,
+          session,
+          inventoryLocationId: inventoryLocation.id,
+          itemIds,
+          wastageType: values.wastageType,
+          reasonCode: controlledReasonCode.code,
+          evidenceReference,
+          estimatedTotalCost,
+          categoryPhotoRequired: lineDrafts.some((line) => line.photoRequired),
+          reasonCodeRequiresEvidence: controlledReasonCode.requiresEvidence
+        });
+        if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
+          throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
+        }
+
+        assertRequiredLossEvidence({ required: policyEvaluation.evidenceRequired, evidenceReference: values.evidenceReference, lines: (controlledReasonCode.requiresEvidence || policyEvaluation.policySnapshot.requiresEvidence) ? lineDrafts : lineDrafts.filter((line) => line.photoRequired), errorCode: "WASTAGE_EVIDENCE_REFERENCE_REQUIRED" });
         const created = await tx.wastageReport.create({
           data: {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
             inventoryLocationId: inventoryLocation.id,
-            publicReference: await nextWastageReference(session.context.companyId),
+            publicReference: await nextWastageReference(session.context.companyId, tx),
             reportedByUserId: session.user.id,
             wastageType: values.wastageType,
             reasonCode: controlledReasonCode.code,
@@ -1573,16 +1601,24 @@ export async function submitWastageReport(formData: FormData) {
     if (!firstLine) {
       throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
     }
+    await lockLiveInventoryActionAuthority(tx, session, { inventoryLocationId: report.inventoryLocationId, permissionCode: permissions.wastageSubmit, staleErrorCode: "PERMISSION_DENIED" });
+    const itemIds = [...new Set(report.lines.map((line) => line.itemId))];
+    const items = await tx.item.findMany({ where: { id: { in: itemIds }, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" }, include: { category: true } });
+    if (items.length !== itemIds.length) throw new Error("WASTAGE_ITEM_NOT_FOUND");
+    const controlledReasonCode = await requireActiveWastageReasonCode(session, report.reasonCode, { wastageType: report.wastageType, inventoryClasses: items.map((item) => item.category.inventoryClass) }, tx);
     const policyEvaluation = await evaluateWastagePolicy({
       db: tx,
       session,
       inventoryLocationId: report.inventoryLocationId,
-      itemId: firstLine.itemId,
+      itemIds,
+      currentReportId: report.id,
+      reportedByUserId: report.reportedByUserId,
+      reasonCodeRequiresEvidence: controlledReasonCode.requiresEvidence,
       wastageType: report.wastageType,
       reasonCode: report.reasonCode,
       evidenceReference:
-        report.evidenceReference ??
-        report.lines.find((line) => line.evidenceReference)?.evidenceReference ??
+        report.evidenceReference?.trim() ||
+        report.lines.find((line) => line.evidenceReference?.trim())?.evidenceReference ||
         null,
       estimatedTotalCost: Number(report.totalEstimatedCost),
       categoryPhotoRequired: report.lines.some((line) => line.photoRequired)
@@ -1590,6 +1626,7 @@ export async function submitWastageReport(formData: FormData) {
     if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
       throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
     }
+    assertRequiredLossEvidence({ required: policyEvaluation.evidenceRequired, evidenceReference: report.evidenceReference, lines: (controlledReasonCode.requiresEvidence || policyEvaluation.policySnapshot.requiresEvidence) ? report.lines : report.lines.filter((line) => line.photoRequired), errorCode: "WASTAGE_EVIDENCE_REFERENCE_REQUIRED" });
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1979,6 +2016,19 @@ export async function postWastageReport(formData: FormData) {
   }, async (tx) => {
     const lockedSource = await lockWastageSourceForPosting(tx, session, report.id);
     if (lockedSource.status === "POSTED" || lockedSource.postedAt) return;
+    const evidenceDocument = await tx.wastageReport.findFirst({ where: { id: report.id, tenantId: session.context.tenantId, companyId: session.context.companyId }, include: { lines: { include: { item: { include: { category: true } } } } } });
+    if (!evidenceDocument) throw new Error("WASTAGE_REPORT_NOT_FOUND");
+    const evidenceReason = await requireActiveWastageReasonCode(session, evidenceDocument.reasonCode, { wastageType: evidenceDocument.wastageType, inventoryClasses: evidenceDocument.lines.map((line) => line.item.category.inventoryClass) }, tx);
+    const storedEvidencePolicy = evidenceDocument.policySnapshot && typeof evidenceDocument.policySnapshot === "object" && !Array.isArray(evidenceDocument.policySnapshot)
+      ? (evidenceDocument.policySnapshot as Record<string, unknown>).requiresEvidence
+      : undefined;
+    const storedReasonEvidenceRequired = evidenceDocument.policySnapshot && typeof evidenceDocument.policySnapshot === "object" && !Array.isArray(evidenceDocument.policySnapshot)
+      ? (evidenceDocument.policySnapshot as Record<string, unknown>).reasonCodeRequiresEvidence === true
+      : false;
+    const evidenceLines = evidenceReason.requiresEvidence || storedReasonEvidenceRequired || storedEvidencePolicy !== false
+      ? evidenceDocument.lines
+      : evidenceDocument.lines.filter((line) => line.photoRequired);
+    assertRequiredLossEvidence({ required: evidenceDocument.evidenceRequired || evidenceReason.requiresEvidence || storedReasonEvidenceRequired || storedEvidencePolicy === true, evidenceReference: evidenceDocument.evidenceReference, lines: evidenceLines, errorCode: "WASTAGE_EVIDENCE_REFERENCE_REQUIRED" });
     const pendingGraphRows = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id
         FROM "ApprovalInstance"

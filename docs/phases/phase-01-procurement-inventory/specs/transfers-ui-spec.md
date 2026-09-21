@@ -86,3 +86,7 @@ Cancelled / Reversed only through controlled actions
 - Accepted receipt quantity links to immutable `TRANSFER_IN`; rejected, damaged, and short/discrepant receipt quantities do not post destination stock.
 - Overdue transfers appear in dashboards, notifications, and transfer report.
 - Both sender and receiver identity/timestamp are retained.
+
+## DEC-0282 — bounded remediation behavior
+
+Draft line entry includes required lot/expiry. Detail, dispatch and receiving context display the approved bucket so operators can verify physical custody. A different bucket is not silently substituted after approval. Existing discrepancy settlement gates remain visible.

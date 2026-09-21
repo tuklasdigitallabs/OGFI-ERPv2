@@ -28,7 +28,7 @@ The pilot approval route described below is implemented locally but disabled by 
 2. Select `Transfers`.
 3. Choose a source inventory location.
 4. Confirm the destination shown on the form.
-5. Select the item and enter a positive requested quantity.
+5. Select the item and enter a positive requested quantity. Enter `Source lot / batch` and `Source expiry date` when required. Use a separate line for each exact source stock bucket; confirm these details with the source custodian before submission.
 6. Select the transfer type and enter the purpose.
 7. Optionally enter a required-by date and handling note.
 8. Select `Create Transfer Request`.
@@ -51,6 +51,7 @@ If a future authorized release has activated the pilot approval route and the se
 
 ## Important controls and warnings
 
+- Source lot and expiry are recorded in the draft and bound to any applicable approval. Dispatch verifies stock for that bucket; it does not silently allocate or substitute a different lot. Check the same lot/expiry at destination receipt.
 - A transfer request is not a dispatch confirmation.
 - A transfer request is not a destination receipt confirmation.
 - The requester cannot approve their own pilot-admitted transfer. An approver of that transfer cannot dispatch or receive it. These checks are enforced by the server; seeing an action does not grant authority.

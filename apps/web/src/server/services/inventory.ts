@@ -1,3 +1,4 @@
+import { withInventoryQuantityRead } from "./inventoryQuantityRead";
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { permissions, requirePermission } from "./authorization";
 import type { SessionContext } from "./context";
@@ -965,10 +966,11 @@ async function queryInventoryLedgerVariance(
       lotKey: string;
     };
     includeMatchedExact?: boolean;
-  } = {}
+  } = {},
+  tx: TransactionClient = prisma
 ) {
   const built = buildInventoryLedgerVarianceQuery(session, input);
-  const rows = await prisma.$queryRaw<InventoryLedgerVarianceRawRow[]>(built.query);
+  const rows = await tx.$queryRaw<InventoryLedgerVarianceRawRow[]>(built.query);
   return {
     ...inventoryLedgerVarianceResult(rows),
     normalizedQuery: built.normalizedQuery
@@ -980,11 +982,12 @@ export async function listInventoryLedgerVarianceProfilePage(
   input: { page?: number; query?: string } = {}
 ): Promise<InventoryLedgerVarianceProfilePage> {
   await requireInventoryLedgerVarianceRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const result = await queryInventoryLedgerVariance(session, {
     pageSize: inventoryLedgerVariancePageSize,
     ...(input.page !== undefined ? { page: input.page } : {}),
     ...(input.query !== undefined ? { query: input.query } : {})
-  });
+  }, tx);
   return {
     profile: "ledger-variance-v1",
     items: result.items,
@@ -995,21 +998,26 @@ export async function listInventoryLedgerVarianceProfilePage(
     query: result.normalizedQuery ?? null,
     generatedAt: result.generatedAt
   };
+
+  }, { adjustments: true });
 }
 
 export async function getInventoryLedgerVarianceDashboardRead(
   session: SessionContext
 ): Promise<InventoryLedgerVarianceDashboardRead> {
   await requireInventoryLedgerVarianceRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const result = await queryInventoryLedgerVariance(session, {
     page: 1,
     pageSize: 3
-  });
+  }, tx);
   return {
     varianceCount: result.profileTotalCount,
     candidates: result.items,
     generatedAt: result.generatedAt
   };
+
+  }, { adjustments: true });
 }
 
 export async function listInventoryLedgerVarianceExportRows(
@@ -1017,6 +1025,7 @@ export async function listInventoryLedgerVarianceExportRows(
   input: { query?: string; maxRows?: number } = {}
 ) {
   await requireInventoryLedgerVarianceRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const maxRows = input.maxRows;
   if (
     typeof maxRows !== "number" ||
@@ -1030,7 +1039,7 @@ export async function listInventoryLedgerVarianceExportRows(
     page: 1,
     exportMaxRows: maxRows,
     ...(input.query !== undefined ? { query: input.query } : {})
-  });
+  }, tx);
   if (result.profileTotalCount > maxRows || result.items.length > maxRows) {
     throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
   }
@@ -1040,6 +1049,8 @@ export async function listInventoryLedgerVarianceExportRows(
     query: result.normalizedQuery ?? null,
     generatedAt: result.generatedAt
   };
+
+  }, { adjustments: true });
 }
 
 const inventoryBalanceInclude = {
@@ -1174,9 +1185,10 @@ function inventoryLotExpiryDataSql(
 
 async function countInventoryLotExpiryDataProfile(
   session: SessionContext,
-  query?: string
+  query?: string,
+  tx: TransactionClient = prisma
 ) {
-  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+  const rows = await tx.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
     SELECT COUNT(*)::bigint AS count
     ${inventoryLotExpiryDataSql(session, query)}`);
   return Number(rows[0]?.count ?? 0n);
@@ -1184,9 +1196,10 @@ async function countInventoryLotExpiryDataProfile(
 
 async function listInventoryLotExpiryDataProfileIds(
   session: SessionContext,
-  input: { query?: string; skip: number; take: number }
+  input: { query?: string; skip: number; take: number },
+  tx: TransactionClient = prisma
 ) {
-  return prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  return tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT balance."id" AS id
     ${inventoryLotExpiryDataSql(session, input.query)}
     ORDER BY item."itemName" ASC,
@@ -1199,10 +1212,11 @@ async function listInventoryLotExpiryDataProfileIds(
 
 async function loadInventoryBalanceRecords(
   session: SessionContext,
-  ids: string[]
+  ids: string[],
+  tx: TransactionClient = prisma
 ) {
   if (ids.length === 0) return [];
-  const balances = await prisma.inventoryBalance.findMany({
+  const balances = await tx.inventoryBalance.findMany({
     where: {
       AND: [
         scopedInventoryBalanceWhere(session, undefined),
@@ -1280,6 +1294,7 @@ export async function listInventoryBalances(
   input: { maxRows?: number } = {}
 ) {
   await requirePermission(session, permissions.inventoryBalanceView);
+  return withInventoryQuantityRead(session, async (tx) => {
   const maxRows = input.maxRows;
   if (
     typeof maxRows !== "number" ||
@@ -1292,7 +1307,7 @@ export async function listInventoryBalances(
   const normalizedFilters = normalizeInventoryBalanceFilters(filters);
   const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-  const balances = await prisma.inventoryBalance.findMany({
+  const balances = await tx.inventoryBalance.findMany({
     where: ordinaryInventoryBalanceWhere(session, normalizedFilters, expiryCutoff),
     include: inventoryBalanceInclude,
     orderBy: inventoryBalanceOrderBy,
@@ -1304,6 +1319,8 @@ export async function listInventoryBalances(
   }
 
   return balances.map(mapInventoryBalance);
+
+  });
 }
 
 export async function listInventoryBalancePage(
@@ -1316,6 +1333,7 @@ export async function listInventoryBalancePage(
   } = {}
 ): Promise<InventoryBalancePage> {
   await requirePermission(session, permissions.inventoryBalanceView);
+  return withInventoryQuantityRead(session, async (tx) => {
   const normalized = normalizeInventoryBalanceFilters(filters);
   if (
     input.dashboardProfile !== undefined &&
@@ -1327,8 +1345,8 @@ export async function listInventoryBalancePage(
   const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
   if (input.dashboardProfile === "lot-expiry-data-v1") {
     const [totalItems, company] = await Promise.all([
-      countInventoryLotExpiryDataProfile(session, normalized.query),
-      prisma.company.findFirst({
+      countInventoryLotExpiryDataProfile(session, normalized.query, tx),
+      tx.company.findFirst({
         where: {
           id: session.context.companyId,
           tenantId: session.context.tenantId
@@ -1342,10 +1360,10 @@ export async function listInventoryBalancePage(
       ...(normalized.query ? { query: normalized.query } : {}),
       skip: (page - 1) * pageSize,
       take: pageSize
-    });
+    }, tx);
     const balances = await loadInventoryBalanceRecords(
       session,
-      idRows.map((row) => row.id)
+      idRows.map((row) => row.id), tx
     );
     return {
       items: balances.map(mapInventoryBalance),
@@ -1368,8 +1386,8 @@ export async function listInventoryBalancePage(
       )
     : ordinaryInventoryBalanceWhere(session, normalized, expiryCutoff);
   const [totalItems, company] = await Promise.all([
-    prisma.inventoryBalance.count({ where }),
-    prisma.company.findFirst({
+    tx.inventoryBalance.count({ where }),
+    tx.company.findFirst({
       where: {
         id: session.context.companyId,
         tenantId: session.context.tenantId
@@ -1378,14 +1396,14 @@ export async function listInventoryBalancePage(
     })
   ]);
   const [positiveItems, expiringItems] = await Promise.all([
-    prisma.inventoryBalance.count({ where: { ...baseWhere, qtyOnHand: { gt: 0 } } }),
-    prisma.inventoryBalance.count({
+    tx.inventoryBalance.count({ where: { ...baseWhere, qtyOnHand: { gt: 0 } } }),
+    tx.inventoryBalance.count({
       where: { ...baseWhere, expiryDate: { not: null, gte: new Date(), lte: expiryCutoff } }
     })
   ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  const balances = await prisma.inventoryBalance.findMany({
+  const balances = await tx.inventoryBalance.findMany({
     where,
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -1402,6 +1420,8 @@ export async function listInventoryBalancePage(
     totalPages,
     timeZone: company?.timezone ?? "Asia/Manila"
   };
+
+  });
 }
 
 export async function listInventoryBalanceDashboardProfileExportRows(
@@ -1413,6 +1433,7 @@ export async function listInventoryBalanceDashboardProfileExportRows(
   }
 ) {
   await requirePermission(session, permissions.inventoryBalanceView);
+  return withInventoryQuantityRead(session, async (tx) => {
   if (!resolveInventoryBalanceDashboardProfile(input.profile)) {
     throw new Error("INVENTORY_BALANCE_DASHBOARD_PROFILE_UNSUPPORTED");
   }
@@ -1420,7 +1441,7 @@ export async function listInventoryBalanceDashboardProfileExportRows(
     throw new Error("INVENTORY_BALANCE_EXPORT_MAX_ROWS_INVALID");
   }
   if (input.profile === "lot-expiry-data-v1") {
-    const totalItems = await countInventoryLotExpiryDataProfile(session, input.query);
+    const totalItems = await countInventoryLotExpiryDataProfile(session, input.query, tx);
     if (totalItems > input.maxRows) {
       throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
     }
@@ -1428,13 +1449,13 @@ export async function listInventoryBalanceDashboardProfileExportRows(
       ...(input.query ? { query: input.query } : {}),
       skip: 0,
       take: input.maxRows + 1
-    });
+    }, tx);
     if (idRows.length > input.maxRows) {
       throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
     }
     const balances = await loadInventoryBalanceRecords(
       session,
-      idRows.map((row) => row.id)
+      idRows.map((row) => row.id), tx
     );
     return balances.map(mapInventoryBalance);
   }
@@ -1443,11 +1464,11 @@ export async function listInventoryBalanceDashboardProfileExportRows(
     input.profile,
     input.query
   );
-  const totalItems = await prisma.inventoryBalance.count({ where });
+  const totalItems = await tx.inventoryBalance.count({ where });
   if (totalItems > input.maxRows) {
     throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
   }
-  const balances = await prisma.inventoryBalance.findMany({
+  const balances = await tx.inventoryBalance.findMany({
     where,
     include: inventoryBalanceInclude,
     orderBy: inventoryBalanceOrderBy,
@@ -1457,15 +1478,18 @@ export async function listInventoryBalanceDashboardProfileExportRows(
     throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
   }
   return balances.map(mapInventoryBalance);
+
+  });
 }
 
 export async function getInventoryBalanceDashboardRead(
   session: SessionContext
 ): Promise<InventoryBalanceDashboardRead> {
   await requirePermission(session, permissions.inventoryBalanceView);
+  return withInventoryQuantityRead(session, async (tx) => {
   const scope = inventoryBalanceDashboardScope(session);
   const [rows, positiveRows, zeroRows, lotExpiryTrackedRows] = await Promise.all([
-    prisma.$queryRaw<InventoryBalanceDashboardRead[]>`
+    tx.$queryRaw<InventoryBalanceDashboardRead[]>`
       SELECT COUNT(*)::integer AS "totalRows",
              COUNT(*) FILTER (WHERE balance."qtyOnHand" > 0)::integer AS "positiveRows",
              COUNT(*) FILTER (WHERE balance."qtyOnHand" = 0)::integer AS "zeroRows",
@@ -1497,13 +1521,13 @@ export async function getInventoryBalanceDashboardRead(
          AND balance."companyId" = ${scope.companyId}::uuid
          AND inventory_location."locationId" = ${scope.locationId}::uuid
          AND inventory_location."status" = 'ACTIVE'`,
-    prisma.inventoryBalance.count({
+    tx.inventoryBalance.count({
       where: inventoryPositiveStockProfileWhere(session)
     }),
-    prisma.inventoryBalance.count({
+    tx.inventoryBalance.count({
       where: inventoryZeroStockProfileWhere(session)
     }),
-    countInventoryLotExpiryDataProfile(session)
+    countInventoryLotExpiryDataProfile(session, undefined, tx)
   ]);
 
   const aggregate = rows[0] ?? {
@@ -1513,6 +1537,8 @@ export async function getInventoryBalanceDashboardRead(
     lotExpiryTrackedRows: 0
   };
   return { ...aggregate, positiveRows, zeroRows, lotExpiryTrackedRows };
+
+  });
 }
 
 export function inventoryBalanceDashboardScope(
@@ -1535,10 +1561,11 @@ export async function getInventoryBalanceReconciliation(
   generatedAt?: string;
 }> {
   await requireInventoryLedgerVarianceRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const result = await queryInventoryLedgerVariance(session, {
     page: 1,
     pageSize: 1
-  });
+  }, tx);
   return {
     totalRows: result.totalRows,
     matchedRows: result.matchedRows,
@@ -1546,6 +1573,8 @@ export async function getInventoryBalanceReconciliation(
     rows: result.items,
     generatedAt: result.generatedAt
   };
+
+  }, { adjustments: true });
 }
 
 export function inventoryMovementListWhere(
@@ -1710,6 +1739,7 @@ export async function getInventoryLedgerVarianceTracePage(
   }
 ) {
   await requireInventoryLedgerVarianceRead(session);
+  return withInventoryQuantityRead(session, async (tx) => {
   const normalized = normalizeInventoryMovementFilters({
     inventoryLocationId: input.inventoryLocationId,
     itemId: input.itemId,
@@ -1721,7 +1751,7 @@ export async function getInventoryLedgerVarianceTracePage(
     lotKey: normalized.lotKey!
   };
   const [traceRows, currentVariance] = await Promise.all([
-    prisma.$queryRaw<InventoryLedgerVarianceTraceIdRow[]>(
+    tx.$queryRaw<InventoryLedgerVarianceTraceIdRow[]>(
       buildInventoryLedgerVarianceTraceQuery(session, input)
     ),
     queryInventoryLedgerVariance(session, {
@@ -1729,11 +1759,11 @@ export async function getInventoryLedgerVarianceTracePage(
       pageSize: 1,
       exactKey,
       includeMatchedExact: true
-    })
+    }, tx)
   ]);
   const ids = traceRows.flatMap((row) => (row.id ? [row.id] : []));
   const movements = ids.length
-    ? await prisma.inventoryMovement.findMany({
+    ? await tx.inventoryMovement.findMany({
         where: {
           AND: [
             {
@@ -1763,7 +1793,7 @@ export async function getInventoryLedgerVarianceTracePage(
     new Set(movements.map((movement) => movement.postedByUserId))
   );
   const postedByUsers = postedByUserIds.length
-    ? await prisma.user.findMany({
+    ? await tx.user.findMany({
         where: {
           id: { in: postedByUserIds },
           tenantId: session.context.tenantId
@@ -1816,6 +1846,8 @@ export async function getInventoryLedgerVarianceTracePage(
     currentVarianceQuantity: current?.varianceQuantity ?? null,
     currentVarianceGeneratedAt: currentVariance.generatedAt
   };
+
+  }, { adjustments: true });
 }
 
 export async function listInventoryMovements(
@@ -1824,6 +1856,7 @@ export async function listInventoryMovements(
   input: { maxRows?: number } = {}
 ) {
   await requirePermission(session, permissions.inventoryLedgerView);
+  return withInventoryQuantityRead(session, async (tx) => {
   const maxRows = input.maxRows;
   if (
     typeof maxRows !== "number" ||
@@ -1842,7 +1875,7 @@ export async function listInventoryMovements(
     throw new Error("INVENTORY_LEDGER_TRACE_REQUIRES_DEDICATED_SERVICE");
   }
 
-  const movements = await prisma.inventoryMovement.findMany({
+  const movements = await tx.inventoryMovement.findMany({
     where: inventoryMovementListWhere(session, normalizedFilters),
     include: {
       inventoryLocation: {
@@ -1860,7 +1893,9 @@ export async function listInventoryMovements(
   if (movements.length > maxRows) {
     throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
   }
-  return hydrateInventoryMovements(session, movements);
+  return hydrateInventoryMovements(session, movements, tx);
+
+  }, { adjustments: true });
 }
 
 async function hydrateInventoryMovements(
@@ -1870,14 +1905,15 @@ async function hydrateInventoryMovements(
     item: true;
     enteredUom: true;
     baseUom: true;
-  } }>>
+  } }>>,
+  tx: TransactionClient = prisma
 ) {
   const postedByUserIds = Array.from(
     new Set(movements.map((movement) => movement.postedByUserId))
   );
   const postedByUsers =
     postedByUserIds.length > 0
-      ? await prisma.user.findMany({
+      ? await tx.user.findMany({
           where: {
             id: { in: postedByUserIds },
             tenantId: session.context.tenantId
@@ -1927,6 +1963,7 @@ export async function listInventoryMovementPage(
   input: { page?: number; pageSize?: number } = {}
 ): Promise<InventoryMovementPage> {
   await requirePermission(session, permissions.inventoryLedgerView);
+  return withInventoryQuantityRead(session, async (tx) => {
   const normalizedFilters = normalizeInventoryMovementFilters(filters);
   if (normalizedFilters.inventoryLocationId || normalizedFilters.itemId || normalizedFilters.lotKey) {
     throw new Error("INVENTORY_LEDGER_TRACE_REQUIRES_DEDICATED_SERVICE");
@@ -1934,10 +1971,10 @@ export async function listInventoryMovementPage(
   const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
   const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
   const where = inventoryMovementListWhere(session, normalizedFilters);
-  const totalItems = await prisma.inventoryMovement.count({ where });
+  const totalItems = await tx.inventoryMovement.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  const movements = await prisma.inventoryMovement.findMany({
+  const movements = await tx.inventoryMovement.findMany({
     where,
     include: {
       inventoryLocation: { include: { location: true } },
@@ -1949,5 +1986,7 @@ export async function listInventoryMovementPage(
     skip: (page - 1) * pageSize,
     take: pageSize
   });
-  return { items: await hydrateInventoryMovements(session, movements), totalItems, page, pageSize, totalPages };
+  return { items: await hydrateInventoryMovements(session, movements, tx), totalItems, page, pageSize, totalPages };
+
+  }, { adjustments: true });
 }

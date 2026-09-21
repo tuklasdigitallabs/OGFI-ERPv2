@@ -220,3 +220,9 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0242-SUPPLIER-CATALOG-CONFIDENTIALITY-AND-LIFECYCLE.md` — explicit additional Supplier confidential clearance, query-level commercial-field redaction, serialized lifecycle actions, and same-result responsive Catalog paging
 - `DEC-0266-INVENTORY-PILOT-READINESS-PROFILE.md` — explicit allowlisted Inventory Control Pilot readiness profile while preserving the combined Phase I / Phase 1.5 assessment
 - `DEC-0272-GRANULAR-SUPPLIER-ITEM-MASTER-DATA-ACCESS.md` — action-level Supplier and Item Master access without granting broad Core Administration
+
+- [`DEC-0282-BOUNDED-INVENTORY-AUDIT-REMEDIATION.md`](DEC-0282-BOUNDED-INVENTORY-AUDIT-REMEDIATION.md) — confirmed bounded inventory audit remediation; valuation, evidence qualification and operational admission remain gated
+
+- [`DEC-0283-LOCATION-AWARE-LOW-STOCK-THRESHOLDS.md`](DEC-0283-LOCATION-AWARE-LOW-STOCK-THRESHOLDS.md) — explicit item/storage low-stock thresholds, live recorded-on-hand signals and blind-count suppression; no automatic procurement or notification job
+
+- [`DEC-0284-GUIDED-USER-ACCESS-SETUP-AND-ATOMIC-CHANGE.md`](DEC-0284-GUIDED-USER-ACCESS-SETUP-AND-ATOMIC-CHANGE.md) — guided grant-now/no-access setup and audited atomic role/location-access replacement with existing controlled-request boundaries

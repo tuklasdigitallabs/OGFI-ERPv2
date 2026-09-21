@@ -184,13 +184,14 @@ describe.skipIf(!databaseEnabled)(
               in: [
                 "inventory.receiving.create",
                 "inventory.receiving.post",
-                "inventory.receiving.reverse"
+                "inventory.receiving.reverse",
+                "inventory.receiving.cancel"
               ]
             }
           },
           select: { id: true }
         });
-        if (receiptPermissions.length !== 3) {
+        if (receiptPermissions.length !== 4) {
           throw new Error("RECEIVING_SERIALIZATION_PERMISSION_FIXTURE_MISSING");
         }
         const role = await tx.role.create({
@@ -445,7 +446,8 @@ describe.skipIf(!databaseEnabled)(
         ],
         permissionCodes: [
           "inventory.receiving.create",
-          "inventory.receiving.post"
+          "inventory.receiving.post",
+          "inventory.receiving.cancel"
         ]
       };
 
@@ -960,10 +962,14 @@ describe.skipIf(!databaseEnabled)(
           }
         })
       ).toBe(0);
-      await prisma.goodsReceipt.update({
-        where: { id: staleReceiptId },
-        data: { status: "CANCELLED" }
-      });
+      const { cancelGoodsReceipt } = await import("../src/server/services/receiving");
+      const cancelForm = new FormData();
+      cancelForm.set("id", staleReceiptId);
+      cancelForm.set("cancellationReason", "Stale draft blocks corrected receiving reversal");
+      await expect(cancelGoodsReceipt(cancelForm)).resolves.toBe(order.id);
+      await expect(cancelGoodsReceipt(cancelForm)).rejects.toThrow("GOODS_RECEIPT_NOT_DRAFT_FOR_CANCELLATION");
+      expect(await prisma.auditEvent.count({ where: { entityType: "GoodsReceipt", entityId: staleReceiptId, eventType: "goods_receipt.cancelled" } })).toBe(1);
+      expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "GoodsReceipt", sourceDocumentId: staleReceiptId } })).toBe(0);
 
       await prisma.privilegedMfaEnrollment.create({
         data: {

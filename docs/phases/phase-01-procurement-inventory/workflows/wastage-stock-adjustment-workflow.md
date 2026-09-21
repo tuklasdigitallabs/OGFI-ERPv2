@@ -325,3 +325,9 @@ Exportable reports:
 10. Material actions have actor, timestamp, and reason in audit trail.
 11. Lists filter and export by company, brand, location, item, category, reason, user, approver, status, date, and value.
 12. Branch teams can report routine wastage from tablet / mobile without desktop dependence.
+
+## DEC-0282 — loss-control enforcement
+
+Create and submit require live operational authority at the source location inside the transaction; VIEW-only source access is insufficient. Active reason eligibility and configured evidence-reference coverage are revalidated at create, submit and post. A nonblank header reference covers all applicable lines; otherwise every applicable line needs its own nonblank reference. Wastage reason/policy requirements apply to all lines, while category-only requirements apply to affected lines. Deficient legacy records fail closed. Reference presence is not evidence qualification or proof of a photograph.
+
+Repeat-item evaluation includes every distinct report item, excludes the current report from history and retains the original reporter across resubmissions. The historical metric remains prior wastage lines, not distinct loss events. Item-specific history is retained for reviewer/export context. Positive requester estimates remain unverified; zero/missing estimates are unknown. F04 authoritative valuation and value-dependent policy handling remain OPEN; ordinary approval is still required.

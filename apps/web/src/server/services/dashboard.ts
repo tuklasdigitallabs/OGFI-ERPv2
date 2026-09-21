@@ -1,3 +1,5 @@
+import { isInventoryQuantityReadProtected, inventoryQuantityProtectedMessage } from "./inventoryQuantityRead";
+import { getLowStockDashboardRead } from "./lowStock";
 import {
   canReadPurchaseOrders,
   canUseBranchOperations,
@@ -156,6 +158,7 @@ export const dashboardSourceIds = [
   "wastage",
   "stock-adjustments",
   "inventory-balances",
+  "low-stock",
   "inventory-reconciliation",
   "branch-operations",
   "food-safety",
@@ -178,6 +181,7 @@ export type DashboardSourceObservation = {
   availability: "AVAILABLE" | "UNAVAILABLE";
   checkedAt: string;
   dataAsOf?: string;
+  unavailableReason?: string;
 };
 
 export type DashboardQueueContributor = {
@@ -255,6 +259,7 @@ export type OperationalDashboardSource = {
   stockAdjustments?: StockAdjustmentSummary[];
   stockAdjustmentDashboard?: StockAdjustmentDashboardRead;
   inventoryBalanceDashboard?: InventoryBalanceDashboardRead;
+  lowStockDashboard?: Awaited<ReturnType<typeof getLowStockDashboardRead>>;
   reconciliation?: InventoryLedgerVarianceDashboardRead | null;
   branchOperations?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
@@ -802,6 +807,16 @@ export function buildOperationalDashboardModel(
         locationName: row.inventoryLocationName
       });
     }
+  }
+
+  if (source.lowStockDashboard) {
+    const lowStock = source.lowStockDashboard;
+    const metric: DashboardMetric = {
+      id: "low-stock", label: "Low stock", displayValue: number(lowStock.totalItems),
+      detail: "Configured item/storage pairs at or below their recorded on-hand threshold",
+      href: "/inventory/low-stock", tone: lowStock.totalItems > 0 ? "warning" : "neutral",
+    };
+    metrics.push(metric);
   }
 
   if (source.inventoryBalanceDashboard) {
@@ -1582,7 +1597,7 @@ async function settleDashboardSource(
         ...(dataAsOf ? { dataAsOf } : {})
       }
     };
-  } catch {
+  } catch (error) {
     const checkedAt = new Date().toISOString();
     telemetry({
       event: "dashboard_source_read",
@@ -1598,7 +1613,8 @@ async function settleDashboardSource(
         label: descriptor.label,
         href: descriptor.href,
         availability: "UNAVAILABLE",
-        checkedAt
+        checkedAt,
+        ...(isInventoryQuantityReadProtected(error) ? { unavailableReason: inventoryQuantityProtectedMessage } : {}),
       }
     };
   } finally {
@@ -1766,6 +1782,11 @@ export function getOperationalDashboardSourceDescriptors(
       : []),
     ...(session.permissionCodes.includes(permissions.inventoryBalanceView)
       ? [{
+          id: "low-stock" as const,
+          label: "Low stock",
+          href: "/inventory/low-stock",
+          read: async () => ({ patch: { lowStockDashboard: await getLowStockDashboardRead(session) } })
+        }, {
           id: "inventory-balances" as const,
           label: "Inventory balances",
           href: "/inventory",

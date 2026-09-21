@@ -111,6 +111,7 @@ async function waitForSourceLockBlock(
 
 async function makePostingReadyFixture(
   family: "WastageReport" | "StockAdjustment",
+  configure?: (fixture: ApprovalDecisionPgFixture) => Promise<void>,
 ): Promise<{ fixture: ApprovalDecisionPgFixture; session: SessionContext }> {
   const postingPermission = family === "WastageReport"
     ? permissions.wastagePost
@@ -155,6 +156,7 @@ async function makePostingReadyFixture(
     absoluteExpiresAt: expiry,
   };
   mockContext.requireSessionContext.mockResolvedValue(session);
+  if (configure) await configure(fixture);
   const approval = new FormData();
   approval.set("approvalInstanceId", fixture.approvalInstanceId);
   approval.set("remarks", "Approve disposable posting race fixture.");
@@ -269,6 +271,54 @@ pgDescribe.sequential("wastage and stock-adjustment PostgreSQL posting races", (
     else process.env.AUTH_MFA_STEP_UP_MINUTES = originalMfaStepUpMinutes;
     await prisma.$disconnect();
   });
+
+  test.each(["WastageReport", "StockAdjustment"] as const)("rejects legacy approved %s missing newly required references without inventory mutation", async (family) => {
+    const { fixture } = await makePostingReadyFixture(family);
+    await prisma.operationalReasonCode.updateMany({ where: { companyId: fixture.companyId, code: "TEST" }, data: { requiresEvidence: true } });
+    const before = await inventoryBalanceSnapshot(fixture, family);
+    const post = family === "WastageReport" ? postWastageReport : postStockAdjustment;
+    await expect(post(actionForm(fixture.sourceId))).rejects.toThrow(family === "WastageReport" ? "WASTAGE_EVIDENCE_REFERENCE_REQUIRED" : "STOCK_ADJUSTMENT_EVIDENCE_REFERENCE_REQUIRED");
+    expect(await inventoryBalanceSnapshot(fixture, family)).toEqual(before);
+    expect(await prisma.inventoryMovement.count({ where: { sourceDocumentId: fixture.sourceId, sourceDocumentType: family } })).toBe(0);
+    const source = family === "WastageReport" ? await prisma.wastageReport.findUniqueOrThrow({ where: { id: fixture.sourceId } }) : await prisma.stockAdjustment.findUniqueOrThrow({ where: { id: fixture.sourceId } });
+    expect(source.status).toBe("APPROVED");
+    expect(source.postedAt).toBeNull();
+  }, 60_000);
+
+  test.each([
+    { label: "category line covered", reason: false, global: false, snapshotReason: false, header: null, a: "photo-A", b: null, allowed: true },
+    { label: "wrong category line covered", reason: false, global: false, snapshotReason: false, header: null, a: null, b: "other", allowed: false },
+    { label: "header covers category", reason: false, global: false, snapshotReason: false, header: "header", a: null, b: null, allowed: true },
+    { label: "reason needs both lines", reason: true, global: false, snapshotReason: false, header: null, a: "photo-A", b: null, allowed: false },
+    { label: "reason both lines covered", reason: true, global: false, snapshotReason: false, header: null, a: "photo-A", b: "photo-B", allowed: true },
+    { label: "global needs both lines", reason: false, global: true, snapshotReason: false, header: null, a: "photo-A", b: null, allowed: false },
+    { label: "global header covered", reason: false, global: true, snapshotReason: false, header: "header", a: null, b: null, allowed: true },
+    { label: "whitespace rejected", reason: false, global: false, snapshotReason: false, header: "  ", a: "  ", b: null, allowed: false },
+    { label: "approved reason still requires all lines", reason: false, global: false, snapshotReason: true, header: null, a: "photo-A", b: null, allowed: false },
+  ])("wastage post evidence coverage: $label", async (scenario) => {
+    const { fixture } = await makePostingReadyFixture("WastageReport", async (f) => {
+      await prisma.operationalReasonCode.updateMany({ where: { companyId: f.companyId, code: "TEST" }, data: { requiresEvidence: scenario.reason } });
+      const line = await prisma.wastageLine.findFirstOrThrow({ where: { wastageReportId: f.sourceId } });
+      await prisma.wastageLine.update({ where: { id: line.id }, data: { photoRequired: true, evidenceReference: scenario.a } });
+      // The persisted line requirement survives a later category default change.
+      await prisma.wastageLine.create({ data: { tenantId: line.tenantId, companyId: line.companyId, wastageReportId: line.wastageReportId, inventoryLocationId: line.inventoryLocationId, itemId: line.itemId, uomId: line.uomId, lineNumber: 2, description: "Non-photo line", quantity: 1, quantityBaseUom: 1, reasonCode: "TEST", photoRequired: false, evidenceReference: scenario.b } });
+      await prisma.wastageReport.update({ where: { id: f.sourceId }, data: { evidenceRequired: true, evidenceSatisfied: true, evidenceReference: scenario.header, policySnapshot: { requiresEvidence: scenario.global, reasonCodeRequiresEvidence: scenario.snapshotReason, categoryPhotoRequired: true } } });
+    });
+    const before = await inventoryBalanceSnapshot(fixture, "WastageReport");
+    const result = postWastageReport(actionForm(fixture.sourceId));
+    if (scenario.allowed) {
+      await result;
+      expect((await prisma.wastageReport.findUniqueOrThrow({ where: { id: fixture.sourceId } })).status).toBe("POSTED");
+      const movements = await prisma.inventoryMovement.findMany({ where: { sourceDocumentId: fixture.sourceId, sourceDocumentType: "WastageReport" } });
+      expect(movements).toHaveLength(2);
+      expect(movements.every(m => Number(m.quantityDeltaBaseUom) === -1)).toBe(true);
+    } else {
+      await expect(result).rejects.toThrow("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
+      expect(await inventoryBalanceSnapshot(fixture, "WastageReport")).toEqual(before);
+      expect(await prisma.inventoryMovement.count({ where: { sourceDocumentId: fixture.sourceId, sourceDocumentType: "WastageReport" } })).toBe(0);
+      expect((await prisma.wastageReport.findUniqueOrThrow({ where: { id: fixture.sourceId } })).status).toBe("APPROVED");
+    }
+  }, 60_000);
 
   test.each([
     ["wastage", "WastageReport" as const],

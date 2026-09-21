@@ -1,3 +1,4 @@
+import { lossEstimateAssurance } from "@/server/services/lossEvidence";
 import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
@@ -67,9 +68,11 @@ export async function GET(request: Request) {
         "Line Count",
         "Quantity",
         "Estimated Cost",
+        "Valuation Assurance",
+        "Repeat Item History (prior lines excluding current report)",
         "Policy Flags",
         "Evidence Required",
-        "Evidence Satisfied",
+        "Required Reference Coverage (artifact not verified)",
         "Created At",
         "Submitted At",
         "Reviewed At",
@@ -89,6 +92,8 @@ export async function GET(request: Request) {
         report.lineCount,
         report.totalQuantity,
         report.totalEstimatedCost.toFixed(2),
+        lossEstimateAssurance(report.totalEstimatedCost),
+        report.repeatHistorySummary,
         report.policyFlagLabels.join("; "),
         report.evidenceRequired ? "Yes" : "No",
         report.evidenceSatisfied ? "Yes" : "No",

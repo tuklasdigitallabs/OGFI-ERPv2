@@ -21,6 +21,10 @@ const mockPrisma = vi.hoisted(() => ({
 }));
 
 vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+// Scope predicates are isolated here; the real fence has unit and PostgreSQL coverage.
+vi.mock("./inventoryQuantityRead", () => ({
+  withInventoryQuantityRead: async (_session: unknown, read: (tx: typeof mockPrisma) => Promise<unknown>) => read(mockPrisma),
+}));
 
 const dashboardSession = {
   context: {

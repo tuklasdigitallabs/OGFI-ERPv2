@@ -61,13 +61,17 @@ The system writes linked `REVERSAL` inventory movements for accepted quantity, r
 
 ## Important controls and warnings
 
-- Accepted, rejected, and damaged quantities cannot exceed delivered quantity.
+- Accepted + rejected + damaged must equal delivered quantity exactly. For example, 10 delivered and 6 accepted requires the other 4 delivered units to be classified as rejected or damaged; entering short quantity does not account for those units.
 - Delivered or accepted quantity cannot exceed the remaining outstanding PO quantity.
 - A receiving discrepancy reason and evidence reference are required for rejected, damaged, or short quantities.
 - Reversal is full-document only in the current Phase I release. Partial line reversal, return-to-supplier, supplier credit, and finance effects remain future controlled workflows.
 - Receiving does not approve supplier invoices, release payment, post GL entries, or finalize valuation.
 - If a Receiving status or date filter is invalid, the workspace explains the required format or date ordering so you can correct the filter without exposing an internal error.
 - If a receipt changes during review or a search/profile value is no longer valid, the workspace explains the issue and directs you to refresh or shorten the input.
+
+## What happens next
+
+Purchasing follows the outstanding PO quantity and recorded discrepancy. For an incorrect unposted draft, follow [Cancel an incorrect unposted draft](receiving-issued-purchase-orders.md#cancel-an-incorrect-unposted-draft); posted corrections require authorized reversal.
 
 ## Related articles
 

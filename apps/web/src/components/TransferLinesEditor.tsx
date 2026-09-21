@@ -4,13 +4,13 @@ import { useMemo, useState, type FormEvent } from "react";
 import { TRANSFER_MAX_LINES } from "@/lib/workflowLimits";
 
 type SourceInventoryLocationOption = { id: string; name: string; locationName: string };
-type TransferItemOption = { id: string; itemCode: string; itemName: string; baseUomCode: string };
+type TransferItemOption = { id: string; itemCode: string; itemName: string; baseUomCode: string; requiresLot?: boolean; requiresExpiry?: boolean };
 type DestinationInventoryLocationOption = { id: string; name: string; locationName: string };
 type TransferLinesEditorProps = { action: (formData: FormData) => void | Promise<void>; destinationInventoryLocation: DestinationInventoryLocationOption; sourceInventoryLocations: SourceInventoryLocationOption[]; items: TransferItemOption[] };
-type DraftLine = { key: number; itemId: string; requestedQty: string; notes: string };
+type DraftLine = { key: number; itemId: string; requestedQty: string; lotNumber: string; expiryDate: string; notes: string };
 
 function emptyLine(key: number, itemId: string): DraftLine {
-  return { key, itemId, requestedQty: "", notes: "" };
+  return { key, itemId, requestedQty: "", lotNumber: "", expiryDate: "", notes: "" };
 }
 
 export function TransferLinesEditor({ action, destinationInventoryLocation, sourceInventoryLocations, items }: TransferLinesEditorProps) {
@@ -19,7 +19,11 @@ export function TransferLinesEditor({ action, destinationInventoryLocation, sour
   const [errors, setErrors] = useState<number[]>([]);
   const selectedIndex = Math.max(0, lines.findIndex((line) => line.key === selectedKey));
   const selected = lines[selectedIndex] ?? lines[0]!;
-  const incomplete = useMemo(() => lines.flatMap((line, index) => line.itemId && Number(line.requestedQty) > 0 ? [] : [index]), [lines]);
+  const incomplete = useMemo(() => lines.flatMap((line, index) => {
+    const item = items.find((entry) => entry.id === line.itemId);
+    return item && Number(line.requestedQty) > 0 && (!item.requiresLot || line.lotNumber.trim()) && (!item.requiresExpiry || line.expiryDate) ? [] : [index];
+  }), [lines, items]);
+  const selectedItem = items.find((item) => item.id === selected.itemId);
   const inputClass = "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
 
   function update(values: Partial<Omit<DraftLine, "key">>) {
@@ -48,6 +52,8 @@ export function TransferLinesEditor({ action, destinationInventoryLocation, sour
     <form action={action} className="flex h-full min-h-0 flex-col" onSubmit={submit}>
       {lines.map((line) => <input key={`item-${line.key}`} name="lineItemId" type="hidden" value={line.itemId} readOnly />)}
       {lines.map((line) => <input key={`qty-${line.key}`} name="lineRequestedQty" type="hidden" value={line.requestedQty} readOnly />)}
+      {lines.map((line) => <input key={`lot-${line.key}`} name="lineLotNumber" type="hidden" value={line.lotNumber} readOnly />)}
+      {lines.map((line) => <input key={`expiry-${line.key}`} name="lineExpiryDate" type="hidden" value={line.expiryDate} readOnly />)}
       {lines.map((line) => <input key={`notes-${line.key}`} name="lineNotes" type="hidden" value={line.notes} readOnly />)}
       <div className="shrink-0 border-b border-slate-200 p-4">
         <div className="ogfi-callout p-3 text-sm">This creates a request only. Stock moves when authorized source and destination users dispatch and receive it.</div>
@@ -67,6 +73,11 @@ export function TransferLinesEditor({ action, destinationInventoryLocation, sour
         <section className="min-h-0 overflow-y-auto p-4">
           <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase text-slate-500">Editing line {selectedIndex + 1} of {lines.length}</p><h3 className="text-lg font-bold text-slate-950">{items.find((item) => item.id === selected.itemId)?.itemName ?? "Transfer line"}</h3></div><div className="flex gap-2"><button className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" disabled={selectedIndex === 0} onClick={() => setSelectedKey(lines[selectedIndex - 1]!.key)} type="button">Previous</button><button className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" disabled={selectedIndex === lines.length - 1} onClick={() => setSelectedKey(lines[selectedIndex + 1]!.key)} type="button">Next</button></div></div>
           <div className="grid gap-4 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">Item<select className={inputClass} value={selected.itemId} onChange={(event) => update({ itemId: event.target.value })}>{items.map((item) => <option key={item.id} value={item.id}>{item.itemCode} / {item.itemName} / {item.baseUomCode}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Requested quantity<input className={inputClass} min="0.001" step="0.001" type="number" value={selected.requestedQty} onChange={(event) => update({ requestedQty: event.target.value })} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Handling notes<input className={inputClass} value={selected.notes} onChange={(event) => update({ notes: event.target.value })} placeholder="Optional handling note" /></label></div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="grid gap-1 text-sm font-medium text-slate-700">Source lot / batch{selectedItem?.requiresLot ? " (required)" : ""}<input className={inputClass} maxLength={120} value={selected.lotNumber} onChange={(event) => update({ lotNumber: event.target.value })} /></label>
+            <label className="grid gap-1 text-sm font-medium text-slate-700">Source expiry date{selectedItem?.requiresExpiry ? " (required)" : ""}<input className={inputClass} type="date" value={selected.expiryDate} onChange={(event) => update({ expiryDate: event.target.value })} /></label>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">Enter the exact source stock lot and expiry. Use a separate line for each stock bucket. The source confirms availability at dispatch.</p>
           {lines.length > 1 ? <div className="mt-5 border-t border-slate-200 pt-4"><button className="min-h-10 rounded-md px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50" onClick={removeLine} type="button">Remove selected line</button></div> : null}
         </section>
       </div>

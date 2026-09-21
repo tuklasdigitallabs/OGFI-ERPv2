@@ -1,3 +1,5 @@
+import { canExposeStockCountProtectedFacts, canReviewStockCountCurrentActor, hasCompleteStockCountLineage, type StockCountProtectedRead } from "./stockCountConfidentiality";
+export { canExposeStockCountProtectedFacts, canReviewStockCountCurrentActor } from "./stockCountConfidentiality";
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -134,58 +136,6 @@ export function isStockCountScheduledStartEligible(
   return (
     scheduledDate === null ||
     scheduledDate.toISOString().slice(0, 10) <= dateOnlyInTimeZone(now)
-  );
-}
-
-type StockCountProtectedRead = {
-  status: string;
-  blindCount: boolean;
-  createdByUserId: string;
-  lines: Array<{
-    countedQuantityBaseUom: unknown;
-    countedByUserId: string | null;
-    countedAt: Date | null;
-  }>;
-};
-
-function hasCompleteStockCountLineage(count: StockCountProtectedRead) {
-  return (
-    count.lines.length > 0 &&
-    count.lines.every(
-      (line) =>
-        line.countedQuantityBaseUom !== null &&
-        Boolean(line.countedByUserId) &&
-        Boolean(line.countedAt),
-    )
-  );
-}
-
-export function canExposeStockCountProtectedFacts(
-  session: SessionContext,
-  count: StockCountProtectedRead,
-) {
-  if (!session.permissionCodes.includes(permissions.stockCountReview)) {
-    return false;
-  }
-  if (!count.blindCount) {
-    return true;
-  }
-  if (count.status === "REVIEWED") {
-    return true;
-  }
-  return canReviewStockCountCurrentActor(session, count);
-}
-
-export function canReviewStockCountCurrentActor(
-  session: SessionContext,
-  count: StockCountProtectedRead,
-) {
-  return (
-    session.permissionCodes.includes(permissions.stockCountReview) &&
-    count.status === "SUBMITTED" &&
-    hasCompleteStockCountLineage(count) &&
-    count.createdByUserId !== session.user.id &&
-    count.lines.every((line) => line.countedByUserId !== session.user.id)
   );
 }
 
@@ -1558,6 +1508,7 @@ export async function scheduleStockCount(formData: FormData) {
         session.context.companyId,
       );
       countId = await prisma.$transaction(async (tx) => {
+        await lockInventoryLocationForPosting(tx, session, inventoryLocation.id);
         const count = await tx.stockCountSession.create({
           data: {
             tenantId: session.context.tenantId,

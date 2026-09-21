@@ -76,3 +76,7 @@ Rejected / Cancelled only with reason and audit history
 - Count report reconciles to item-level evidence; posted-adjustment reconciliation is deferred until Count Variance activation.
 - Count start and inventory posting use the same canonically ordered inventory-location serialization boundary, so a racing movement is either included before cutoff or blocked by an active freeze.
 - My Tasks exposes at most one assigned first-pass Start, Enter, or Submit action and does not expose recount, review, cancellation, or variance work.
+
+## DEC-0282 — bounded remediation behavior
+
+Blind-count protection extends beyond the count screen to quantity-bearing adjustment, inventory, approval, audit and linked-record projections, including historical count-origin facts. Existing independent reviewer eligibility remains authoritative. Quantity-unavailable states explain the restriction. Recount recovery and Count Variance posting remain disabled under their existing gates.

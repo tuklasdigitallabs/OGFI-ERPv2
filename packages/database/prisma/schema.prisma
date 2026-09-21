@@ -3137,6 +3137,7 @@ model Item {
   purchaseOrderLines            PurchaseOrderLine[]
   inventoryMovements            InventoryMovement[]
   inventoryBalances             InventoryBalance[]
+  lowStockThresholds            InventoryLowStockThreshold[]
   goodsReceiptLines             GoodsReceiptLine[]
   inventoryTransferLines        InventoryTransferLine[]
   inventoryTransferReceiptLines InventoryTransferReceiptLine[]
@@ -3153,6 +3154,7 @@ model Item {
 
   @@unique([companyId, itemCode])
   @@unique([id, tenantId, companyId], map: "Item_exact_scope_key")
+  @@unique([id, tenantId, companyId, baseUomId], map: "Item_low_stock_uom_scope_key")
   @@index([tenantId, companyId, status])
 }
 
@@ -4349,6 +4351,7 @@ model InventoryLocation {
   movements                         InventoryMovement[]
   relatedMovements                  InventoryMovement[]     @relation("InventoryMovementRelatedInventoryLocation")
   balances                          InventoryBalance[]
+  lowStockThresholds                InventoryLowStockThreshold[]
   goodsReceiptLines                 GoodsReceiptLine[]
   sourceInventoryTransferLines      InventoryTransferLine[] @relation("InventoryTransferLineSourceInventoryLocation")
   destinationInventoryTransferLines InventoryTransferLine[] @relation("InventoryTransferLineDestinationInventoryLocation")
@@ -4370,6 +4373,7 @@ model InventoryLocation {
 
   @@unique([companyId, code])
   @@unique([id, tenantId, companyId, locationId], map: "InventoryLocation_exact_parent_scope_key")
+  @@unique([id, tenantId, companyId], map: "InventoryLocation_low_stock_scope_key")
   @@index([tenantId, companyId, locationId, status])
 }
 
@@ -5526,6 +5530,25 @@ model InventoryMovement {
   @@index([relatedInventoryLocationId])
   @@index([sourceDocumentType, sourceDocumentId])
   @@index([reversalOfMovementId])
+}
+
+model InventoryLowStockThreshold {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String            @db.Uuid
+  companyId           String            @db.Uuid
+  inventoryLocationId String            @db.Uuid
+  itemId              String            @db.Uuid
+  baseUomId           String            @db.Uuid
+  thresholdQuantity   Decimal           @db.Decimal(18, 6)
+  active              Boolean           @default(true)
+  version             Int               @default(1)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  inventoryLocation   InventoryLocation @relation(fields: [inventoryLocationId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: NoAction, onUpdate: NoAction, map: "InventoryLowStockThreshold_location_fkey")
+  item                Item              @relation(fields: [itemId, tenantId, companyId, baseUomId], references: [id, tenantId, companyId, baseUomId], onDelete: NoAction, onUpdate: NoAction, map: "InventoryLowStockThreshold_item_fkey")
+
+  @@unique([tenantId, companyId, inventoryLocationId, itemId], map: "InventoryLowStockThreshold_pair_key")
+  @@index([tenantId, companyId, inventoryLocationId, active], map: "InventoryLowStockThreshold_tenantId_companyId_inventoryLocat_idx")
 }
 
 model InventoryBalance {

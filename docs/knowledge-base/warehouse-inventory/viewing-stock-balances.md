@@ -51,6 +51,8 @@ All three profiles use the selected authorized location and active Inventory Loc
 
 ## Important controls and warnings
 
+- If the page or export says quantities are protected by blind-count confidentiality, continue the assigned work in `Inventory → Stock Counts`. This is a restricted view, not zero stock or an empty ledger. Other roles, copied links, reports, adjustments, and audit views do not grant a bypass; an independent authorized reviewer can access eligible submitted counts.
+
 - Do not use Stock Balances to correct inventory. Corrections must go through approved receiving, transfer, count, wastage, adjustment, or reversal workflows.
 - Viewing, searching, paging, or exporting these rows requires no evidence and changes no document status, approval, inventory quantity, or financial value. Profile exports produce an aggregate operational audit event without storing the search text or row contents.
 - The page does not show all-company or all-location stock for ordinary posting users.
@@ -66,6 +68,8 @@ All three profiles use the selected authorized location and active Inventory Loc
 Use the appropriate controlled workflow when the balance shows a need: transfer request for available internal stock, Purchase Request for external replenishment, stock count for physical verification, wastage for loss, or Stock Adjustment for approved corrections.
 
 ## Related articles
+
+- [Monitoring Low Stock and Setting Thresholds](monitoring-low-stock-and-thresholds.md)
 
 - Reviewing Ledger Variance
 - Receiving Issued Purchase Orders

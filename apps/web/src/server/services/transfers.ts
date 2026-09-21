@@ -20,6 +20,7 @@ import {
   type DashboardTaskCursor,
   type DashboardTaskFilter
 } from "./dashboardTasks";
+import { getInventoryLotExpiryPolicy, inventoryItemLotExpiryRequirements } from "./policySettings";
 import { recordWorkflowNotifications } from "./notifications";
 import {
   assertAnyEligibleApprovalActorForStep,
@@ -56,6 +57,8 @@ const createTransferSchema = z.object({
 const createTransferLineSchema = z.object({
   itemId: z.string().uuid(),
   requestedQty: z.coerce.number().positive(),
+  lotNumber: z.string().trim().max(120).optional(),
+  expiryDate: z.string().date().optional(),
   notes: z.string().trim().max(1000).optional()
 });
 
@@ -67,6 +70,8 @@ type TransferLineDraft = {
     baseUomId: string;
   };
   requestedQty: number;
+  lotNumber: string | null;
+  expiryDate: Date | null;
   notes: string | null;
 };
 
@@ -226,6 +231,8 @@ type TransferApprovalSubmissionHashLine = {
   destinationInventoryLocationId: string;
   lineNumber: number;
   requestedQty: Prisma.Decimal;
+  lotNumber: string | null;
+  expiryDate: Date | null;
   uomId: string;
   description: string;
   notes: string | null;
@@ -290,7 +297,8 @@ export function inventoryTransferApprovalSourceCanonicalJson(
         requestedQty: canonicalTransferApprovalQuantity(line.requestedQty),
         uomId: line.uomId,
         description: line.description,
-        notes: line.notes ?? null
+        notes: line.notes ?? null,
+        ...(line.lotNumber || line.expiryDate ? { lotNumber: line.lotNumber ?? null, expiryDate: line.expiryDate?.toISOString() ?? null } : {})
       }))
   });
 }
@@ -645,6 +653,8 @@ function parseTransferLines(formData: FormData) {
   const itemIds = requiredFormValues(formData, "lineItemId");
   const requestedQtys = requiredFormValues(formData, "lineRequestedQty");
   const notes = optionalFormValues(formData, "lineNotes", itemIds.length);
+  const lots = optionalFormValues(formData, "lineLotNumber", itemIds.length);
+  const expiries = optionalFormValues(formData, "lineExpiryDate", itemIds.length);
 
   if (itemIds.length === 0) {
     throw new Error("TRANSFER_HAS_NO_LINES");
@@ -660,6 +670,8 @@ function parseTransferLines(formData: FormData) {
     createTransferLineSchema.parse({
       itemId,
       requestedQty: requestedQtys[index],
+      lotNumber: lots[index] || undefined,
+      expiryDate: expiries[index] || undefined,
       notes: notes[index] || undefined
     })
   );
@@ -737,9 +749,9 @@ export function calculateTransferReceiptStatus(
   return hasReceipt ? "PARTIALLY_RECEIVED" : "DISPATCHED";
 }
 
-async function nextTransferReference(companyId: string) {
+async function nextTransferReference(companyId: string, client: typeof prisma | TransactionClient = prisma) {
   const year = new Date().getUTCFullYear();
-  const count = await prisma.inventoryTransfer.count({
+  const count = await client.inventoryTransfer.count({
     where: {
       companyId,
       publicReference: { startsWith: `TR-${year}-` }
@@ -1100,11 +1112,12 @@ export async function listTransferFormOptions(session: SessionContext) {
           status: "ACTIVE",
           trackInventory: true
         },
-        include: { baseUom: true },
+        include: { baseUom: true, category: true },
         orderBy: { itemName: "asc" }
       })
     ]);
 
+  const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
   return {
     destinationInventoryLocation: destinationInventoryLocation
       ? {
@@ -1124,7 +1137,8 @@ export async function listTransferFormOptions(session: SessionContext) {
       itemCode: item.itemCode,
       itemName: item.itemName,
       baseUomId: item.baseUomId,
-      baseUomCode: item.baseUom.uomCode
+      baseUomCode: item.baseUom.uomCode,
+      ...inventoryItemLotExpiryRequirements(item, lotExpiryPolicy)
     }))
   };
 }
@@ -1645,93 +1659,93 @@ export async function createInventoryTransfer(formData: FormData) {
       status: "ACTIVE",
       trackInventory: true
     },
-    include: { baseUom: true }
+    include: { baseUom: true, category: true }
   });
   const itemById = new Map(items.map((item) => [item.id, item]));
   if (items.length !== itemIds.length) {
     throw new Error("TRANSFER_ITEM_NOT_FOUND");
   }
 
+  const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
   const lineDrafts: TransferLineDraft[] = lineValues.map((line, index) => {
     assertPositiveTransferQuantity(line.requestedQty);
     const item = itemById.get(line.itemId);
     if (!item) {
       throw new Error("TRANSFER_ITEM_NOT_FOUND");
     }
+    const requirements = inventoryItemLotExpiryRequirements(item, lotExpiryPolicy);
+    if (requirements.requiresLot && !line.lotNumber) throw new Error("INVENTORY_LOT_REQUIRED");
+    if (requirements.requiresExpiry && !line.expiryDate) throw new Error("INVENTORY_EXPIRY_REQUIRED");
     return {
       lineNumber: index + 1,
       item,
+      lotNumber: line.lotNumber || null,
+      expiryDate: line.expiryDate ? new Date(line.expiryDate) : null,
       requestedQty: line.requestedQty,
       notes: line.notes || null
     };
   });
 
-  let transferId: string | null = null;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const transfer = await prisma.inventoryTransfer.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          publicReference: await nextTransferReference(session.context.companyId),
-          sourceLocationId: sourceInventoryLocation.locationId,
-          destinationLocationId: destinationInventoryLocation.locationId,
-          requestedByUserId: session.user.id,
-          transferType: values.transferType,
-          purpose: values.purpose,
-          requiredByDate: values.requiredByDate ?? null,
-          lines: {
-            create: lineDrafts.map((line) => ({
-                tenantId: session.context.tenantId,
-                companyId: session.context.companyId,
-                sourceInventoryLocationId: sourceInventoryLocation.id,
-                destinationInventoryLocationId: destinationInventoryLocation.id,
-                itemId: line.item.id,
-                uomId: line.item.baseUomId,
-                lineNumber: line.lineNumber,
-                description: line.item.itemName,
-                requestedQty: line.requestedQty,
-                notes: line.notes
-              }))
+      return await prisma.$transaction(async (tx) => {
+        const transfer = await tx.inventoryTransfer.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            publicReference: await nextTransferReference(session.context.companyId, tx),
+            sourceLocationId: sourceInventoryLocation.locationId,
+            destinationLocationId: destinationInventoryLocation.locationId,
+            requestedByUserId: session.user.id,
+            transferType: values.transferType,
+            purpose: values.purpose,
+            requiredByDate: values.requiredByDate ?? null,
+            lines: {
+              create: lineDrafts.map((line) => ({
+                  tenantId: session.context.tenantId,
+                  companyId: session.context.companyId,
+                  sourceInventoryLocationId: sourceInventoryLocation.id,
+                  destinationInventoryLocationId: destinationInventoryLocation.id,
+                  itemId: line.item.id,
+                  uomId: line.item.baseUomId,
+                  lineNumber: line.lineNumber,
+                  description: line.item.itemName,
+                  requestedQty: line.requestedQty,
+                  lotNumber: line.lotNumber,
+                  expiryDate: line.expiryDate,
+                  notes: line.notes
+                }))
+            }
           }
-        }
+        });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "inventory_transfer.created",
+            entityType: "InventoryTransfer",
+            entityId: transfer.id,
+            afterData: { status: "DRAFT" },
+            metadata: {
+              sourceLocationId: sourceInventoryLocation.locationId,
+              destinationLocationId: destinationInventoryLocation.locationId,
+              itemIds,
+              lineCount: lineDrafts.length,
+              requestedQty: lineDrafts.reduce(
+                (total, line) => total + line.requestedQty,
+                0
+              )
+            }
+          }
+        });
+        return transfer.id;
       });
-      transferId = transfer.id;
-      break;
     } catch (error) {
-      if (!isUniqueConstraintError(error) || attempt === 5) {
-        throw error;
-      }
+      if (!isUniqueConstraintError(error) || attempt === 5) throw error;
     }
   }
-
-  if (!transferId) {
-    throw new Error("TRANSFER_REFERENCE_ALLOCATION_FAILED");
-  }
-
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      actorUserId: session.user.id,
-      eventType: "inventory_transfer.created",
-      entityType: "InventoryTransfer",
-      entityId: transferId,
-      afterData: { status: "DRAFT" },
-      metadata: {
-        sourceLocationId: sourceInventoryLocation.locationId,
-        destinationLocationId: destinationInventoryLocation.locationId,
-        itemIds,
-        lineCount: lineDrafts.length,
-        requestedQty: lineDrafts.reduce(
-          (total, line) => total + line.requestedQty,
-          0
-        )
-      }
-    }
-  });
-
-  return transferId;
+  throw new Error("TRANSFER_REFERENCE_ALLOCATION_FAILED");
 }
 
 export async function submitInventoryTransfer(formData: FormData) {
@@ -1892,7 +1906,7 @@ export async function submitInventoryTransfer(formData: FormData) {
     }>>(Prisma.sql`
       SELECT l."id", l."itemId", l."sourceInventoryLocationId",
         l."destinationInventoryLocationId", l."lineNumber", l."requestedQty",
-        l."uomId", l."description", l."notes", sil."locationId" AS "sourceLocationId",
+        l."uomId", l."description", l."notes", l."lotNumber", l."expiryDate", sil."locationId" AS "sourceLocationId",
         dil."locationId" AS "destinationLocationId",
         l."dispatchedQty", l."receivedQty", l."rejectedQty", l."damagedQty",
         l."discrepancyQty"

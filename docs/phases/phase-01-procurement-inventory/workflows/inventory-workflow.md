@@ -347,7 +347,9 @@ Scoped count reads and locks require a populated current-attempt pointer. A sess
 
 ### Low stock
 
-Where reorder point is set, flag items at or below available quantity threshold. Phase I may notify branch / warehouse but does not automatically create a PR.
+Under DEC-0283, an active threshold is configured per item and inventory location in the item’s base UOM. Low stock means recorded on-hand summed across matching lot balance rows is at or below that threshold. This is not available-to-dispatch: reservations, quarantine and in-transit availability are not deducted. A configured pair with no balance row is recorded as zero and visibly requires initialization/reconciliation. No threshold means no monitoring; no defaults are seeded.
+
+The dashboard, paginated low-stock register and CSV expose a live signal, suppressed under protected blind-count reads including membership and counts. They do not write persistent notifications or automatically create PRs/POs. Follow the existing Request Stock workflow: check assigned warehouse availability first, route available stock through Transfer Request and unavailable stock through Purchase Request with required approvals.
 
 ### Negative stock
 

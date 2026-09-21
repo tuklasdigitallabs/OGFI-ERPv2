@@ -1,3 +1,4 @@
+import { withInventoryQuantityRead } from "./inventoryQuantityRead";
 import { createHash } from "node:crypto";
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
@@ -6449,12 +6450,19 @@ export async function getApprovalDetail(
   }
 
   if (approval.documentType === "StockAdjustment") {
+    const source = await prisma.stockAdjustment.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      select: { inventoryLocationId: true, inventoryLocation: { select: { locationId: true } } },
+    });
+    if (!source) return null;
+    await assertApprovalScope(session, source.inventoryLocation.locationId);
+    return withInventoryQuantityRead(session, async (tx) => {
     const permissionCodes = await getGrantedPermissionCodes(session);
     if (!permissionCodes.includes(permissions.stockAdjustmentApprove)) {
       return null;
     }
 
-    const adjustment = await prisma.stockAdjustment.findFirst({
+    const adjustment = await tx.stockAdjustment.findFirst({
       where: {
         id: approval.documentId,
         tenantId: session.context.tenantId,
@@ -6477,7 +6485,7 @@ export async function getApprovalDetail(
       }
     });
 
-    if (!adjustment) {
+    if (!adjustment || adjustment.inventoryLocationId !== source.inventoryLocationId) {
       return null;
     }
 
@@ -6486,7 +6494,7 @@ export async function getApprovalDetail(
       return null;
     }
 
-    const auditEvents = await prisma.auditEvent.findMany({
+    const auditEvents = await tx.auditEvent.findMany({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -6537,6 +6545,8 @@ export async function getApprovalDetail(
         occurredAt: event.occurredAt.toISOString()
       }))
     };
+
+    }, { inventoryLocationIds: [source.inventoryLocationId], adjustments: true, adjustmentId: approval.documentId });
   }
 
   if (approval.documentType === "BudgetRevision") {

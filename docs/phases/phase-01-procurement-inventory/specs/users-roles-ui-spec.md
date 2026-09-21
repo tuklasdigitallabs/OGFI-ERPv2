@@ -208,3 +208,26 @@ inactive sections are not queried or represented as zero-valued metrics. Filters
 pagination, denied states, and create actions remain within the selected
 workspace context.
 > Administration implementation note (DEC-0193): Break-Glass Access is a server-paginated, filterable queue. Lifecycle actions are performed in a selected-record TaskSheet; bounded target catalogs fail closed with an explanatory disabled state when refinement is required.
+
+## DEC-0284 — Access Setup and Change Access
+
+Create User uses guided Access Setup: choose grant eligible access now or Create without access, enter identity and a reason, then supply eligible role, branch/operating location and access level when granting access. Explain roles as allowed actions and location/access level as their scope; never present direct permission toggles. Sensitive roles and controlled locations clearly direct administrators to the existing request workflow. Creating without access must not silently choose a default location or role.
+
+User Access detail offers eligible assignment-level Change role and Change access level controls with current context, replacement selection and required reason. In the direct path, ordinary branch assignments expose View and Operate for safe roles. Approve always uses the controlled request path; Manage and controlled location types (warehouse, Head Office, commissary / central kitchen, project, or temporary site) also use controlled requests. Sensitive and system roles use controlled requests at every access level. Preserve old assignment history, show actionable stale/duplicate/idempotency/access errors, and require refresh/review after stale state. Exact retries must not create another replacement. Explain that changed access invalidates the target user's active sessions.
+
+The role selector shows all active roles with one of these labels: Quick setup,
+Approval required, or System role. Safe roles retain the default visual treatment;
+approval-required roles use the shared warning treatment and a text label. When an
+approval-required role is selected, the form replaces direct assignment with
+Request role approval and identifies the reason where available. The server owns
+eligibility; visual treatment never replaces authorization. Role builders warn
+when a permission is approval-required and classify any unknown or unclassified
+permission as approval-required until explicitly reviewed.
+
+A signed-in account without usable scope receives safe no-scope recovery guidance instead of an assumed company/location or operational access. The recovery state grants no authority. Existing restricted, loading, empty and error states remain explicit. Named-role desktop/tablet/mobile acceptance and enablement remain separate from source implementation completion.
+
+### DEC-0284 — role and permission visual classification
+
+Safe, directly assignable roles and permissions retain the default visual styling. Approval-required roles and permissions use the shared warning color treatment together with an explicit approval-required or controlled-access label. Color alone must never communicate the restriction. Explain when approval applies to role assignment; do not imply that editing a permission itself grants user access or completes approval.
+
+Apply this distinction consistently in the role/permission editor, role detail and related administration surfaces. Derive the label from the existing server-owned eligibility classification; visual styling does not replace authorization or change which roles/permissions require controlled assignment. Existing unrelated error, stale and draft-change indicators retain their own meanings.

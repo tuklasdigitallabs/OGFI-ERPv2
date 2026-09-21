@@ -1,3 +1,5 @@
+import { InventoryProtectedReadState } from "@/components/InventoryProtectedReadState";
+import { isInventoryQuantityReadProtected } from "@/server/services/inventoryQuantityRead";
 import { redirect } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Boxes, Search, ShieldAlert } from "lucide-react";
 import { Badge, ButtonLink, EmptyState, PaginationBar, Panel } from "@ogfi/ui";
@@ -45,6 +47,7 @@ function formatSignedQuantity(value: number) {
 export default async function InventoryReconciliationPage({
   searchParams
 }: ReconciliationPageProps) {
+  try {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -332,4 +335,9 @@ export default async function InventoryReconciliationPage({
       </Panel>
     </AppShell>
   );
+
+  } catch (error) {
+    if (isInventoryQuantityReadProtected(error)) return <InventoryProtectedReadState />;
+    throw error;
+  }
 }

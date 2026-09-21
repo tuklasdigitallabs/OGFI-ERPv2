@@ -137,3 +137,9 @@ Sales, covers, labor cost, recipe cost, theoretical vs actual food cost, P&L, pr
 Reports must respect both project scope and source-record access. Exports should not leak confidential linked-record data.
 
 Current implementation note: enabled Phase 1.5 exports are `Project Health` at portfolio grain, `Project Task Register` at task grain, `Project Activity Log` at redacted activity-event grain, and `Linked Record Follow-up` at project-link grain. They write export-denied, export-started, export-completed, and export-failed audit events with the same DEC-0036 report trust-gate metadata used by operational exports, and they apply a small per-user rate limit. Linked Record Follow-up rows are capped, project-visibility scoped, and redacted through the same source-record authorization adapters used by task detail links.
+
+## DEC-0283 — low-stock CSV
+
+Report `low-stock` exports the selected-location Low-stock alerts or Configured thresholds view, applying the same item/storage search, eligibility and recorded-on-hand aggregate as dashboard/register. Grain is configured item/inventory-location pair, not lot. Columns: storage, item code/name, recorded on-hand, threshold, base UOM, balance-row count, active, eligible, low-stock classification, version and threshold-update UTC. Metadata names the view and recorded-on-hand/no-balance-zero semantics. Zero balance rows require initialization/reconciliation, not a claim of physical zero stock.
+
+Use existing export-policy row limit capped at 10,000; reject oversized populations without truncation. Export success/failure is audited. Scope and blind-count read guards apply before returning quantity facts or membership. This is a live report, not a persistent low-stock notification or procurement instruction.
