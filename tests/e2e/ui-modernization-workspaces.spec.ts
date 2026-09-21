@@ -21,9 +21,13 @@ test("modernized project, board, and finance workspaces stay readable", async ({
     ["/projects", "Projects Tracker"],
     ["/work-boards", "Work Boards"],
     ["/finance/general-ledger", "General Ledger"],
+    ["/finance/accounts-payable", "Accounts Payable"],
+    ["/finance/bank-cash", "Bank & Cash"],
   ] as const) {
     await page.goto(workspace[0]);
-    await expect(page.getByRole("heading", { name: workspace[1] })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: workspace[1], exact: true }),
+    ).toBeVisible();
     expect(
       await page
         .locator("html")
