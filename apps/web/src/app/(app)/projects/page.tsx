@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, Panel, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -33,6 +33,23 @@ export const dynamic = "force-dynamic";
 type ProjectsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type ProjectTab = "overview" | "members" | "risks" | "activity";
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string,
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getProjectTab(
+  searchParams: Record<string, string | string[] | undefined>,
+): ProjectTab {
+  const tab = getStringParam(searchParams, "tab");
+  return tab === "members" || tab === "risks" || tab === "activity" ? tab : "overview";
+}
 
 async function createProjectAction(formData: FormData) {
   "use server";
@@ -143,6 +160,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : {};
+  const activeTab = getProjectTab(resolvedSearchParams);
   const actionFeedback = getActionFeedback(resolvedSearchParams);
   const canCreateProject = session.permissionCodes.includes(permissions.projectCreate);
   const [projects, dashboard, risks, members, memberOptions, publishedTemplates] =
@@ -185,6 +203,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           <span>Phase 1.5</span>
         </div>
       </div>
+      <WorkspaceTabs
+        ariaLabel="Projects workspace sections"
+        className="mb-5"
+        items={[
+          { label: "Overview", href: "/projects", active: activeTab === "overview", count: projects.length },
+          { label: "Members", href: "/projects?tab=members", active: activeTab === "members", count: members.length },
+          { label: "Risks", href: "/projects?tab=risks", active: activeTab === "risks", count: risks.filter((risk) => !["CLOSED", "CANCELLED"].includes(risk.status)).length },
+          { label: "Activity", href: "/projects?tab=activity", active: activeTab === "activity", count: dashboard.recentActivity.length },
+        ]}
+      />
       <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Visible projects</p>
@@ -412,7 +440,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         ) : null}
       </div>
 
-      <section className="ogfi-data-surface mb-5">
+      <section className={`ogfi-data-surface mb-5 ${activeTab === "overview" ? "" : "hidden"}`}>
         <div className="ogfi-section-header">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Project Health</h2>
@@ -499,7 +527,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         )}
       </section>
 
-      <section className="ogfi-data-surface mb-5">
+      <section className={`ogfi-data-surface mb-5 ${activeTab === "members" ? "" : "hidden"}`}>
         <div className="ogfi-section-header">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Members</h2>
@@ -551,7 +579,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </div>
       </section>
 
-      <section className="ogfi-data-surface mb-5">
+      <section className={`ogfi-data-surface mb-5 ${activeTab === "risks" ? "" : "hidden"}`}>
         <div className="ogfi-section-header">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Risk Register</h2>
@@ -635,7 +663,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </div>
       </section>
 
-      <section className="ogfi-data-surface mb-5">
+      <section className={`ogfi-data-surface mb-5 ${activeTab === "activity" ? "" : "hidden"}`}>
         <div className="border-b border-slate-100 p-4">
           <h2 className="text-lg font-bold text-slate-950">Recent Activity</h2>
           <p className="text-sm text-slate-500">
@@ -664,7 +692,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         )}
       </section>
 
-      <div className="space-y-4">
+      <div className={`space-y-4 ${activeTab === "overview" ? "" : "hidden"}`}>
         <section className="ogfi-data-surface">
           <div className="ogfi-section-header">
             <div>
