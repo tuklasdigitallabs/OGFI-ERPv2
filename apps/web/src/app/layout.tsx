@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("ogfi_theme")||"light";document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.dataset.theme="light";}`
+            __html: `try{var t=localStorage.getItem("ogfi_theme")||"system";var d=t==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":t;document.documentElement.dataset.theme=d;document.documentElement.style.colorScheme=d;}catch(e){document.documentElement.dataset.theme="light";}`
           }}
         />
       </head>

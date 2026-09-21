@@ -1,23 +1,41 @@
 "use client";
 
-import { Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type ThemeMode = "light" | "dark";
+type ThemeMode = "light" | "dark" | "system";
+
+function resolveTheme(theme: ThemeMode): "light" | "dark" {
+  if (theme === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return theme;
+}
 
 function applyTheme(theme: ThemeMode) {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+  document.documentElement.dataset.theme = resolveTheme(theme);
+  document.documentElement.style.colorScheme = resolveTheme(theme);
 }
 
 export function ThemeModeSelect() {
-  const [theme, setTheme] = useState<ThemeMode>("light");
+  const [theme, setTheme] = useState<ThemeMode>("system");
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("ogfi_theme");
-    const nextTheme = storedTheme === "dark" ? "dark" : "light";
+    const nextTheme: ThemeMode =
+      storedTheme === "dark" || storedTheme === "light" || storedTheme === "system"
+        ? storedTheme
+        : "system";
     setTheme(nextTheme);
     applyTheme(nextTheme);
+    if (nextTheme === "system") {
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = () => applyTheme("system");
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
   }, []);
 
   function selectTheme(nextTheme: ThemeMode) {
@@ -51,6 +69,16 @@ export function ThemeModeSelect() {
       >
         <Moon aria-hidden="true" className="h-4 w-4" />
         <span className="hidden sm:inline">Dark</span>
+      </button>
+      <button
+        aria-pressed={theme === "system"}
+        className={theme === "system" ? "theme-mode-option is-active" : "theme-mode-option"}
+        onClick={() => selectTheme("system")}
+        title="Follow system theme"
+        type="button"
+      >
+        <Monitor aria-hidden="true" className="h-4 w-4" />
+        <span className="hidden sm:inline">System</span>
       </button>
     </div>
   );

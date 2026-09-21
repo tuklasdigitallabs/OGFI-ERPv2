@@ -128,9 +128,9 @@ export function AppShell({
       session={session}
     >
       <header className="shell-top-header bg-white/90 backdrop-blur-xl md:sticky md:top-0 md:z-10">
-        <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-8">
+        <div className="mx-auto flex w-full max-w-none flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-8">
           <div className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge tone="info" size="sm">
                 {session.context.companyName}
               </Badge>
@@ -196,7 +196,7 @@ export function AppShell({
           </span>
         </div>
       </header>
-      <main className="px-4 pb-44 pt-6 md:px-8 md:pb-40 md:pt-7">
+      <main className="px-4 pb-44 pt-5 md:px-8 md:pb-40 md:pt-6">
         {children}
       </main>
     </ShellNavigation>
