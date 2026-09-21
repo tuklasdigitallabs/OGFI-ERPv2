@@ -966,10 +966,7 @@ export async function FinanceSubworkspace({
 }) {
   const Icon = kindIcon[kind];
   const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
-  const sourceRows =
-    kind === "payables"
-      ? dashboard.sourceChain
-      : dashboard.sourceChain.slice(0, 5);
+  const sourceRows = dashboard.sourceChain;
   const journalRows = dashboard.recentJournals;
   const apInvoiceRows = dashboard.apInvoices;
   const supplierCreditRows = dashboard.supplierCreditNotes;
@@ -1188,6 +1185,7 @@ export async function FinanceSubworkspace({
   const pagedSupplierCredits = paginate(supplierCreditRows);
   const pagedJournals = paginate(journalRows);
   const pagedApInvoices = paginate(apInvoiceRows);
+  const pagedSourceRows = paginate(sourceRows);
   const pagedPaymentRequests = paginate(paymentRequestRows);
   const pagedPaymentReleases = paginate(paymentReleaseRows);
   const pagedSettlementReadiness = paginate(
@@ -2440,7 +2438,7 @@ export async function FinanceSubworkspace({
                 </p>
               </div>
             ) : (
-              sourceRows.map((row) => (
+              pagedSourceRows.rows.map((row) => (
                 <div
                   key={row.id}
                   className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_11rem_12rem_auto] md:items-center"
@@ -2505,7 +2503,17 @@ export async function FinanceSubworkspace({
               startIndex={pagedApInvoices.pagination.startIndex}
               endIndex={pagedApInvoices.pagination.endIndex}
             />
-          ) : null}
+          ) : (
+            <FinancePagination
+              basePath={tabBasePath}
+              tab={activeTabId}
+              page={pagedSourceRows.pagination.page}
+              totalPages={pagedSourceRows.pagination.totalPages}
+              totalCount={sourceRows.length}
+              startIndex={pagedSourceRows.pagination.startIndex}
+              endIndex={pagedSourceRows.pagination.endIndex}
+            />
+          )}
         </section>
       </div>
 
