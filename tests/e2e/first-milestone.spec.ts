@@ -131,10 +131,16 @@ async function gotoCoreAdmin(page: Page) {
 test("dashboard keeps the priority preview readable at desktop and mobile widths", async ({ page }) => {
   await signInAs(page, requesterEmail, "/dashboard", "Company Overview");
 
-  await expect(page.getByRole("heading", { name: "Today’s work" })).toBeVisible();
-  await expect(page.getByText("A bounded priority preview of records assigned to you or requiring attention in the selected scope.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Assigned approvals" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Operational exceptions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Low-stock alerts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operational Exceptions" })).toBeVisible();
+  await expect(page.getByText("Dashboard source status")).toBeVisible();
+  await page.getByRole("button", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("ogfi_theme")))
+    .toBe("dark");
+  await page.getByRole("button", { name: "Light" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(
     await page
       .locator("html")
