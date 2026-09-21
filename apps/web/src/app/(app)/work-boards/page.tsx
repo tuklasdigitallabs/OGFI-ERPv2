@@ -416,7 +416,30 @@ export default async function WorkBoardsPage({ searchParams }: WorkBoardsPagePro
             ))}
           </aside>
 
-          <section className="overflow-x-auto pb-2">
+          <section className="grid gap-3 lg:hidden" aria-label="Task list">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-bold uppercase text-slate-500">
+                Tasks for {selectedProject?.code}
+              </h2>
+              <Badge>{tasks.length}</Badge>
+            </div>
+            {tasks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-white/80 p-4 text-sm text-slate-600">
+                No tasks for this project.
+              </div>
+            ) : (
+              tasks.map((task) => (
+                <BoardTaskCard
+                  blockerReasonRequired={taskPolicy.blockerReasonRequired}
+                  enabledStatuses={enabledStatusSet}
+                  key={task.id}
+                  task={task}
+                />
+              ))
+            )}
+          </section>
+
+          <section className="hidden overflow-x-auto pb-2 lg:block">
             <div className="grid min-w-[62rem] gap-3 lg:grid-cols-5">
               {visibleBoardColumns.map((column) => {
                 const columnTasks = tasks.filter((task) => task.status === column.status);
